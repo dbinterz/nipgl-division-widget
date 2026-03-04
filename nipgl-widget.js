@@ -1,4 +1,4 @@
-/* NIPGL Division Widget JS - v4.6 */
+/* NIPGL Division Widget JS - v4.7 */
 (function(){
   'use strict';
 
@@ -7,49 +7,38 @@
 
   var PRINT_ICON = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>';
 
-  // ── Dark mode ─────────────────────────────────────────────────────────────────
+  // ── Dark mode — stored on :root so modal (on body) inherits variables ─────────
   var DM_KEY = 'nipgl_darkmode';
 
   function getDarkPref(){
     try{
-      var stored = localStorage.getItem(DM_KEY);
-      if(stored === 'dark')  return 'dark';
-      if(stored === 'light') return 'light';
+      var v = localStorage.getItem(DM_KEY);
+      if(v==='dark'||v==='light') return v;
     }catch(e){}
     return 'auto';
   }
 
-  function setDarkPref(val){
-    try{ localStorage.setItem(DM_KEY, val); }catch(e){}
-  }
-
-  function applyTheme(el, pref){
-    el.classList.remove('nipgl-dark','nipgl-light');
-    if(pref === 'dark')  el.classList.add('nipgl-dark');
-    if(pref === 'light') el.classList.add('nipgl-light');
-  }
-
-  function toggleTheme(el, btn){
-    var current = getDarkPref();
-    // cycle: auto → dark → light → auto
-    var next = current === 'auto' ? 'dark' : current === 'dark' ? 'light' : 'auto';
-    setDarkPref(next);
-    applyTheme(el, next);
-    updateDMBtn(btn, next);
+  function applyThemeToRoot(pref){
+    if(pref==='dark')       document.documentElement.setAttribute('data-nipgl-theme','dark');
+    else if(pref==='light') document.documentElement.setAttribute('data-nipgl-theme','light');
+    else                    document.documentElement.removeAttribute('data-nipgl-theme');
   }
 
   function updateDMBtn(btn, pref){
-    btn.textContent = pref === 'dark' ? '☀ Light' : pref === 'light' ? '⟳ Auto' : '☾ Dark';
-    btn.title = pref === 'dark' ? 'Switch to light mode' : pref === 'light' ? 'Follow device setting' : 'Switch to dark mode';
+    btn.textContent = pref==='dark' ? '☀ Light' : pref==='light' ? '⟳ Auto' : '☾ Dark';
+    btn.title = pref==='dark' ? 'Switch to light mode' : pref==='light' ? 'Follow device setting' : 'Switch to dark mode';
   }
+
+  // Apply on load
+  applyThemeToRoot(getDarkPref());
 
   // ── Badge helper ──────────────────────────────────────────────────────────────
   function badgeImg(team, cls){
-    cls = cls || 'nipgl-badge';
+    cls = cls||'nipgl-badge';
     if(badges[team]) return '<img class="'+cls+'" src="'+badges[team]+'" alt="'+team+'">';
-    var upper = team.toUpperCase();
+    var upper=team.toUpperCase();
     for(var key in badges){
-      if(key.toUpperCase() === upper) return '<img class="'+cls+'" src="'+badges[key]+'" alt="'+team+'">';
+      if(key.toUpperCase()===upper) return '<img class="'+cls+'" src="'+badges[key]+'" alt="'+team+'">';
     }
     return '';
   }
@@ -57,7 +46,7 @@
   // ── CSV parser ────────────────────────────────────────────────────────────────
   function parseCSV(text){
     return text.split('\n').map(function(line){
-      line = line.replace(/\r$/,'');
+      line=line.replace(/\r$/,'');
       var cells=[], cur='', inQ=false;
       for(var i=0;i<line.length;i++){
         var c=line[i];
@@ -79,7 +68,7 @@
     i++;
     if(i>=rows.length) return [];
 
-    var colPtsH=0, colHTeam=2, colHScore=7, colAScore=9, colATeam=10, colPtsA=15;
+    var colPtsH=0,colHTeam=2,colHScore=7,colAScore=9,colATeam=10,colPtsA=15;
     for(var h=i;h<Math.min(i+5,rows.length);h++){
       if(rows[h].join('').indexOf('HPts')!==-1){
         for(var c=0;c<rows[h].length;c++){
@@ -97,7 +86,6 @@
 
     var dateRe=/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}-[A-Za-z]+-\d{4}$/;
     var groups=[], cur=null;
-
     while(i<rows.length){
       var r=rows[i];
       var first=(r[0]||r[1]||'').trim();
@@ -122,10 +110,10 @@
         if(homeTeam && awayTeam){
           var played=(shotsHome!=='0'||shotsAway!=='0'||ptsHome!=='0'||ptsAway!=='0');
           cur.matches.push({
-            ptsHome:ptsHome, ptsAway:ptsAway,
-            homeTeam:homeTeam, awayTeam:awayTeam,
-            shotsHome:shotsHome, shotsAway:shotsAway,
-            timeNote:timeNote, played:played
+            ptsHome:ptsHome,ptsAway:ptsAway,
+            homeTeam:homeTeam,awayTeam:awayTeam,
+            shotsHome:shotsHome,shotsAway:shotsAway,
+            timeNote:timeNote,played:played
           });
         }
       }
@@ -149,12 +137,12 @@
       var pos=r[0], team=r[1];
       if(pos && team && !isNaN(parseInt(pos,10))){
         teams.push({
-          pos:parseInt(pos,10), team:team,
+          pos:parseInt(pos,10),team:team,
           pl:parseInt(r[5]||r[2]||'0',10),
           pts:parseInt(r[7]||r[3]||'0',10),
           diff:r[8]||r[4]||'0',
-          w:r[9]||'0', l:r[10]||'0', d:r[11]||'0',
-          f:r[12]||'0', a:r[14]||r[13]||'0'
+          w:r[9]||'0',l:r[10]||'0',d:r[11]||'0',
+          f:r[12]||'0',a:r[14]||r[13]||'0'
         });
       }
       i++;
@@ -162,14 +150,72 @@
     return teams;
   }
 
+  // ── Print helpers ─────────────────────────────────────────────────────────────
+  var PRINT_CSS =
+    'body{font-family:Saira,Arial,sans-serif;padding:20px;color:#1a1a1a;font-size:13px}'
+    +'h2{color:#1a2e5a;margin:0 0 12px}'
+    +'table{width:100%;border-collapse:collapse}'
+    +'th{background:#1a2e5a;color:#fff;padding:6px 8px;font-size:11px;text-align:center}'
+    +'th.ct{text-align:left}td{padding:6px 8px;border-bottom:1px solid #d0d5e8;text-align:center}'
+    +'td.ct{text-align:left;font-weight:600}td.cp{color:#999;width:36px}td.ck{font-weight:700;color:#8f1520}'
+    +'tr:nth-child(even) td{background:#f0f2f8}'
+    +'.row-promote-zone td:first-child,.row-promoted td:first-child{border-left:4px solid #2a7a2a}'
+    +'.row-relegate-zone td:first-child,.row-relegated td:first-child{border-left:4px solid #c0202a}'
+    +'.row-promote-zone td{background:#f0faf0}.row-promoted td{background:#c8edc8}'
+    +'.row-relegate-zone td{background:#fff5f5}.row-relegated td{background:#f5c8c8}'
+    +'.lg-legend{padding:6px 10px;font-size:11px;color:#666;border-top:1px solid #d0d5e8}'
+    +'.nipgl-badge{width:20px;height:20px;max-width:20px;max-height:20px;vertical-align:middle;margin-right:4px}'
+    +'.nipgl-sponsor-img{max-height:48px;max-width:160px}'
+    +'.date-hdr{background:#c0202a;color:#fff;padding:5px 10px;font-size:12px;font-weight:700;letter-spacing:.06em;margin-top:8px}'
+    +'.fx-tbl{width:100%;border-collapse:collapse;margin-bottom:4px}'
+    +'.fx-tbl td{padding:5px 8px;border-bottom:1px solid #d0d5e8;font-size:12px}'
+    +'.fx-tbl tr:nth-child(even) td{background:#f0f2f8}'
+    +'.fx-home{text-align:right;font-weight:600;width:35%}'
+    +'.fx-away{text-align:left;font-weight:600;width:35%}'
+    +'.fx-score{text-align:center;font-weight:700;white-space:nowrap;width:30%}'
+    +'.fx-pts{font-size:11px;color:#999}'
+    +'@media print{body{padding:0}}';
+
+  function printFixturesData(groups, title){
+    var html='<h2>'+(title||'Fixtures &amp; Results')+'</h2>';
+    groups.forEach(function(g){
+      html+='<div class="date-hdr">'+g.date+'</div>';
+      html+='<table class="fx-tbl"><tbody>';
+      g.matches.forEach(function(m){
+        var scoreStr = m.played ? m.shotsHome+' – '+m.shotsAway : 'v';
+        var ptsStr   = m.played ? '<span class="fx-pts">('+m.ptsHome+' – '+m.ptsAway+')</span>' : '';
+        html+='<tr>'
+          +'<td class="fx-home">'+badgeImg(m.homeTeam)+m.homeTeam+'</td>'
+          +'<td class="fx-score">'+scoreStr+' '+ptsStr+'</td>'
+          +'<td class="fx-away">'+badgeImg(m.awayTeam)+m.awayTeam+'</td>'
+          +'</tr>';
+      });
+      html+='</tbody></table>';
+    });
+    return html;
+  }
+
+  function openPrintWindow(title, bodyHtml){
+    var win=window.open('','_blank','width=900,height=700');
+    win.document.write(
+      '<!DOCTYPE html><html><head><title>'+(title||'NIPGL')+'</title>'
+      +'<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap" rel="stylesheet">'
+      +'<style>'+PRINT_CSS+'</style></head><body>'
+      +bodyHtml
+      +'<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>'
+      +'</body></html>'
+    );
+    win.document.close();
+  }
+
   // ── Modal ─────────────────────────────────────────────────────────────────────
-  var modalEl = null;
+  var modalEl=null;
 
   function ensureModal(){
     if(modalEl) return;
-    modalEl = document.createElement('div');
-    modalEl.className = 'nipgl-modal-overlay';
-    modalEl.innerHTML =
+    modalEl=document.createElement('div');
+    modalEl.className='nipgl-modal-overlay';
+    modalEl.innerHTML=
       '<div class="nipgl-modal">'
       +'<div class="nipgl-modal-head">'
       +'<div class="nipgl-modal-title"></div>'
@@ -180,51 +226,39 @@
       +'<div class="nipgl-modal-body"></div>'
       +'</div>';
     document.body.appendChild(modalEl);
-
-    modalEl.addEventListener('click', function(e){ if(e.target===modalEl) closeModal(); });
-    document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
-    modalEl.querySelector('.nipgl-modal-close').addEventListener('click', closeModal);
-    modalEl.querySelector('.nipgl-modal-print').addEventListener('click', function(){
-      var titleEl  = modalEl.querySelector('.nipgl-modal-title');
-      var bodyEl   = modalEl.querySelector('.nipgl-modal-body');
-      var teamName = titleEl.querySelector('h2') ? titleEl.querySelector('h2').textContent : '';
-      var win = window.open('','_blank','width=800,height=700');
-      win.document.write(
-        '<!DOCTYPE html><html><head><title>'+teamName+'</title>'
-        +'<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap" rel="stylesheet">'
-        +'<style>'
-        +'body{font-family:Saira,Arial,sans-serif;padding:24px;color:#1a1a1a;font-size:13px}'
+    modalEl.addEventListener('click',function(e){if(e.target===modalEl)closeModal();});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+    modalEl.querySelector('.nipgl-modal-close').addEventListener('click',closeModal);
+    modalEl.querySelector('.nipgl-modal-print').addEventListener('click',function(){
+      var titleEl=modalEl.querySelector('.nipgl-modal-title');
+      var bodyEl =modalEl.querySelector('.nipgl-modal-body');
+      var teamName=titleEl.querySelector('h2')?titleEl.querySelector('h2').textContent:'';
+      var modalPrintCss=PRINT_CSS
         +'.nipgl-modal-title{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:3px solid #1a2e5a}'
         +'.nipgl-modal-title h2{margin:0;font-size:20px;color:#1a2e5a}'
-        +'.nipgl-modal-badge{width:48px;height:48px;object-fit:contain}'
+        +'.nipgl-modal-badge{width:48px;height:48px;max-width:48px;max-height:48px;object-fit:contain}'
         +'.modal-stat-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}'
         +'.modal-stat{background:#f0f2f8;border-radius:4px;padding:6px 12px;text-align:center;min-width:52px}'
         +'.modal-stat-val{font-size:18px;font-weight:700;color:#1a2e5a}'
         +'.modal-stat-lbl{font-size:10px;color:#666;text-transform:uppercase}'
-        +'table{width:100%;border-collapse:collapse}'
-        +'th{background:#1a2e5a;color:#fff;padding:6px 8px;text-align:left;font-size:11px}'
-        +'td{padding:6px 8px;border-bottom:1px solid #d0d5e8}'
-        +'tr:nth-child(even) td{background:#f0f2f8}'
-        +'.nipgl-badge{width:20px;height:20px;max-width:20px;max-height:20px;vertical-align:middle;margin-right:4px}'
+        +'.modal-fix-table td{padding:6px 8px;border-bottom:1px solid #d0d5e8}'
+        +'.modal-fix-table th{background:#1a2e5a;color:#fff;padding:6px 8px;text-align:left;font-size:11px}'
+        +'.modal-fix-table .nipgl-badge{width:20px;height:20px;max-width:20px;max-height:20px}'
         +'.modal-result-lbl{font-size:10px;font-weight:700;border-radius:3px;padding:1px 4px;margin-left:4px}'
         +'.res .modal-result-lbl{background:#2a7a2a;color:#fff}'
         +'.drew .modal-result-lbl{background:#888;color:#fff}'
-        +'.lost .modal-result-lbl{background:#c0202a;color:#fff}'
-        +'@media print{body{padding:0}}'
-        +'</style></head><body>'
-        +'<div class="nipgl-modal-title">'+titleEl.innerHTML+'</div>'
+        +'.lost .modal-result-lbl{background:#c0202a;color:#fff}';
+      openPrintWindow(teamName,
+        '<div class="nipgl-modal-title">'+titleEl.innerHTML+'</div>'
         +bodyEl.innerHTML
-        +'<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>'
-        +'</body></html>'
       );
-      win.document.close();
     });
   }
 
   function openModal(titleHtml, bodyHtml){
     ensureModal();
-    modalEl.querySelector('.nipgl-modal-title').innerHTML = titleHtml;
-    modalEl.querySelector('.nipgl-modal-body').innerHTML  = bodyHtml;
+    modalEl.querySelector('.nipgl-modal-title').innerHTML=titleHtml;
+    modalEl.querySelector('.nipgl-modal-body').innerHTML=bodyHtml;
     modalEl.classList.add('active');
     document.body.classList.add('nipgl-modal-open');
   }
@@ -234,24 +268,24 @@
     document.body.classList.remove('nipgl-modal-open');
   }
 
-  function stat(val, lbl){
+  function stat(val,lbl){
     return '<div class="modal-stat"><div class="modal-stat-val">'+val+'</div><div class="modal-stat-lbl">'+lbl+'</div></div>';
   }
 
   function showTeamModal(teamName, allRows){
-    var teams  = parseTableRows(allRows);
-    var groups = parseFixtureGroups(allRows);
-    var teamData = null;
+    var teams =parseTableRows(allRows);
+    var groups=parseFixtureGroups(allRows);
+    var teamData=null;
     for(var t=0;t<teams.length;t++){
       if(teams[t].team.toUpperCase()===teamName.toUpperCase()){teamData=teams[t];break;}
     }
 
-    var bdg = badgeImg(teamName,'nipgl-modal-badge');
-    var titleHtml = bdg+'<h2>'+teamName+'</h2>';
+    var bdg=badgeImg(teamName,'nipgl-modal-badge');
+    var titleHtml=bdg+'<h2>'+teamName+'</h2>';
 
-    var statsHtml = '';
+    var statsHtml='';
     if(teamData){
-      statsHtml = '<div class="modal-stat-bar">'
+      statsHtml='<div class="modal-stat-bar">'
         +stat(teamData.pl,'Played')+stat(teamData.pts,'Points')
         +stat(teamData.w,'Won')+stat(teamData.d,'Drawn')+stat(teamData.l,'Lost')
         +stat(teamData.f,'For')+stat(teamData.a,'Against')+stat(teamData.diff,'+/-')
@@ -267,15 +301,15 @@
       g.matches.forEach(function(m){
         var isHome=m.homeTeam.toUpperCase()===teamName.toUpperCase();
         var isAway=m.awayTeam.toUpperCase()===teamName.toUpperCase();
-        if(!isHome && !isAway) return;
+        if(!isHome&&!isAway) return;
         hasRows=true;
-        var opponent = isHome ? m.awayTeam   : m.homeTeam;
-        var ha       = isHome ? 'H'          : 'A';
-        var myShots  = isHome ? m.shotsHome  : m.shotsAway;
-        var oppShots = isHome ? m.shotsAway  : m.shotsHome;
-        var myPts    = isHome ? m.ptsHome    : m.ptsAway;
-        var scoreStr = m.played ? myShots+' - '+oppShots : '-';
-        var rowCls='', resultLbl='';
+        var opponent=isHome?m.awayTeam:m.homeTeam;
+        var ha=isHome?'H':'A';
+        var myShots =isHome?m.shotsHome:m.shotsAway;
+        var oppShots=isHome?m.shotsAway:m.shotsHome;
+        var myPts   =isHome?m.ptsHome:m.ptsAway;
+        var scoreStr=m.played?myShots+' - '+oppShots:'-';
+        var rowCls='',resultLbl='';
         if(m.played){
           var p=parseInt(myPts,10);
           if(p>=4){rowCls='res';resultLbl='W';}
@@ -295,51 +329,7 @@
 
     if(!hasRows) fixtureRows+='<tr><td colspan="6" style="text-align:center;color:#999">No fixtures found</td></tr>';
     fixtureRows+='</tbody></table>';
-    openModal(titleHtml, statsHtml+fixtureRows);
-  }
-
-  // ── Print current tab ─────────────────────────────────────────────────────────
-  function printPanel(widget, tabName, divisionTitle){
-    var panels = widget.querySelectorAll('.nipgl-panel');
-    var content = '';
-    for(var i=0;i<panels.length;i++){
-      if(panels[i].getAttribute('data-panel')===tabName){
-        content = panels[i].innerHTML; break;
-      }
-    }
-    var win = window.open('','_blank','width=900,height=700');
-    win.document.write(
-      '<!DOCTYPE html><html><head><title>'+(divisionTitle||'NIPGL')+'</title>'
-      +'<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap" rel="stylesheet">'
-      +'<style>'
-      +'body{font-family:Saira,Arial,sans-serif;padding:20px;color:#1a1a1a;font-size:13px}'
-      +'h2{color:#1a2e5a;margin-bottom:12px}'
-      +'.fix-filter,.nipgl-print-btn,.nipgl-darkmode-btn{display:none}'
-      +'table{width:100%;border-collapse:collapse}'
-      +'th{background:#1a2e5a;color:#fff;padding:6px 8px;font-size:11px;text-align:center}'
-      +'th.ct{text-align:left}td{padding:6px 8px;border-bottom:1px solid #d0d5e8;text-align:center}'
-      +'td.ct{text-align:left}td.ck{font-weight:700;color:#8f1520}'
-      +'tr:nth-child(even) td{background:#f0f2f8}'
-      +'.nipgl-badge{width:20px;height:20px;max-width:20px;max-height:20px;vertical-align:middle;margin-right:4px}'
-      +'.nipgl-sponsor-img{max-height:48px;max-width:160px}'
-      +'.date-hdr{background:#c0202a;color:#fff;padding:5px 10px;font-size:12px;font-weight:700;letter-spacing:.06em}'
-      +'.fx-row{display:grid;grid-template-columns:36px 1fr auto 1fr 36px;gap:4px;padding:6px 10px;border-bottom:1px solid #d0d5e8;align-items:center}'
-      +'.fx-h{text-align:right;font-weight:600}.fx-a{text-align:left;font-weight:600}'
-      +'.fx-sc{display:flex;align-items:center;justify-content:center;gap:4px}'
-      +'.fx-sb{border:1px solid #d0d5e8;border-radius:3px;padding:2px 6px;font-weight:700}'
-      +'.fx-ph,.fx-pa{text-align:center;font-size:12px;color:#999}'
-      +'.fx-row.played .fx-sb{background:#1a2e5a;color:#fff}'
-      +'.row-promote-zone td:first-child,.row-promoted td:first-child{border-left:4px solid #2a7a2a}'
-      +'.row-relegate-zone td:first-child,.row-relegated td:first-child{border-left:4px solid #c0202a}'
-      +'.lg-legend{padding:6px 10px;font-size:11px;color:#666}'
-      +'@media print{body{padding:0}}'
-      +'</style></head><body>'
-      +'<h2>'+(divisionTitle||'')+'</h2>'
-      +content
-      +'<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>'
-      +'</body></html>'
-    );
-    win.document.close();
+    openModal(titleHtml,statsHtml+fixtureRows);
   }
 
   // ── Render table ──────────────────────────────────────────────────────────────
@@ -350,7 +340,7 @@
 
     var total=teams.length, MAX_PTS=7;
     var gamesLeft={};
-    teams.forEach(function(t){ gamesLeft[t.team.toUpperCase()]=0; });
+    teams.forEach(function(t){gamesLeft[t.team.toUpperCase()]=0;});
     parseFixtureGroups(rows).forEach(function(g){
       g.matches.forEach(function(m){
         if(!m.played){
@@ -361,7 +351,7 @@
     });
 
     function getZone(idx){
-      if(promote>0  && idx<promote)         return 'promote';
+      if(promote>0 && idx<promote)          return 'promote';
       if(relegate>0 && idx>=total-relegate) return 'relegate';
       return '';
     }
@@ -382,7 +372,7 @@
       +'</tr></thead><tbody>';
 
     teams.forEach(function(t,idx){
-      var zone=getZone(idx), clinched=isClinched(idx);
+      var zone=getZone(idx),clinched=isClinched(idx);
       var bt='';
       if(promote>0  && idx===promote)        bt=' zone-border-top';
       if(relegate>0 && idx===total-relegate) bt=' zone-border-top';
@@ -446,47 +436,38 @@
     return h;
   }
 
-  function filterBar(activeFilter){
+  function filterBar(af){
     var h='<div class="fix-filter">';
     ['all','results','upcoming'].forEach(function(f){
       var cap=f.charAt(0).toUpperCase()+f.slice(1);
-      h+='<button data-f="'+f+'"'+(activeFilter===f?' class="active"':'')+'>'+cap+'</button>';
+      h+='<button data-f="'+f+'"'+(af===f?' class="active"':'')+'>'+cap+'</button>';
     });
     return h+'</div>';
   }
 
   // ── Init widget ───────────────────────────────────────────────────────────────
   function initWidget(widget){
-    var csvUrl   = widget.getAttribute('data-csv');
-    var promote  = parseInt(widget.getAttribute('data-promote')  ||'0',10);
-    var relegate = parseInt(widget.getAttribute('data-relegate') ||'0',10);
+    var csvUrl   =widget.getAttribute('data-csv');
+    var promote  =parseInt(widget.getAttribute('data-promote')  ||'0',10);
+    var relegate =parseInt(widget.getAttribute('data-relegate') ||'0',10);
     var extraSponsors=[];
     try{extraSponsors=JSON.parse(widget.getAttribute('data-sponsors')||'[]');}catch(e){}
 
-    // Get division title from preceding .nipgl-title element if present
-    var divisionTitle = '';
-    var prev = widget.previousElementSibling;
-    if(prev && prev.classList.contains('nipgl-title')) divisionTitle = prev.textContent.trim();
+    var prev=widget.previousElementSibling;
+    var divisionTitle=prev&&prev.classList.contains('nipgl-title')?prev.textContent.trim():'';
 
-    // Apply saved dark mode pref
-    var dmPref = getDarkPref();
-    applyTheme(widget, dmPref);
-    if(prev && prev.classList.contains('nipgl-title')) applyTheme(prev, dmPref);
-
-    // Dark mode toggle button — inject into tab bar
-    var dmBtn = document.createElement('button');
-    dmBtn.className = 'nipgl-darkmode-btn';
-    updateDMBtn(dmBtn, dmPref);
-    dmBtn.addEventListener('click', function(){
-      var p = getDarkPref();
-      var next = p==='auto'?'dark':p==='dark'?'light':'auto';
-      setDarkPref(next);
-      applyTheme(widget, next);
-      if(prev && prev.classList.contains('nipgl-title')) applyTheme(prev, next);
-      updateDMBtn(dmBtn, next);
+    // Dark mode toggle — cycles auto→dark→light→auto, stored on :root
+    var dmBtn=document.createElement('button');
+    dmBtn.className='nipgl-darkmode-btn';
+    updateDMBtn(dmBtn,getDarkPref());
+    dmBtn.addEventListener('click',function(){
+      var cur=getDarkPref();
+      var next=cur==='auto'?'dark':cur==='dark'?'light':'auto';
+      try{localStorage.setItem(DM_KEY,next);}catch(e){}
+      applyThemeToRoot(next);
+      updateDMBtn(dmBtn,next);
     });
-
-    var tabBar = widget.querySelector('.nipgl-tabs');
+    var tabBar=widget.querySelector('.nipgl-tabs');
     if(tabBar) tabBar.appendChild(dmBtn);
 
     function sponsorBar(){
@@ -522,11 +503,33 @@
     }
 
     function makePrintBtn(tabName){
-      var btn = document.createElement('button');
+      var btn=document.createElement('button');
       btn.className='nipgl-print-btn';
       btn.innerHTML=PRINT_ICON+'Print';
       btn.title='Print this view';
-      btn.addEventListener('click',function(){ printPanel(widget,tabName,divisionTitle); });
+      btn.addEventListener('click',function(){
+        if(tabName==='table'){
+          var tp=getPanel('table');
+          openPrintWindow(divisionTitle,
+            '<h2>'+divisionTitle+'</h2>'+(tp?tp.innerHTML:'')
+          );
+        } else {
+          // Fixtures: use dedicated renderer for reliable mobile print
+          var groups=parseFixtureGroups(allRows);
+          var now=new Date();
+          if(activeFilter==='results'){
+            groups=groups.map(function(g){
+              return{date:g.date,matches:g.matches.filter(function(m){return m.played;})};
+            }).filter(function(g){return g.matches.length;});
+          } else if(activeFilter==='upcoming'){
+            groups=groups.map(function(g){
+              var d=parseDate(g.date); if(!d) return{date:g.date,matches:[]};
+              return{date:g.date,matches:g.matches.filter(function(m){return !m.played&&d>=now;})};
+            }).filter(function(g){return g.matches.length;});
+          }
+          openPrintWindow(divisionTitle, printFixturesData(groups, divisionTitle));
+        }
+      });
       return btn;
     }
 
@@ -535,7 +538,7 @@
         el.addEventListener('click',function(e){
           e.stopPropagation();
           var team=el.getAttribute('data-team')||el.closest('[data-team]').getAttribute('data-team');
-          if(team && allRows) showTeamModal(team, allRows);
+          if(team&&allRows) showTeamModal(team,allRows);
         });
       });
     }
@@ -555,24 +558,25 @@
     }
 
     function showError(msg){
-      var e='<div class="nipgl-status"><strong>Unable to load data.</strong><small>'+msg+'</small></div>';
-      panels.forEach(function(p){p.innerHTML=e;});
+      panels.forEach(function(p){
+        p.innerHTML='<div class="nipgl-status"><strong>Unable to load data.</strong><small>'+msg+'</small></div>';
+      });
     }
 
     var proxyUrl=ajaxUrl+'?action=nipgl_csv&url='+encodeURIComponent(csvUrl);
     var xhr=new XMLHttpRequest();
     xhr.open('GET',proxyUrl);
     xhr.onload=function(){
-      if(xhr.status===200 && xhr.responseText && xhr.responseText.trim().length>10){
+      if(xhr.status===200&&xhr.responseText&&xhr.responseText.trim().length>10){
         allRows=parseCSV(xhr.responseText);
         var tp=getPanel('table'), fp=getPanel('fixtures');
         if(tp){
           tp.innerHTML=renderTable(allRows,promote,relegate)+sponsorBar();
-          tp.insertBefore(makePrintBtn('table'), tp.firstChild);
+          tp.insertBefore(makePrintBtn('table'),tp.firstChild);
         }
         if(fp){
           fp.innerHTML=filterBar(activeFilter)+renderFixtures(allRows,activeFilter);
-          fp.insertBefore(makePrintBtn('fixtures'), fp.firstChild);
+          fp.insertBefore(makePrintBtn('fixtures'),fp.firstChild);
         }
         bindFilterBtns(); bindTeamLinks();
       } else {
