@@ -1,0 +1,87 @@
+.nipgl-title{font-family:'Saira',Arial,sans-serif;font-size:18px;font-weight:700;color:#fff;background:#1a2e5a;padding:10px 16px;border-radius:6px 6px 0 0;letter-spacing:.03em;max-width:960px;margin:0 auto;box-sizing:border-box}
+.nipgl-title + .nipgl-w .nipgl-tabs .nipgl-tab{border-radius:0}
+.nipgl-title + .nipgl-w{border-radius:0 0 6px 6px;margin-top:0}
+.nipgl-w{font-family:'Saira',Arial,sans-serif;max-width:960px;margin:0 auto}
+.nipgl-w *{box-sizing:border-box;margin:0;padding:0}
+.nipgl-tabs{display:flex;gap:3px;margin-bottom:0}
+.nipgl-tab{flex:1;padding:9px 8px;font-size:13px;font-weight:700;text-align:center;cursor:pointer;background:#dde1ef;color:#1a2e5a;border:1px solid #d0d5e8;border-bottom:none;border-radius:6px 6px 0 0;transition:background .15s;user-select:none}
+.nipgl-tab.active{background:#1a2e5a;color:#fff}
+.nipgl-panel{display:none;background:#fff;border-radius:0 0 6px 6px;box-shadow:0 2px 8px rgba(0,0,0,.10);overflow:hidden}
+.nipgl-panel.active{display:block}
+.nipgl-status{font-size:13px;color:#666;padding:20px;text-align:center}
+.nipgl-status small{display:block;margin-top:8px;font-family:monospace;background:#f8f0f0;padding:8px;border-radius:4px;text-align:left;word-break:break-all}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.lg{width:100%;border-collapse:collapse;font-size:13px}
+table.lg th{background:#1a2e5a;color:#fff;padding:7px 6px;font-size:11px;font-weight:700;letter-spacing:.05em;white-space:nowrap;text-align:center}
+table.lg th.ct{text-align:left}
+table.lg td{padding:7px 6px;text-align:center;border-bottom:1px solid #d0d5e8;white-space:nowrap}
+table.lg td.cp{font-weight:700;color:#999;width:32px}
+table.lg td.ct{text-align:left;font-weight:600;padding-left:10px}
+table.lg td.ck{font-weight:700;color:#8f1520}
+table.lg tr:nth-child(even) td{background:#f0f2f8}
+table.lg tr:hover td{background:#e6e9f5}
+
+/* Promotion zone */
+table.lg tr.row-promote-zone td:first-child{border-left:4px solid #2a7a2a}
+table.lg tr.row-promote-zone td{background:#f0faf0}
+table.lg tr.row-promoted td:first-child{border-left:4px solid #2a7a2a}
+table.lg tr.row-promoted td{background:#c8edc8 !important}
+
+/* Relegation zone */
+table.lg tr.row-relegate-zone td:first-child{border-left:4px solid #c0202a}
+table.lg tr.row-relegate-zone td{background:#fff5f5}
+table.lg tr.row-relegated td:first-child{border-left:4px solid #c0202a}
+table.lg tr.row-relegated td{background:#f5c8c8 !important}
+
+/* Zone divider line */
+table.lg tr.zone-border-top td{border-top:2px solid #aaa}
+
+/* Legend */
+.lg-legend{display:flex;gap:16px;padding:8px 10px;font-size:12px;font-family:'Saira',Arial,sans-serif;color:#444;background:#fff;border-top:1px solid #d0d5e8}
+.lg-key{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.lg-key-promote{background:#2a7a2a}
+.lg-key-relegate{background:#c0202a}
+@media(max-width:600px){
+  table.lg th.cp,table.lg td.cp{position:sticky;left:0;z-index:1;background:inherit}
+  table.lg th.cp{background:#1a2e5a}
+  table.lg th.ct,table.lg td.ct{position:sticky;left:36px;z-index:1;background:inherit}
+  table.lg th.ct{background:#1a2e5a}
+  table.lg tr:nth-child(even) td.cp,table.lg tr:nth-child(even) td.ct{background:#f0f2f8}
+  table.lg tr:hover td.cp,table.lg tr:hover td.ct{background:#e6e9f5}
+}
+.fix-filter{display:flex;gap:6px;padding:10px;border-bottom:1px solid #d0d5e8;flex-wrap:wrap}
+.fix-filter button{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid #d0d5e8;background:#f5f6fa;color:#1a2e5a;cursor:pointer;transition:background .15s}
+.fix-filter button.active,.fix-filter button:hover{background:#c0202a;color:#fff;border-color:#c0202a}
+.date-group{border-bottom:2px solid #d0d5e8}
+.date-group:last-child{border-bottom:none}
+.date-hdr{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:#c0202a;padding:6px 14px}
+.fx-row{display:grid;grid-template-columns:36px 1fr auto 1fr 36px;align-items:center;gap:4px;padding:8px 10px;border-bottom:1px solid #d0d5e8;font-size:13px}
+.fx-row:last-child{border-bottom:none}
+.fx-row:hover{background:#f0f2f8}
+.fx-ph,.fx-pa{font-size:12px;font-weight:700;color:#999;text-align:center}
+.fx-h{text-align:right;font-weight:600}
+.fx-a{text-align:left;font-weight:600}
+.fx-sc{display:flex;align-items:center;justify-content:center;white-space:nowrap}
+.fx-sb{background:#f5f6fa;border:1px solid #d0d5e8;border-radius:3px;min-width:26px;padding:2px 5px;text-align:center;font-weight:700;font-size:14px;color:#1a2e5a}
+.fx-sep{padding:0 4px;color:#999;font-size:12px}
+.fx-time{grid-column:1/-1;text-align:right;font-size:11px;color:#e8b400;font-weight:700;padding:0 2px 4px;margin-top:-4px}
+.fx-row.played .fx-sb{background:#1a2e5a;color:#fff;border-color:#243d78}
+.fx-row.played .fx-ph,.fx-row.played .fx-pa{color:#8f1520}
+.nipgl-badge{width:24px;height:24px;object-fit:contain;vertical-align:middle;margin-right:5px;border-radius:2px}
+table.lg .nipgl-badge{width:20px;height:20px}
+
+/* Mobile: stack badge above team name, widen sticky team column */
+@media(max-width:600px){
+  /* Badge above team name in table */
+  table.lg td.ct{display:flex;flex-direction:column;align-items:flex-start;gap:2px;white-space:normal;min-width:90px;max-width:130px}
+  table.lg td.ct .nipgl-badge{margin-right:0;width:22px;height:22px}
+  /* Ensure sticky team col has enough width and doesn't overlap scrolled columns */
+  table.lg th.ct{min-width:100px}
+  /* Badge above name in fixtures */
+  .fx-h,.fx-a{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:12px}
+  .fx-a{align-items:flex-start}
+  .fx-h .nipgl-badge,.fx-a .nipgl-badge{margin-right:0;width:22px;height:22px}
+  /* Tighten fixture grid on small screens */
+  .fx-row{grid-template-columns:28px 1fr auto 1fr 28px;gap:2px;padding:6px 6px}
+  .fx-sb{min-width:22px;font-size:13px}
+}
