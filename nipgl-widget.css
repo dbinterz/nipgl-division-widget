@@ -1,139 +1,251 @@
-.nipgl-title{font-family:'Saira',Arial,sans-serif;font-size:18px;font-weight:700;color:#fff;background:#1a2e5a;padding:10px 16px;border-radius:6px 6px 0 0;letter-spacing:.03em;max-width:960px;margin:0 auto;box-sizing:border-box}
+/* NIPGL Division Widget CSS - v4.6 */
+
+/* ── CSS Variables (light mode) ─────────────────────────────────────────────── */
+.nipgl-title,.nipgl-w{
+  --c-navy:       #1a2e5a;
+  --c-navy-mid:   #243d78;
+  --c-red:        #c0202a;
+  --c-gold:       #e8b400;
+  --c-bg:         #ffffff;
+  --c-bg-alt:     #f0f2f8;
+  --c-bg-hover:   #e6e9f5;
+  --c-border:     #d0d5e8;
+  --c-tab-bg:     #dde1ef;
+  --c-text:       #1a1a1a;
+  --c-text-muted: #666666;
+  --c-pts:        #8f1520;
+  --c-pos:        #999999;
+  --c-promote:    #2a7a2a;
+  --c-promote-bg: #f0faf0;
+  --c-promote-cl: #c8edc8;
+  --c-relegate-bg:#fff5f5;
+  --c-relegate-cl:#f5c8c8;
+  --c-win:        #2a7a2a;
+  --c-loss:       #c0202a;
+  --c-shadow:     rgba(0,0,0,.10);
+}
+
+/* ── Dark mode variables ─────────────────────────────────────────────────────── */
+.nipgl-title.nipgl-dark,.nipgl-w.nipgl-dark{
+  --c-navy:       #4a6fa5;
+  --c-navy-mid:   #5a80b5;
+  --c-red:        #e05060;
+  --c-gold:       #f0c830;
+  --c-bg:         #1e1e2e;
+  --c-bg-alt:     #2a2a3e;
+  --c-bg-hover:   #32324a;
+  --c-border:     #3a3a55;
+  --c-tab-bg:     #2a2a3e;
+  --c-text:       #e8e8f0;
+  --c-text-muted: #aaaacc;
+  --c-pts:        #e05060;
+  --c-pos:        #7777aa;
+  --c-promote:    #4aaa4a;
+  --c-promote-bg: #1a2e1a;
+  --c-promote-cl: #1e3e1e;
+  --c-relegate-bg:#2e1a1a;
+  --c-relegate-cl:#3e1e1e;
+  --c-win:        #4aaa4a;
+  --c-loss:       #e05060;
+  --c-shadow:     rgba(0,0,0,.4);
+}
+
+/* OS-level dark mode preference (when no manual override) */
+@media(prefers-color-scheme:dark){
+  .nipgl-title:not(.nipgl-light):not(.nipgl-dark),
+  .nipgl-w:not(.nipgl-light):not(.nipgl-dark){
+    --c-navy:       #4a6fa5;
+    --c-navy-mid:   #5a80b5;
+    --c-red:        #e05060;
+    --c-gold:       #f0c830;
+    --c-bg:         #1e1e2e;
+    --c-bg-alt:     #2a2a3e;
+    --c-bg-hover:   #32324a;
+    --c-border:     #3a3a55;
+    --c-tab-bg:     #2a2a3e;
+    --c-text:       #e8e8f0;
+    --c-text-muted: #aaaacc;
+    --c-pts:        #e05060;
+    --c-pos:        #7777aa;
+    --c-promote:    #4aaa4a;
+    --c-promote-bg: #1a2e1a;
+    --c-promote-cl: #1e3e1e;
+    --c-relegate-bg:#2e1a1a;
+    --c-relegate-cl:#3e1e1e;
+    --c-win:        #4aaa4a;
+    --c-loss:       #e05060;
+    --c-shadow:     rgba(0,0,0,.4);
+  }
+}
+
+/* ── Title bar ───────────────────────────────────────────────────────────────── */
+.nipgl-title{font-family:'Saira',Arial,sans-serif;font-size:18px;font-weight:700;color:#fff;background:var(--c-navy);padding:10px 16px;border-radius:6px 6px 0 0;letter-spacing:.03em;max-width:960px;margin:0 auto;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between}
 .nipgl-title + .nipgl-w .nipgl-tabs .nipgl-tab{border-radius:0}
 .nipgl-title + .nipgl-w{border-radius:0 0 6px 6px;margin-top:0}
+
+/* ── Widget shell ────────────────────────────────────────────────────────────── */
 .nipgl-w{font-family:'Saira',Arial,sans-serif;max-width:960px;margin:0 auto}
 .nipgl-w *{box-sizing:border-box;margin:0;padding:0}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────────── */
 .nipgl-tabs{display:flex;gap:3px;margin-bottom:0}
-.nipgl-tab{flex:1;padding:9px 8px;font-size:13px;font-weight:700;text-align:center;cursor:pointer;background:#dde1ef;color:#1a2e5a;border:1px solid #d0d5e8;border-bottom:none;border-radius:6px 6px 0 0;transition:background .15s;user-select:none}
-.nipgl-tab.active{background:#1a2e5a;color:#fff}
-.nipgl-panel{display:none;background:#fff;border-radius:0 0 6px 6px;box-shadow:0 2px 8px rgba(0,0,0,.10);overflow:hidden}
+.nipgl-tab{flex:1;padding:9px 8px;font-size:13px;font-weight:700;text-align:center;cursor:pointer;background:var(--c-tab-bg);color:var(--c-navy);border:1px solid var(--c-border);border-bottom:none;border-radius:6px 6px 0 0;transition:background .15s;user-select:none}
+.nipgl-tab.active{background:var(--c-navy);color:#fff}
+
+/* Dark mode toggle button in tab bar */
+.nipgl-darkmode-btn{margin-left:auto;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;background:var(--c-tab-bg);color:var(--c-navy);border:1px solid var(--c-border);border-bottom:none;border-radius:6px 6px 0 0;user-select:none;transition:background .15s;white-space:nowrap}
+.nipgl-darkmode-btn:hover{background:var(--c-bg-hover)}
+
+/* Print button in tab bar */
+.nipgl-print-btn{padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;background:var(--c-tab-bg);color:var(--c-navy);border:1px solid var(--c-border);border-bottom:none;border-radius:6px 6px 0 0;user-select:none;transition:background .15s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.nipgl-print-btn:hover{background:var(--c-bg-hover)}
+.nipgl-print-btn svg{width:14px;height:14px;fill:currentColor}
+
+/* ── Panels ──────────────────────────────────────────────────────────────────── */
+.nipgl-panel{display:none;background:var(--c-bg);border-radius:0 0 6px 6px;box-shadow:0 2px 8px var(--c-shadow);overflow:hidden}
 .nipgl-panel.active{display:block}
-.nipgl-status{font-size:13px;color:#666;padding:20px;text-align:center}
+.nipgl-status{font-size:13px;color:var(--c-text-muted);padding:20px;text-align:center}
 .nipgl-status small{display:block;margin-top:8px;font-family:monospace;background:#f8f0f0;padding:8px;border-radius:4px;text-align:left;word-break:break-all}
+
+/* ── League table ────────────────────────────────────────────────────────────── */
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table.lg{width:100%;border-collapse:collapse;font-size:13px}
-table.lg th{background:#1a2e5a;color:#fff;padding:7px 6px;font-size:11px;font-weight:700;letter-spacing:.05em;white-space:nowrap;text-align:center}
+table.lg th{background:var(--c-navy);color:#fff;padding:7px 6px;font-size:11px;font-weight:700;letter-spacing:.05em;white-space:nowrap;text-align:center}
 table.lg th.ct{text-align:left}
-table.lg td{padding:7px 6px;text-align:center;border-bottom:1px solid #d0d5e8;white-space:nowrap}
-table.lg td.cp{font-weight:700;color:#999;width:32px}
+table.lg td{padding:7px 6px;text-align:center;border-bottom:1px solid var(--c-border);white-space:nowrap;color:var(--c-text);background:var(--c-bg)}
+table.lg td.cp{font-weight:700;color:var(--c-pos);width:32px}
 table.lg td.ct{text-align:left;font-weight:600;padding-left:10px}
-table.lg td.ck{font-weight:700;color:#8f1520}
-table.lg tr:nth-child(even) td{background:#f0f2f8}
-table.lg tr:hover td{background:#e6e9f5}
+table.lg td.ck{font-weight:700;color:var(--c-pts)}
+table.lg tr:nth-child(even) td{background:var(--c-bg-alt)}
+table.lg tr:hover td{background:var(--c-bg-hover)}
 
-/* Sponsor bars */
-.nipgl-sponsor-bar{text-align:center;padding:10px;background:#fff;border:1px solid #d0d5e8;border-radius:6px;margin-bottom:4px}
+/* ── Sponsor bars ────────────────────────────────────────────────────────────── */
+.nipgl-sponsor-bar{text-align:center;padding:10px;background:var(--c-bg);border:1px solid var(--c-border);border-radius:6px;margin-bottom:4px}
 .nipgl-sponsor-primary{border-bottom:none;border-radius:6px 6px 0 0;margin-bottom:0}
-.nipgl-sponsor-secondary{border-top:none;border-radius:0 0 6px 6px;margin-top:0;border-top:1px solid #d0d5e8}
+.nipgl-sponsor-secondary{border-top:none;border-radius:0 0 6px 6px;margin-top:0;border-top:1px solid var(--c-border)}
 .nipgl-sponsor-bar a{display:inline-block}
 .nipgl-sponsor-img{max-height:60px;max-width:240px;object-fit:contain;display:inline-block}
-table.lg tr.row-promote-zone td:first-child{border-left:4px solid #2a7a2a}
-table.lg tr.row-promote-zone td{background:#f0faf0}
-table.lg tr.row-promoted td:first-child{border-left:4px solid #2a7a2a}
-table.lg tr.row-promoted td{background:#c8edc8 !important}
 
-/* Relegation zone */
-table.lg tr.row-relegate-zone td:first-child{border-left:4px solid #c0202a}
-table.lg tr.row-relegate-zone td{background:#fff5f5}
-table.lg tr.row-relegated td:first-child{border-left:4px solid #c0202a}
-table.lg tr.row-relegated td{background:#f5c8c8 !important}
+/* ── Promotion / relegation zones ───────────────────────────────────────────── */
+table.lg tr.row-promote-zone td:first-child{border-left:4px solid var(--c-promote)}
+table.lg tr.row-promote-zone td{background:var(--c-promote-bg)}
+table.lg tr.row-promote-zone td::after{content:''}
+table.lg tr.row-promoted td:first-child{border-left:4px solid var(--c-promote)}
+table.lg tr.row-promoted td{background:var(--c-promote-cl) !important}
+table.lg tr.row-relegate-zone td:first-child{border-left:4px solid var(--c-red)}
+table.lg tr.row-relegate-zone td{background:var(--c-relegate-bg)}
+table.lg tr.row-relegated td:first-child{border-left:4px solid var(--c-red)}
+table.lg tr.row-relegated td{background:var(--c-relegate-cl) !important}
+table.lg tr.zone-border-top td{border-top:2px solid var(--c-border)}
 
-/* Zone divider line */
-table.lg tr.zone-border-top td{border-top:2px solid #aaa}
+/* Accessibility: symbols in pos column for zone rows */
+table.lg tr.row-promote-zone td.cp::before,
+table.lg tr.row-promoted td.cp::before{content:'▲ ';font-size:9px;color:var(--c-promote)}
+table.lg tr.row-relegate-zone td.cp::before,
+table.lg tr.row-relegated td.cp::before{content:'▼ ';font-size:9px;color:var(--c-red)}
 
-/* Legend */
-.lg-legend{display:flex;gap:16px;padding:8px 10px;font-size:12px;font-family:'Saira',Arial,sans-serif;color:#444;background:#fff;border-top:1px solid #d0d5e8}
+/* ── Legend ──────────────────────────────────────────────────────────────────── */
+.lg-legend{display:flex;gap:16px;padding:8px 10px;font-size:12px;font-family:'Saira',Arial,sans-serif;color:var(--c-text-muted);background:var(--c-bg);border-top:1px solid var(--c-border)}
 .lg-key{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:middle}
-.lg-key-promote{background:#2a7a2a}
-.lg-key-relegate{background:#c0202a}
-@media(max-width:600px){
-  table.lg th.cp,table.lg td.cp{position:sticky;left:0;z-index:1;background:inherit}
-  table.lg th.cp{background:#1a2e5a}
-  table.lg th.ct,table.lg td.ct{position:sticky;left:36px;z-index:1;background:inherit}
-  table.lg th.ct{background:#1a2e5a}
-  table.lg tr:nth-child(even) td.cp,table.lg tr:nth-child(even) td.ct{background:#f0f2f8}
-  table.lg tr:hover td.cp,table.lg tr:hover td.ct{background:#e6e9f5}
-}
-.fix-filter{display:flex;gap:6px;padding:10px;border-bottom:1px solid #d0d5e8;flex-wrap:wrap}
-.fix-filter button{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid #d0d5e8;background:#f5f6fa;color:#1a2e5a;cursor:pointer;transition:background .15s}
-.fix-filter button.active,.fix-filter button:hover{background:#c0202a;color:#fff;border-color:#c0202a}
-.date-group{border-bottom:2px solid #d0d5e8}
+.lg-key-promote{background:var(--c-promote)}
+.lg-key-relegate{background:var(--c-red)}
+
+/* ── Fixtures ────────────────────────────────────────────────────────────────── */
+.fix-filter{display:flex;gap:6px;padding:10px;border-bottom:1px solid var(--c-border);flex-wrap:wrap}
+.fix-filter button{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid var(--c-border);background:var(--c-bg-alt);color:var(--c-navy);cursor:pointer;transition:background .15s}
+.fix-filter button.active,.fix-filter button:hover{background:var(--c-red);color:#fff;border-color:var(--c-red)}
+.date-group{border-bottom:2px solid var(--c-border)}
 .date-group:last-child{border-bottom:none}
-.date-hdr{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:#c0202a;padding:6px 14px}
-.fx-row{display:grid;grid-template-columns:36px 1fr auto 1fr 36px;align-items:center;gap:4px;padding:8px 10px;border-bottom:1px solid #d0d5e8;font-size:13px}
+.date-hdr{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:var(--c-red);padding:6px 14px}
+.fx-row{display:grid;grid-template-columns:36px 1fr auto 1fr 36px;align-items:center;gap:4px;padding:8px 10px;border-bottom:1px solid var(--c-border);font-size:13px;color:var(--c-text);background:var(--c-bg)}
 .fx-row:last-child{border-bottom:none}
-.fx-row:hover{background:#f0f2f8}
-.fx-ph,.fx-pa{font-size:12px;font-weight:700;color:#999;text-align:center}
+.fx-row:hover{background:var(--c-bg-alt)}
+.fx-ph,.fx-pa{font-size:12px;font-weight:700;color:var(--c-pos);text-align:center}
 .fx-h{text-align:right;font-weight:600}
 .fx-a{text-align:left;font-weight:600}
 .fx-sc{display:flex;align-items:center;justify-content:center;white-space:nowrap}
-.fx-sb{background:#f5f6fa;border:1px solid #d0d5e8;border-radius:3px;min-width:26px;padding:2px 5px;text-align:center;font-weight:700;font-size:14px;color:#1a2e5a}
-.fx-sep{padding:0 4px;color:#999;font-size:12px}
-.fx-time{grid-column:1/-1;text-align:right;font-size:11px;color:#e8b400;font-weight:700;padding:0 2px 4px;margin-top:-4px}
-.fx-row.played .fx-sb{background:#1a2e5a;color:#fff;border-color:#243d78}
-.fx-row.played .fx-ph,.fx-row.played .fx-pa{color:#8f1520}
+.fx-sb{background:var(--c-bg-alt);border:1px solid var(--c-border);border-radius:3px;min-width:26px;padding:2px 5px;text-align:center;font-weight:700;font-size:14px;color:var(--c-navy)}
+.fx-sep{padding:0 4px;color:var(--c-text-muted);font-size:12px}
+.fx-time{grid-column:1/-1;text-align:right;font-size:11px;color:var(--c-gold);font-weight:700;padding:0 2px 4px;margin-top:-4px}
+.fx-row.played .fx-sb{background:var(--c-navy);color:#fff;border-color:var(--c-navy-mid)}
+.fx-row.played .fx-ph,.fx-row.played .fx-pa{color:var(--c-pts)}
+
+/* ── Badges ──────────────────────────────────────────────────────────────────── */
 .nipgl-badge{width:24px;height:24px;object-fit:contain;vertical-align:middle;margin-right:5px;border-radius:2px}
 table.lg .nipgl-badge{width:20px;height:20px}
 
-/* Mobile: stack badge above team name, widen sticky team column */
+/* ── Team link ───────────────────────────────────────────────────────────────── */
+.nipgl-team-link{cursor:pointer}
+.nipgl-team-link:hover{text-decoration:underline}
+
+/* ── Mobile table ────────────────────────────────────────────────────────────── */
 @media(max-width:600px){
-  /* Badge above team name in table */
+  table.lg th.cp,table.lg td.cp{position:sticky;left:0;z-index:1;background:inherit}
+  table.lg th.cp{background:var(--c-navy)}
+  table.lg th.ct,table.lg td.ct{position:sticky;left:36px;z-index:1;background:inherit}
+  table.lg th.ct{background:var(--c-navy)}
+  table.lg tr:nth-child(even) td.cp,table.lg tr:nth-child(even) td.ct{background:var(--c-bg-alt)}
+  table.lg tr:hover td.cp,table.lg tr:hover td.ct{background:var(--c-bg-hover)}
   table.lg td.ct{display:flex;flex-direction:column;align-items:flex-start;gap:2px;white-space:normal;min-width:90px;max-width:130px}
   table.lg td.ct .nipgl-badge{margin-right:0;width:22px;height:22px}
-  /* Ensure sticky team col has enough width and doesn't overlap scrolled columns */
   table.lg th.ct{min-width:100px}
-  /* Badge above name in fixtures */
   .fx-h,.fx-a{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:12px}
   .fx-a{align-items:flex-start}
   .fx-h .nipgl-badge,.fx-a .nipgl-badge{margin-right:0;width:22px;height:22px}
-  /* Tighten fixture grid on small screens */
   .fx-row{grid-template-columns:28px 1fr auto 1fr 28px;gap:2px;padding:6px 6px}
   .fx-sb{min-width:22px;font-size:13px}
 }
 
-/* Team link cursor */
-.nipgl-team-link{cursor:pointer;text-decoration:none}
-.nipgl-team-link:hover{text-decoration:underline}
-
-/* Modal overlay */
+/* ── Modal overlay ───────────────────────────────────────────────────────────── */
 .nipgl-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;align-items:center;justify-content:center;padding:16px}
 .nipgl-modal-overlay.active{display:flex}
 body.nipgl-modal-open{overflow:hidden}
 
-/* Modal box */
-.nipgl-modal{background:#fff;border-radius:8px;width:100%;max-width:580px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.25);font-family:'Saira',Arial,sans-serif}
-
-/* Modal header */
-.nipgl-modal-head{display:flex;align-items:center;justify-content:space-between;background:#1a2e5a;color:#fff;padding:12px 16px;border-radius:8px 8px 0 0;gap:10px}
+/* ── Modal box ───────────────────────────────────────────────────────────────── */
+.nipgl-modal{background:var(--c-bg);border-radius:8px;width:100%;max-width:580px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.3);font-family:'Saira',Arial,sans-serif}
+.nipgl-modal-head{display:flex;align-items:center;justify-content:space-between;background:var(--c-navy);color:#fff;padding:12px 16px;border-radius:8px 8px 0 0;gap:10px}
 .nipgl-modal-title{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .nipgl-modal-title h2{margin:0;font-size:16px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nipgl-modal-badge{width:36px;height:36px;object-fit:contain;flex-shrink:0}
 .nipgl-modal-actions{display:flex;gap:6px;flex-shrink:0}
-.nipgl-modal-print,.nipgl-modal-close{background:rgba(255,255,255,.15);border:none;color:#fff;width:32px;height:32px;border-radius:4px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.nipgl-modal-print,.nipgl-modal-close{background:rgba(255,255,255,.15);border:none;color:#fff;width:32px;height:32px;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
 .nipgl-modal-print:hover,.nipgl-modal-close:hover{background:rgba(255,255,255,.3)}
-.nipgl-modal-close{font-size:20px}
+.nipgl-modal-print svg{width:16px;height:16px;fill:#fff}
+.nipgl-modal-close{font-size:22px;line-height:1}
+.nipgl-modal-body{overflow-y:auto;padding:16px;flex:1;color:var(--c-text)}
 
-/* Modal body */
-.nipgl-modal-body{overflow-y:auto;padding:16px;flex:1}
-
-/* Stats bar */
+/* ── Modal stats bar ─────────────────────────────────────────────────────────── */
 .modal-stat-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.modal-stat{background:#f0f2f8;border-radius:4px;padding:6px 10px;text-align:center;min-width:48px}
-.modal-stat-val{font-size:18px;font-weight:700;color:#1a2e5a;line-height:1.1}
-.modal-stat-lbl{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.04em}
+.modal-stat{background:var(--c-bg-alt);border-radius:4px;padding:6px 10px;text-align:center;min-width:48px}
+.modal-stat-val{font-size:18px;font-weight:700;color:var(--c-navy);line-height:1.1}
+.modal-stat-lbl{font-size:10px;color:var(--c-text-muted);text-transform:uppercase;letter-spacing:.04em}
 
-/* Modal fixture table */
+/* ── Modal fixture table ─────────────────────────────────────────────────────── */
 .modal-fix-table{width:100%;border-collapse:collapse;font-size:13px}
-.modal-fix-table th{background:#1a2e5a;color:#fff;padding:6px 8px;text-align:left;font-size:11px;letter-spacing:.05em}
-.modal-fix-table td{padding:7px 8px;border-bottom:1px solid #d0d5e8}
+.modal-fix-table th{background:var(--c-navy);color:#fff;padding:6px 8px;text-align:left;font-size:11px;letter-spacing:.05em}
+.modal-fix-table td{padding:7px 8px;border-bottom:1px solid var(--c-border);color:var(--c-text);background:var(--c-bg)}
 .modal-fix-table tr:last-child td{border-bottom:none}
-.modal-fix-table tr:nth-child(even) td{background:#f0f2f8}
-.modal-fix-table tr.res td{color:#2a7a2a}
-.modal-fix-table tr.lost td{color:#c0202a}
+.modal-fix-table tr:nth-child(even) td{background:var(--c-bg-alt)}
+.modal-fix-table tr.res td{color:var(--c-win);font-weight:600}
+.modal-fix-table tr.lost td{color:var(--c-loss)}
 .modal-fix-table .nipgl-badge{width:18px;height:18px;margin-right:4px;vertical-align:middle}
+/* Accessibility: W/D/L labels alongside colour */
+.modal-result-lbl{font-size:10px;font-weight:700;border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle}
+.res .modal-result-lbl{background:var(--c-win);color:#fff}
+.drew .modal-result-lbl{background:var(--c-text-muted);color:#fff}
+.lost .modal-result-lbl{background:var(--c-loss);color:#fff}
 
 @media(max-width:480px){
   .nipgl-modal{max-height:95vh}
   .modal-stat{padding:5px 7px;min-width:40px}
   .modal-stat-val{font-size:15px}
+}
+
+/* ── Print styles ────────────────────────────────────────────────────────────── */
+@media print{
+  .nipgl-tabs,.fix-filter,.nipgl-darkmode-btn,.nipgl-print-btn{display:none !important}
+  .nipgl-panel{display:block !important;box-shadow:none}
+  .nipgl-w{max-width:100%}
+  .nipgl-badge,.nipgl-modal-badge{max-width:32px !important;max-height:32px !important;width:32px !important;height:32px !important}
+  .nipgl-sponsor-img{max-height:48px !important;max-width:160px !important}
 }

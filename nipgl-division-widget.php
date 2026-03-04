@@ -2,13 +2,13 @@
 /**
  * Plugin Name: NIPGL Division Widget
  * Description: Renders mobile-friendly league table and fixtures from Google Sheets CSV. Use shortcode [nipgl_division csv="URL" title="Division 1"] on any page.
- * Version: 4.5
+ * Version: 4.6
  * Author: NIPGL
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * Primary Branch: main
  */
 
-define('NIPGL_VERSION', '4.5');
+define('NIPGL_VERSION', '4.6');
 
 // ── Auto-updater (checks GitHub releases) ────────────────────────────────────
 add_filter('pre_set_site_transient_update_plugins', 'nipgl_check_for_update');

@@ -1,17 +1,55 @@
-/* NIPGL Division Widget JS - v4.5 */
+/* NIPGL Division Widget JS - v4.6 */
 (function(){
   'use strict';
 
-  var badges = (typeof nipglData !== 'undefined' && nipglData.badges) ? nipglData.badges : {};
+  var badges  = (typeof nipglData !== 'undefined' && nipglData.badges)  ? nipglData.badges  : {};
   var ajaxUrl = (typeof nipglData !== 'undefined') ? nipglData.ajaxUrl : '/wp-admin/admin-ajax.php';
 
-  // ── Badge helper ─────────────────────────────────────────────────────────────
-  function badgeImg(team, cls) {
+  var PRINT_ICON = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>';
+
+  // ── Dark mode ─────────────────────────────────────────────────────────────────
+  var DM_KEY = 'nipgl_darkmode';
+
+  function getDarkPref(){
+    try{
+      var stored = localStorage.getItem(DM_KEY);
+      if(stored === 'dark')  return 'dark';
+      if(stored === 'light') return 'light';
+    }catch(e){}
+    return 'auto';
+  }
+
+  function setDarkPref(val){
+    try{ localStorage.setItem(DM_KEY, val); }catch(e){}
+  }
+
+  function applyTheme(el, pref){
+    el.classList.remove('nipgl-dark','nipgl-light');
+    if(pref === 'dark')  el.classList.add('nipgl-dark');
+    if(pref === 'light') el.classList.add('nipgl-light');
+  }
+
+  function toggleTheme(el, btn){
+    var current = getDarkPref();
+    // cycle: auto → dark → light → auto
+    var next = current === 'auto' ? 'dark' : current === 'dark' ? 'light' : 'auto';
+    setDarkPref(next);
+    applyTheme(el, next);
+    updateDMBtn(btn, next);
+  }
+
+  function updateDMBtn(btn, pref){
+    btn.textContent = pref === 'dark' ? '☀ Light' : pref === 'light' ? '⟳ Auto' : '☾ Dark';
+    btn.title = pref === 'dark' ? 'Switch to light mode' : pref === 'light' ? 'Follow device setting' : 'Switch to dark mode';
+  }
+
+  // ── Badge helper ──────────────────────────────────────────────────────────────
+  function badgeImg(team, cls){
     cls = cls || 'nipgl-badge';
-    if (badges[team]) return '<img class="'+cls+'" src="'+badges[team]+'" alt="'+team+'">';
+    if(badges[team]) return '<img class="'+cls+'" src="'+badges[team]+'" alt="'+team+'">';
     var upper = team.toUpperCase();
-    for (var key in badges) {
-      if (key.toUpperCase() === upper) return '<img class="'+cls+'" src="'+badges[key]+'" alt="'+team+'">';
+    for(var key in badges){
+      if(key.toUpperCase() === upper) return '<img class="'+cls+'" src="'+badges[key]+'" alt="'+team+'">';
     }
     return '';
   }
@@ -34,12 +72,12 @@
 
   function nonEmpty(row){ return row.some(function(c){return c!=='';}) }
 
-  // ── Parse fixtures into groups (reusable) ────────────────────────────────────
+  // ── Parse fixtures ────────────────────────────────────────────────────────────
   function parseFixtureGroups(rows){
     var i=0;
     while(i<rows.length && rows[i].join('').indexOf('FIXTURES')===-1) i++;
     i++;
-    if(i>=rows.length) return {groups:[], cols:{h:0,ht:2,hs:7,as:9,at:10,ap:15}};
+    if(i>=rows.length) return [];
 
     var colPtsH=0, colHTeam=2, colHScore=7, colAScore=9, colATeam=10, colPtsA=15;
     for(var h=i;h<Math.min(i+5,rows.length);h++){
@@ -77,7 +115,7 @@
         var shotsAway=(r[colAScore]||'').trim();
         var awayTeam =(r[colATeam] ||'').trim();
         var ptsAway  =(r[colPtsA]  ||'').trim();
-        var timeNote ='';
+        var timeNote='';
         for(var x=colATeam+1;x<Math.min(colPtsA,r.length);x++){
           if(/^\d{1,2}:\d{2}$/.test((r[x]||'').trim())) timeNote=r[x].trim();
         }
@@ -87,8 +125,7 @@
             ptsHome:ptsHome, ptsAway:ptsAway,
             homeTeam:homeTeam, awayTeam:awayTeam,
             shotsHome:shotsHome, shotsAway:shotsAway,
-            timeNote:timeNote, played:played,
-            date:first
+            timeNote:timeNote, played:played
           });
         }
       }
@@ -97,7 +134,7 @@
     return groups;
   }
 
-  // ── Parse league table rows ───────────────────────────────────────────────────
+  // ── Parse league table ────────────────────────────────────────────────────────
   function parseTableRows(rows){
     var i=0;
     while(i<rows.length && rows[i].join('').indexOf('LEAGUE TABLE')===-1) i++;
@@ -132,51 +169,52 @@
     if(modalEl) return;
     modalEl = document.createElement('div');
     modalEl.className = 'nipgl-modal-overlay';
-    modalEl.innerHTML = '<div class="nipgl-modal"><div class="nipgl-modal-head">'
+    modalEl.innerHTML =
+      '<div class="nipgl-modal">'
+      +'<div class="nipgl-modal-head">'
       +'<div class="nipgl-modal-title"></div>'
       +'<div class="nipgl-modal-actions">'
-      +'<button class="nipgl-modal-print" title="Print">&#128438;</button>'
+      +'<button class="nipgl-modal-print" title="Print">'+PRINT_ICON+'</button>'
       +'<button class="nipgl-modal-close" title="Close">&times;</button>'
       +'</div></div>'
       +'<div class="nipgl-modal-body"></div>'
       +'</div>';
     document.body.appendChild(modalEl);
 
-    // Close on overlay click
-    modalEl.addEventListener('click', function(e){
-      if(e.target === modalEl) closeModal();
-    });
-    // Close on Escape
-    document.addEventListener('keydown', function(e){
-      if(e.key === 'Escape') closeModal();
-    });
-    // Close button
+    modalEl.addEventListener('click', function(e){ if(e.target===modalEl) closeModal(); });
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
     modalEl.querySelector('.nipgl-modal-close').addEventListener('click', closeModal);
-    // Print button
     modalEl.querySelector('.nipgl-modal-print').addEventListener('click', function(){
-      var title   = modalEl.querySelector('.nipgl-modal-title').innerHTML;
-      var content = modalEl.querySelector('.nipgl-modal-body').innerHTML;
-      var win = window.open('','_blank','width=800,height=600');
+      var titleEl  = modalEl.querySelector('.nipgl-modal-title');
+      var bodyEl   = modalEl.querySelector('.nipgl-modal-body');
+      var teamName = titleEl.querySelector('h2') ? titleEl.querySelector('h2').textContent : '';
+      var win = window.open('','_blank','width=800,height=700');
       win.document.write(
-        '<!DOCTYPE html><html><head><title>'+title.replace(/<[^>]+>/g,'')+'</title>'
+        '<!DOCTYPE html><html><head><title>'+teamName+'</title>'
+        +'<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap" rel="stylesheet">'
         +'<style>'
-        +'body{font-family:Saira,Arial,sans-serif;padding:20px;color:#1a1a1a}'
-        +'.nipgl-modal-print-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;border-bottom:2px solid #1a2e5a;padding-bottom:10px}'
-        +'.nipgl-modal-print-header img{height:48px;object-fit:contain}'
-        +'.nipgl-modal-print-header h2{margin:0;font-size:20px;color:#1a2e5a}'
-        +'.modal-stat-bar{display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap}'
-        +'.modal-stat{background:#f0f2f8;border-radius:4px;padding:6px 12px;text-align:center}'
+        +'body{font-family:Saira,Arial,sans-serif;padding:24px;color:#1a1a1a;font-size:13px}'
+        +'.nipgl-modal-title{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:3px solid #1a2e5a}'
+        +'.nipgl-modal-title h2{margin:0;font-size:20px;color:#1a2e5a}'
+        +'.nipgl-modal-badge{width:48px;height:48px;object-fit:contain}'
+        +'.modal-stat-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}'
+        +'.modal-stat{background:#f0f2f8;border-radius:4px;padding:6px 12px;text-align:center;min-width:52px}'
         +'.modal-stat-val{font-size:18px;font-weight:700;color:#1a2e5a}'
         +'.modal-stat-lbl{font-size:10px;color:#666;text-transform:uppercase}'
-        +'table{width:100%;border-collapse:collapse;font-size:13px}'
-        +'th{background:#1a2e5a;color:#fff;padding:6px 8px;text-align:left}'
-        +'td{padding:6px 8px;border-bottom:1px solid #ddd}'
-        +'.res{color:#2a7a2a;font-weight:700}.lost{color:#c0202a;font-weight:700}'
-        +'@media print{button{display:none}}'
+        +'table{width:100%;border-collapse:collapse}'
+        +'th{background:#1a2e5a;color:#fff;padding:6px 8px;text-align:left;font-size:11px}'
+        +'td{padding:6px 8px;border-bottom:1px solid #d0d5e8}'
+        +'tr:nth-child(even) td{background:#f0f2f8}'
+        +'.nipgl-badge{width:20px;height:20px;max-width:20px;max-height:20px;vertical-align:middle;margin-right:4px}'
+        +'.modal-result-lbl{font-size:10px;font-weight:700;border-radius:3px;padding:1px 4px;margin-left:4px}'
+        +'.res .modal-result-lbl{background:#2a7a2a;color:#fff}'
+        +'.drew .modal-result-lbl{background:#888;color:#fff}'
+        +'.lost .modal-result-lbl{background:#c0202a;color:#fff}'
+        +'@media print{body{padding:0}}'
         +'</style></head><body>'
-        +'<div class="nipgl-modal-print-header">'+title+'</div>'
-        +content
-        +'<script>window.onload=function(){window.print();}<\/script>'
+        +'<div class="nipgl-modal-title">'+titleEl.innerHTML+'</div>'
+        +bodyEl.innerHTML
+        +'<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>'
         +'</body></html>'
       );
       win.document.close();
@@ -196,7 +234,10 @@
     document.body.classList.remove('nipgl-modal-open');
   }
 
-  // ── Build team modal content ──────────────────────────────────────────────────
+  function stat(val, lbl){
+    return '<div class="modal-stat"><div class="modal-stat-val">'+val+'</div><div class="modal-stat-lbl">'+lbl+'</div></div>';
+  }
+
   function showTeamModal(teamName, allRows){
     var teams  = parseTableRows(allRows);
     var groups = parseFixtureGroups(allRows);
@@ -205,112 +246,134 @@
       if(teams[t].team.toUpperCase()===teamName.toUpperCase()){teamData=teams[t];break;}
     }
 
-    // Title
-    var bdg = badgeImg(teamName, 'nipgl-modal-badge');
-    var titleHtml = bdg + '<h2 style="margin:0;font-size:16px;color:#1a2e5a">'+teamName+'</h2>';
+    var bdg = badgeImg(teamName,'nipgl-modal-badge');
+    var titleHtml = bdg+'<h2>'+teamName+'</h2>';
 
-    // Stats bar
     var statsHtml = '';
     if(teamData){
       statsHtml = '<div class="modal-stat-bar">'
-        +stat(teamData.pl,  'Played')
-        +stat(teamData.pts, 'Points')
-        +stat(teamData.w,   'Won')
-        +stat(teamData.d,   'Drawn')
-        +stat(teamData.l,   'Lost')
-        +stat(teamData.f,   'For')
-        +stat(teamData.a,   'Against')
-        +stat(teamData.diff,'+/-')
+        +stat(teamData.pl,'Played')+stat(teamData.pts,'Points')
+        +stat(teamData.w,'Won')+stat(teamData.d,'Drawn')+stat(teamData.l,'Lost')
+        +stat(teamData.f,'For')+stat(teamData.a,'Against')+stat(teamData.diff,'+/-')
         +'</div>';
     }
 
-    // Fixtures for this team
-    var fixtureRows = '<table class="modal-fix-table"><thead><tr>'
-      +'<th>Date</th><th>H/A</th><th>Opponent</th><th>Score</th><th>Pts</th>'
+    var fixtureRows='<table class="modal-fix-table"><thead><tr>'
+      +'<th>Date</th><th>H/A</th><th>Opponent</th><th>Score</th><th>Pts</th><th></th>'
       +'</tr></thead><tbody>';
-    var hasRows = false;
+    var hasRows=false;
 
     groups.forEach(function(g){
       g.matches.forEach(function(m){
-        var isHome = m.homeTeam.toUpperCase()===teamName.toUpperCase();
-        var isAway = m.awayTeam.toUpperCase()===teamName.toUpperCase();
+        var isHome=m.homeTeam.toUpperCase()===teamName.toUpperCase();
+        var isAway=m.awayTeam.toUpperCase()===teamName.toUpperCase();
         if(!isHome && !isAway) return;
-        hasRows = true;
-        var opponent = isHome ? m.awayTeam : m.homeTeam;
-        var ha       = isHome ? 'H' : 'A';
-        var myShots  = isHome ? m.shotsHome : m.shotsAway;
-        var oppShots = isHome ? m.shotsAway : m.shotsHome;
-        var myPts    = isHome ? m.ptsHome   : m.ptsAway;
+        hasRows=true;
+        var opponent = isHome ? m.awayTeam   : m.homeTeam;
+        var ha       = isHome ? 'H'          : 'A';
+        var myShots  = isHome ? m.shotsHome  : m.shotsAway;
+        var oppShots = isHome ? m.shotsAway  : m.shotsHome;
+        var myPts    = isHome ? m.ptsHome    : m.ptsAway;
         var scoreStr = m.played ? myShots+' - '+oppShots : '-';
-        var resultCls= '';
+        var rowCls='', resultLbl='';
         if(m.played){
-          resultCls = parseInt(myPts,10)>=4 ? ' class="res"' : (parseInt(myPts,10)<=2 ? ' class="lost"' : '');
+          var p=parseInt(myPts,10);
+          if(p>=4){rowCls='res';resultLbl='W';}
+          else if(p===3){rowCls='drew';resultLbl='D';}
+          else{rowCls='lost';resultLbl='L';}
         }
-        fixtureRows += '<tr'+resultCls+'>'
+        fixtureRows+='<tr'+(rowCls?' class="'+rowCls+'"':'')+'>'
           +'<td>'+g.date+'</td>'
           +'<td style="text-align:center;font-weight:700;color:'+(isHome?'#1a2e5a':'#c0202a')+'">'+ha+'</td>'
-          +'<td>'+badgeImg(opponent)+''+opponent+'</td>'
+          +'<td>'+badgeImg(opponent)+opponent+'</td>'
           +'<td style="text-align:center">'+scoreStr+'</td>'
           +'<td style="text-align:center;font-weight:700">'+(m.played?myPts:'')+'</td>'
+          +'<td>'+(rowCls?'<span class="modal-result-lbl">'+resultLbl+'</span>':'')+'</td>'
           +'</tr>';
       });
     });
 
-    if(!hasRows) fixtureRows += '<tr><td colspan="5" style="text-align:center;color:#999">No fixtures found</td></tr>';
-    fixtureRows += '</tbody></table>';
-
-    openModal(titleHtml, statsHtml + fixtureRows);
+    if(!hasRows) fixtureRows+='<tr><td colspan="6" style="text-align:center;color:#999">No fixtures found</td></tr>';
+    fixtureRows+='</tbody></table>';
+    openModal(titleHtml, statsHtml+fixtureRows);
   }
 
-  function stat(val, lbl){
-    return '<div class="modal-stat"><div class="modal-stat-val">'+val+'</div><div class="modal-stat-lbl">'+lbl+'</div></div>';
+  // ── Print current tab ─────────────────────────────────────────────────────────
+  function printPanel(widget, tabName, divisionTitle){
+    var panels = widget.querySelectorAll('.nipgl-panel');
+    var content = '';
+    for(var i=0;i<panels.length;i++){
+      if(panels[i].getAttribute('data-panel')===tabName){
+        content = panels[i].innerHTML; break;
+      }
+    }
+    var win = window.open('','_blank','width=900,height=700');
+    win.document.write(
+      '<!DOCTYPE html><html><head><title>'+(divisionTitle||'NIPGL')+'</title>'
+      +'<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap" rel="stylesheet">'
+      +'<style>'
+      +'body{font-family:Saira,Arial,sans-serif;padding:20px;color:#1a1a1a;font-size:13px}'
+      +'h2{color:#1a2e5a;margin-bottom:12px}'
+      +'.fix-filter,.nipgl-print-btn,.nipgl-darkmode-btn{display:none}'
+      +'table{width:100%;border-collapse:collapse}'
+      +'th{background:#1a2e5a;color:#fff;padding:6px 8px;font-size:11px;text-align:center}'
+      +'th.ct{text-align:left}td{padding:6px 8px;border-bottom:1px solid #d0d5e8;text-align:center}'
+      +'td.ct{text-align:left}td.ck{font-weight:700;color:#8f1520}'
+      +'tr:nth-child(even) td{background:#f0f2f8}'
+      +'.nipgl-badge{width:20px;height:20px;max-width:20px;max-height:20px;vertical-align:middle;margin-right:4px}'
+      +'.nipgl-sponsor-img{max-height:48px;max-width:160px}'
+      +'.date-hdr{background:#c0202a;color:#fff;padding:5px 10px;font-size:12px;font-weight:700;letter-spacing:.06em}'
+      +'.fx-row{display:grid;grid-template-columns:36px 1fr auto 1fr 36px;gap:4px;padding:6px 10px;border-bottom:1px solid #d0d5e8;align-items:center}'
+      +'.fx-h{text-align:right;font-weight:600}.fx-a{text-align:left;font-weight:600}'
+      +'.fx-sc{display:flex;align-items:center;justify-content:center;gap:4px}'
+      +'.fx-sb{border:1px solid #d0d5e8;border-radius:3px;padding:2px 6px;font-weight:700}'
+      +'.fx-ph,.fx-pa{text-align:center;font-size:12px;color:#999}'
+      +'.fx-row.played .fx-sb{background:#1a2e5a;color:#fff}'
+      +'.row-promote-zone td:first-child,.row-promoted td:first-child{border-left:4px solid #2a7a2a}'
+      +'.row-relegate-zone td:first-child,.row-relegated td:first-child{border-left:4px solid #c0202a}'
+      +'.lg-legend{padding:6px 10px;font-size:11px;color:#666}'
+      +'@media print{body{padding:0}}'
+      +'</style></head><body>'
+      +'<h2>'+(divisionTitle||'')+'</h2>'
+      +content
+      +'<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>'
+      +'</body></html>'
+    );
+    win.document.close();
   }
 
-  // ── Render league table ───────────────────────────────────────────────────────
+  // ── Render table ──────────────────────────────────────────────────────────────
   function renderTable(rows, promote, relegate){
-    promote  = promote  || 0;
-    relegate = relegate || 0;
-
-    var teams = parseTableRows(rows);
+    promote=promote||0; relegate=relegate||0;
+    var teams=parseTableRows(rows);
     if(!teams.length) return '<div class="nipgl-status">Could not find league table in data.</div>';
 
-    var total  = teams.length;
-    var MAX_PTS = 7;
+    var total=teams.length, MAX_PTS=7;
     var gamesLeft={};
     teams.forEach(function(t){ gamesLeft[t.team.toUpperCase()]=0; });
-
-    var groups = parseFixtureGroups(rows);
-    groups.forEach(function(g){
+    parseFixtureGroups(rows).forEach(function(g){
       g.matches.forEach(function(m){
         if(!m.played){
-          var ht=m.homeTeam.toUpperCase(), at=m.awayTeam.toUpperCase();
-          if(ht in gamesLeft) gamesLeft[ht]++;
-          if(at in gamesLeft) gamesLeft[at]++;
+          if(m.homeTeam.toUpperCase() in gamesLeft) gamesLeft[m.homeTeam.toUpperCase()]++;
+          if(m.awayTeam.toUpperCase() in gamesLeft) gamesLeft[m.awayTeam.toUpperCase()]++;
         }
       });
     });
 
     function getZone(idx){
-      if(promote  > 0 && idx < promote)          return 'promote';
-      if(relegate > 0 && idx >= total-relegate)   return 'relegate';
+      if(promote>0  && idx<promote)         return 'promote';
+      if(relegate>0 && idx>=total-relegate) return 'relegate';
       return '';
     }
-
     function isClinched(idx){
-      var zone=getZone(idx);
-      if(!zone) return false;
+      var zone=getZone(idx); if(!zone) return false;
       var myPts=teams[idx].pts;
       if(zone==='promote'){
-        var challenger=teams[promote];
-        if(!challenger) return true;
-        return (myPts-challenger.pts) > ((gamesLeft[challenger.team.toUpperCase()]||0)*MAX_PTS);
+        var ch=teams[promote]; if(!ch) return true;
+        return (myPts-ch.pts)>((gamesLeft[ch.team.toUpperCase()]||0)*MAX_PTS);
       }
-      if(zone==='relegate'){
-        var safe=teams[total-relegate-1];
-        if(!safe) return true;
-        return (safe.pts-myPts) > ((gamesLeft[teams[idx].team.toUpperCase()]||0)*MAX_PTS);
-      }
-      return false;
+      var safe=teams[total-relegate-1]; if(!safe) return true;
+      return (safe.pts-myPts)>((gamesLeft[teams[idx].team.toUpperCase()]||0)*MAX_PTS);
     }
 
     var h='<div class="tbl-wrap"><table class="lg"><thead><tr>'
@@ -320,28 +383,26 @@
 
     teams.forEach(function(t,idx){
       var zone=getZone(idx), clinched=isClinched(idx);
-      var borderTop='';
-      if(promote>0  && idx===promote)         borderTop=' zone-border-top';
-      if(relegate>0 && idx===total-relegate)  borderTop=' zone-border-top';
-      var rowClass='';
-      if(zone==='promote')  rowClass=clinched?' row-promoted':' row-promote-zone';
-      if(zone==='relegate') rowClass=clinched?' row-relegated':' row-relegate-zone';
-      rowClass+=borderTop;
-      h+='<tr class="'+rowClass.trim()+' nipgl-team-row" data-team="'+t.team+'">'
+      var bt='';
+      if(promote>0  && idx===promote)        bt=' zone-border-top';
+      if(relegate>0 && idx===total-relegate) bt=' zone-border-top';
+      var rc='';
+      if(zone==='promote')  rc=clinched?' row-promoted':' row-promote-zone';
+      if(zone==='relegate') rc=clinched?' row-relegated':' row-relegate-zone';
+      rc+=bt;
+      h+='<tr class="'+(rc.trim())+' nipgl-team-row" data-team="'+t.team+'">'
         +'<td class="cp">'+t.pos+'</td>'
         +'<td class="ct"><span class="nipgl-team-link">'+badgeImg(t.team)+t.team+'</span></td>'
         +'<td>'+t.pl+'</td><td class="ck">'+t.pts+'</td><td>'+t.diff+'</td>'
         +'<td>'+t.w+'</td><td>'+t.l+'</td><td>'+t.d+'</td>'
-        +'<td>'+t.f+'</td><td>'+t.a+'</td>'
-        +'</tr>';
+        +'<td>'+t.f+'</td><td>'+t.a+'</td></tr>';
     });
 
     h+='</tbody></table></div>';
-
-    if(promote>0 || relegate>0){
+    if(promote>0||relegate>0){
       h+='<div class="lg-legend">';
-      if(promote>0)  h+='<span class="lg-key lg-key-promote"></span>Promotion';
-      if(relegate>0) h+='<span class="lg-key lg-key-relegate"></span>Relegation';
+      if(promote>0)  h+='<span class="lg-key lg-key-promote"></span>▲ Promotion&nbsp;&nbsp;';
+      if(relegate>0) h+='<span class="lg-key lg-key-relegate"></span>▼ Relegation';
       h+='</div>';
     }
     return h;
@@ -353,7 +414,7 @@
   }
 
   function renderFixtures(rows, filter){
-    var groups = parseFixtureGroups(rows);
+    var groups=parseFixtureGroups(rows);
     var now=new Date(), filtered=groups;
     if(filter==='results'){
       filtered=groups.map(function(g){
@@ -361,10 +422,8 @@
       }).filter(function(g){return g.matches.length;});
     } else if(filter==='upcoming'){
       filtered=groups.map(function(g){
-        var d=parseDate(g.date);
-        if(!d) return{date:g.date,matches:[]};
-        var matches=g.matches.filter(function(m){return !m.played && d>=now;});
-        return{date:g.date,matches:matches};
+        var d=parseDate(g.date); if(!d) return{date:g.date,matches:[]};
+        return{date:g.date,matches:g.matches.filter(function(m){return !m.played&&d>=now;})};
       }).filter(function(g){return g.matches.length;});
     }
     if(!filtered.length) return '<div class="nipgl-status">No fixtures to display.</div>';
@@ -376,9 +435,7 @@
         h+='<div class="fx-row'+pc+'">'
           +'<div class="fx-ph">'+(m.played?m.ptsHome:'')+'</div>'
           +'<div class="fx-h"><span class="nipgl-team-link" data-team="'+m.homeTeam+'">'+badgeImg(m.homeTeam)+m.homeTeam+'</span></div>'
-          +'<div class="fx-sc"><span class="fx-sb">'+m.shotsHome+'</span>'
-          +'<span class="fx-sep">v</span>'
-          +'<span class="fx-sb">'+m.shotsAway+'</span></div>'
+          +'<div class="fx-sc"><span class="fx-sb">'+m.shotsHome+'</span><span class="fx-sep">v</span><span class="fx-sb">'+m.shotsAway+'</span></div>'
           +'<div class="fx-a"><span class="nipgl-team-link" data-team="'+m.awayTeam+'">'+badgeImg(m.awayTeam)+m.awayTeam+'</span></div>'
           +'<div class="fx-pa">'+(m.played?m.ptsAway:'')+'</div>'
           +(m.timeNote?'<div class="fx-time">&#9200; '+m.timeNote+'</div>':'')
@@ -389,7 +446,6 @@
     return h;
   }
 
-  // ── Filter bar ────────────────────────────────────────────────────────────────
   function filterBar(activeFilter){
     var h='<div class="fix-filter">';
     ['all','results','upcoming'].forEach(function(f){
@@ -402,10 +458,36 @@
   // ── Init widget ───────────────────────────────────────────────────────────────
   function initWidget(widget){
     var csvUrl   = widget.getAttribute('data-csv');
-    var promote  = parseInt(widget.getAttribute('data-promote')  || '0', 10);
-    var relegate = parseInt(widget.getAttribute('data-relegate') || '0', 10);
+    var promote  = parseInt(widget.getAttribute('data-promote')  ||'0',10);
+    var relegate = parseInt(widget.getAttribute('data-relegate') ||'0',10);
     var extraSponsors=[];
     try{extraSponsors=JSON.parse(widget.getAttribute('data-sponsors')||'[]');}catch(e){}
+
+    // Get division title from preceding .nipgl-title element if present
+    var divisionTitle = '';
+    var prev = widget.previousElementSibling;
+    if(prev && prev.classList.contains('nipgl-title')) divisionTitle = prev.textContent.trim();
+
+    // Apply saved dark mode pref
+    var dmPref = getDarkPref();
+    applyTheme(widget, dmPref);
+    if(prev && prev.classList.contains('nipgl-title')) applyTheme(prev, dmPref);
+
+    // Dark mode toggle button — inject into tab bar
+    var dmBtn = document.createElement('button');
+    dmBtn.className = 'nipgl-darkmode-btn';
+    updateDMBtn(dmBtn, dmPref);
+    dmBtn.addEventListener('click', function(){
+      var p = getDarkPref();
+      var next = p==='auto'?'dark':p==='dark'?'light':'auto';
+      setDarkPref(next);
+      applyTheme(widget, next);
+      if(prev && prev.classList.contains('nipgl-title')) applyTheme(prev, next);
+      updateDMBtn(dmBtn, next);
+    });
+
+    var tabBar = widget.querySelector('.nipgl-tabs');
+    if(tabBar) tabBar.appendChild(dmBtn);
 
     function sponsorBar(){
       if(!extraSponsors.length) return '';
@@ -439,11 +521,20 @@
       return null;
     }
 
+    function makePrintBtn(tabName){
+      var btn = document.createElement('button');
+      btn.className='nipgl-print-btn';
+      btn.innerHTML=PRINT_ICON+'Print';
+      btn.title='Print this view';
+      btn.addEventListener('click',function(){ printPanel(widget,tabName,divisionTitle); });
+      return btn;
+    }
+
     function bindTeamLinks(){
       widget.querySelectorAll('.nipgl-team-link').forEach(function(el){
         el.addEventListener('click',function(e){
           e.stopPropagation();
-          var team = el.getAttribute('data-team') || el.closest('[data-team]').getAttribute('data-team');
+          var team=el.getAttribute('data-team')||el.closest('[data-team]').getAttribute('data-team');
           if(team && allRows) showTeamModal(team, allRows);
         });
       });
@@ -458,17 +549,14 @@
           });
           var fp=getPanel('fixtures');
           if(fp) fp.innerHTML=filterBar(activeFilter)+renderFixtures(allRows,activeFilter);
-          bindFilterBtns();
-          bindTeamLinks();
+          bindFilterBtns(); bindTeamLinks();
         });
       });
     }
 
     function showError(msg){
-      var e='<div class="nipgl-status"><strong>Unable to load data.</strong><br><small>'+msg+'</small></div>';
-      var tp=getPanel('table'), fp=getPanel('fixtures');
-      if(tp) tp.innerHTML=e;
-      if(fp) fp.innerHTML=e;
+      var e='<div class="nipgl-status"><strong>Unable to load data.</strong><small>'+msg+'</small></div>';
+      panels.forEach(function(p){p.innerHTML=e;});
     }
 
     var proxyUrl=ajaxUrl+'?action=nipgl_csv&url='+encodeURIComponent(csvUrl);
@@ -478,26 +566,29 @@
       if(xhr.status===200 && xhr.responseText && xhr.responseText.trim().length>10){
         allRows=parseCSV(xhr.responseText);
         var tp=getPanel('table'), fp=getPanel('fixtures');
-        if(tp) tp.innerHTML=renderTable(allRows,promote,relegate)+sponsorBar();
-        if(fp) fp.innerHTML=filterBar(activeFilter)+renderFixtures(allRows,activeFilter);
-        bindFilterBtns();
-        bindTeamLinks();
+        if(tp){
+          tp.innerHTML=renderTable(allRows,promote,relegate)+sponsorBar();
+          tp.insertBefore(makePrintBtn('table'), tp.firstChild);
+        }
+        if(fp){
+          fp.innerHTML=filterBar(activeFilter)+renderFixtures(allRows,activeFilter);
+          fp.insertBefore(makePrintBtn('fixtures'), fp.firstChild);
+        }
+        bindFilterBtns(); bindTeamLinks();
       } else {
         showError('Server returned status '+xhr.status);
       }
     };
-    xhr.onerror=function(){showError('Network error — could not reach proxy.');};
+    xhr.onerror=function(){showError('Network error.');};
     xhr.send();
   }
 
   function init(){
     document.querySelectorAll('.nipgl-w[data-csv]').forEach(function(w){initWidget(w);});
   }
-
   if(document.readyState==='loading'){
     document.addEventListener('DOMContentLoaded',init);
   } else {
     init();
   }
-
 })();

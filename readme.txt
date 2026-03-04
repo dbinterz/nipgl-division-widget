@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 4.5
+Stable tag: 4.6
 License: GPLv2 or later
 
 Mobile-friendly league table and fixtures widget for NIPGL, powered by Google Sheets CSV.
@@ -30,6 +30,16 @@ Use the shortcode on any page:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 4.6 =
+* Dark mode — auto follows device/OS, manual toggle button on widget, preference remembered per device
+* Printer icon replaced with SVG (renders correctly on all mobile browsers)
+* Team name added to modal header alongside badge
+* Print layout fixed — logos constrained to sensible sizes
+* Print button added to league table and fixtures tabs
+* Accessibility — promotion/relegation zones now show ▲/▼ symbols alongside colour
+* Modal results show W/D/L label alongside colour coding
+* All colours refactored to CSS variables for consistency
 
 = 4.5 =
 * Team modal — click any team name in league table or fixtures to see their full record and fixture list
