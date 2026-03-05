@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 5.1
+Stable tag: 5.2
 License: GPLv2 or later
 
 Mobile-friendly league table and fixtures widget for NIPGL, powered by Google Sheets CSV.
@@ -30,6 +30,13 @@ Use the shortcode on any page:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 5.2 =
+* Fixed photo parsing — model name corrected to claude-sonnet-4-5
+* Added HTTP status check on API response — surfaces real error messages instead of generic failure
+* Increased max_tokens to 2000 to avoid truncated responses
+* Improved error messages include raw API response excerpt for easier diagnosis
+* Increased API timeout to 40s
 
 = 5.1 =
 * Scorecard submission feature — new [nipgl_submit] shortcode

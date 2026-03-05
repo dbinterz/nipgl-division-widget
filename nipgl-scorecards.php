@@ -106,8 +106,8 @@ function nipgl_ajax_parse_photo() {
 Return exactly 4 rink objects. Use null for any value you cannot read clearly.';
 
     $body = json_encode(array(
-        'model'      => 'claude-opus-4-6',
-        'max_tokens' => 1500,
+        'model'      => 'claude-sonnet-4-5',
+        'max_tokens' => 2000,
         'messages'   => array(array(
             'role'    => 'user',
             'content' => array(
@@ -122,7 +122,7 @@ Return exactly 4 rink objects. Use null for any value you cannot read clearly.';
     ));
 
     $response = wp_remote_post('https://api.anthropic.com/v1/messages', array(
-        'timeout' => 30,
+        'timeout' => 40,
         'headers' => array(
             'Content-Type'      => 'application/json',
             'x-api-key'         => $api_key,
@@ -133,16 +133,30 @@ Return exactly 4 rink objects. Use null for any value you cannot read clearly.';
 
     if (is_wp_error($response)) wp_send_json_error('API request failed: ' . $response->get_error_message());
 
-    $result = json_decode(wp_remote_retrieve_body($response), true);
-    $text   = $result['content'][0]['text'] ?? '';
+    $http_code = wp_remote_retrieve_response_code($response);
+    $result    = json_decode(wp_remote_retrieve_body($response), true);
+
+    // Surface API-level errors clearly
+    if ($http_code !== 200) {
+        $api_error = $result['error']['message'] ?? 'Unknown API error';
+        wp_send_json_error('API error (' . $http_code . '): ' . $api_error);
+    }
+
+    $text = $result['content'][0]['text'] ?? '';
+    if (empty($text)) {
+        $stop_reason = $result['stop_reason'] ?? 'unknown';
+        wp_send_json_error('Empty response from API (stop_reason: ' . $stop_reason . '). Please try again.');
+    }
 
     // Strip any accidental markdown fences
     $text = preg_replace('/^```json\s*/i', '', trim($text));
-    $text = preg_replace('/```$/', '', $text);
+    $text = preg_replace('/^```\s*/i',     '', $text);
+    $text = preg_replace('/```\s*$/',      '', $text);
     $parsed = json_decode(trim($text), true);
 
     if (!$parsed || !isset($parsed['rinks'])) {
-        wp_send_json_error('Could not parse scorecard. Please check the image is clear and try again, or use manual entry.');
+        // Return the raw text so the admin can diagnose what came back
+        wp_send_json_error('Could not parse response into scorecard format. Raw response: ' . substr($text, 0, 300));
     }
 
     wp_send_json_success($parsed);
