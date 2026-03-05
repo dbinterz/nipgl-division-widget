@@ -82,6 +82,11 @@ A section with a `FIXTURES` header row, followed by a column header row containi
 
 ## Changelog
 
+### v4.8
+- Fixed print speed — removed Google Fonts load from print window, dialog now appears immediately
+- Fixed modal print badge too large — constrained with !important overrides
+- Fixed modal print stats appearing vertically — switched from flex to inline-block for cross-browser print compatibility
+
 ### v4.7
 - Fixed modal window appearing transparent
 - Fixed league table columns bleeding behind sticky columns on mobile scroll

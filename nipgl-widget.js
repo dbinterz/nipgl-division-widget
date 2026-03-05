@@ -199,10 +199,10 @@
     var win=window.open('','_blank','width=900,height=700');
     win.document.write(
       '<!DOCTYPE html><html><head><title>'+(title||'NIPGL')+'</title>'
-      +'<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap" rel="stylesheet">'
+      // No Google Fonts link — removes 5-10s delay waiting for font load before print dialog
       +'<style>'+PRINT_CSS+'</style></head><body>'
       +bodyHtml
-      +'<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>'
+      +'<script>window.print();window.onafterprint=function(){window.close();};<\/script>'
       +'</body></html>'
     );
     win.document.close();
@@ -234,24 +234,33 @@
       var bodyEl =modalEl.querySelector('.nipgl-modal-body');
       var teamName=titleEl.querySelector('h2')?titleEl.querySelector('h2').textContent:'';
       var modalPrintCss=PRINT_CSS
-        +'.nipgl-modal-title{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:3px solid #1a2e5a}'
-        +'.nipgl-modal-title h2{margin:0;font-size:20px;color:#1a2e5a}'
-        +'.nipgl-modal-badge{width:48px;height:48px;max-width:48px;max-height:48px;object-fit:contain}'
-        +'.modal-stat-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}'
-        +'.modal-stat{background:#f0f2f8;border-radius:4px;padding:6px 12px;text-align:center;min-width:52px}'
-        +'.modal-stat-val{font-size:18px;font-weight:700;color:#1a2e5a}'
-        +'.modal-stat-lbl{font-size:10px;color:#666;text-transform:uppercase}'
+        +'.nipgl-modal-title{display:block;margin-bottom:16px;padding-bottom:12px;border-bottom:3px solid #1a2e5a;overflow:hidden}'
+        +'.nipgl-modal-title h2{margin:0 0 4px;font-size:20px;color:#1a2e5a}'
+        +'.nipgl-modal-badge{width:40px !important;height:40px !important;max-width:40px !important;max-height:40px !important;object-fit:contain !important;float:left;margin-right:10px}'
+        +'.modal-stat-bar{margin-bottom:16px;line-height:2.2}'
+        +'.modal-stat{display:inline-block;background:#f0f2f8;border-radius:4px;padding:4px 10px;text-align:center;min-width:52px;margin:2px 4px 2px 0;vertical-align:top}'
+        +'.modal-stat-val{display:block;font-size:16px;font-weight:700;color:#1a2e5a}'
+        +'.modal-stat-lbl{display:block;font-size:10px;color:#666;text-transform:uppercase}'
+        +'.modal-fix-table{width:100%;border-collapse:collapse}'
         +'.modal-fix-table td{padding:6px 8px;border-bottom:1px solid #d0d5e8}'
         +'.modal-fix-table th{background:#1a2e5a;color:#fff;padding:6px 8px;text-align:left;font-size:11px}'
-        +'.modal-fix-table .nipgl-badge{width:20px;height:20px;max-width:20px;max-height:20px}'
+        +'.modal-fix-table .nipgl-badge{width:18px !important;height:18px !important;max-width:18px !important;max-height:18px !important;vertical-align:middle;margin-right:4px}'
         +'.modal-result-lbl{font-size:10px;font-weight:700;border-radius:3px;padding:1px 4px;margin-left:4px}'
         +'.res .modal-result-lbl{background:#2a7a2a;color:#fff}'
         +'.drew .modal-result-lbl{background:#888;color:#fff}'
-        +'.lost .modal-result-lbl{background:#c0202a;color:#fff}';
-      openPrintWindow(teamName,
-        '<div class="nipgl-modal-title">'+titleEl.innerHTML+'</div>'
+        +'.lost .modal-result-lbl{background:#c0202a;color:#fff}'
+        +'img{max-width:40px !important;max-height:40px !important}'  // safety net for any other images
+        +'.modal-fix-table img{max-width:18px !important;max-height:18px !important}';
+      var win=window.open('','_blank','width=900,height=700');
+      win.document.write(
+        '<!DOCTYPE html><html><head><title>'+teamName+'</title>'
+        +'<style>'+modalPrintCss+'</style></head><body>'
+        +'<div class="nipgl-modal-title">'+titleEl.innerHTML+'</div>'
         +bodyEl.innerHTML
+        +'<script>window.print();window.onafterprint=function(){window.close();};<\/script>'
+        +'</body></html>'
       );
+      win.document.close();
     });
   }
 
