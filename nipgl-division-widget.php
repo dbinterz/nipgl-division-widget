@@ -2,13 +2,13 @@
 /**
  * Plugin Name: NIPGL Division Widget
  * Description: Renders mobile-friendly league table and fixtures from Google Sheets CSV. Use shortcode [nipgl_division csv="URL" title="Division 1"] on any page.
- * Version: 5.2
+ * Version: 5.3
  * Author: NIPGL
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * Primary Branch: main
  */
 
-define('NIPGL_VERSION', '5.2');
+define('NIPGL_VERSION', '5.3');
 
 // Include scorecard feature
 require_once plugin_dir_path(__FILE__) . 'nipgl-scorecards.php';
@@ -332,14 +332,30 @@ function nipgl_save_settings() {
     $cache_mins = isset($_POST['nipgl_cache_mins']) ? max(1, intval($_POST['nipgl_cache_mins'])) : 5;
     update_option('nipgl_cache_mins', $cache_mins);
 
-    // API key and score entry PIN
+    // API key
     if (isset($_POST['nipgl_anthropic_key'])) {
         update_option('nipgl_anthropic_key', sanitize_text_field($_POST['nipgl_anthropic_key']));
     }
-    if (!empty($_POST['nipgl_submit_pin'])) {
-        $pin = sanitize_text_field($_POST['nipgl_submit_pin']);
-        update_option('nipgl_submit_pin', hash('sha256', $pin));
+    // Per-club PINs
+    $club_names = isset($_POST['nipgl_club_name']) ? array_map('sanitize_text_field', $_POST['nipgl_club_name']) : array();
+    $club_pins  = isset($_POST['nipgl_club_pin'])  ? $_POST['nipgl_club_pin']  : array();
+    $existing_clubs = get_option('nipgl_clubs', array());
+    $clubs = array();
+    foreach ($club_names as $i => $name) {
+        $name = trim($name);
+        if ($name === '') continue;
+        $pin_raw = trim($club_pins[$i] ?? '');
+        // If PIN field is blank, keep existing hash for this club
+        $existing_hash = '';
+        foreach ($existing_clubs as $ec) {
+            if (strtolower($ec['name']) === strtolower($name)) { $existing_hash = $ec['pin']; break; }
+        }
+        $clubs[] = array(
+            'name' => $name,
+            'pin'  => $pin_raw !== '' ? hash('sha256', $pin_raw) : $existing_hash,
+        );
     }
+    update_option('nipgl_clubs', $clubs);
 
     wp_redirect(admin_url('options-general.php?page=nipgl-settings&saved=1'));
     exit;
@@ -474,21 +490,33 @@ function nipgl_settings_page() {
 
             <hr>
             <h2>Score Entry</h2>
-            <p>Configure score submission via the <code>[nipgl_submit]</code> shortcode. Add this shortcode to any page to create the score entry form.</p>
-            <table class="form-table">
-                <tr>
-                    <th scope="row"><label for="nipgl_submit_pin">Score Entry PIN</label></th>
-                    <td>
-                        <input type="password" id="nipgl_submit_pin" name="nipgl_submit_pin" value="" placeholder="Enter new PIN to change" autocomplete="new-password" style="width:200px">
-                        <p class="description">Leave blank to keep the current PIN. Share this PIN with club secretaries who will submit scorecards.</p>
-                    </td>
+            <p>Add clubs and set a PIN for each one. Secretaries select their club and enter the PIN to submit scorecards. Leave the PIN blank when editing to keep the existing PIN.</p>
+            <p>Add the <code>[nipgl_submit]</code> shortcode to any page to create the score entry form.</p>
+
+            <table class="widefat nipgl-badge-table" id="nipgl-club-table">
+                <thead><tr><th>Club Name</th><th>PIN (leave blank to keep existing)</th><th></th></tr></thead>
+                <tbody>
+                <?php
+                $clubs = get_option('nipgl_clubs', array());
+                if (empty($clubs)) $clubs = array(array('name'=>'','pin'=>''));
+                foreach ($clubs as $club): ?>
+                <tr class="nipgl-club-row">
+                    <td><input type="text" name="nipgl_club_name[]" value="<?php echo esc_attr($club['name']); ?>" placeholder="e.g. Ards" class="regular-text"></td>
+                    <td><input type="password" name="nipgl_club_pin[]" value="" placeholder="<?php echo $club['pin'] ? '(PIN set — enter new to change)' : 'Set PIN'; ?>" autocomplete="new-password" class="regular-text"></td>
+                    <td><button type="button" class="button-link-delete nipgl-remove-row">Remove</button></td>
                 </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p><button type="button" class="button" id="nipgl-add-club">+ Add Club</button></p>
+
+            <table class="form-table" style="margin-top:16px">
                 <tr>
                     <th scope="row"><label for="nipgl_anthropic_key">Anthropic API Key</label></th>
                     <td>
                         <?php $key = get_option('nipgl_anthropic_key',''); ?>
                         <input type="password" id="nipgl_anthropic_key" name="nipgl_anthropic_key" value="<?php echo esc_attr($key); ?>" placeholder="sk-ant-…" style="width:380px">
-                        <p class="description">Required for AI photo reading. Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>. The key is stored securely in your WordPress database.</p>
+                        <p class="description">Required for AI photo reading. Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>.</p>
                     </td>
                 </tr>
             </table>

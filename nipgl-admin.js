@@ -81,3 +81,18 @@
     });
 
 })(jQuery);
+
+// Club table add/remove rows
+jQuery(function($){
+  $('#nipgl-add-club').on('click', function(){
+    var row = '<tr class="nipgl-club-row">'
+      + '<td><input type="text" name="nipgl_club_name[]" placeholder="e.g. Ards" class="regular-text"></td>'
+      + '<td><input type="password" name="nipgl_club_pin[]" placeholder="Set PIN" autocomplete="new-password" class="regular-text"></td>'
+      + '<td><button type="button" class="button-link-delete nipgl-remove-row">Remove</button></td>'
+      + '</tr>';
+    $('#nipgl-club-table tbody').append(row);
+  });
+  $(document).on('click', '#nipgl-club-table .nipgl-remove-row', function(){
+    $(this).closest('tr').remove();
+  });
+});

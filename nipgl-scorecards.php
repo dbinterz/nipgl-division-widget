@@ -1,7 +1,7 @@
 <?php
 /**
- * NIPGL Scorecard Feature
- * Handles scorecard submission, storage, retrieval, and display.
+ * NIPGL Scorecard Feature - v5.3
+ * Per-club PIN auth, two-party submission, confirm/amend/dispute flow.
  */
 
 // ── Custom Post Type ──────────────────────────────────────────────────────────
@@ -18,19 +18,42 @@ function nipgl_register_scorecard_cpt() {
     ));
 }
 
-// ── Session helper (PIN gate) ─────────────────────────────────────────────────
+// ── Session helpers ───────────────────────────────────────────────────────────
 function nipgl_session_start() {
-    if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
-        session_start();
-    }
+    if (session_status() === PHP_SESSION_NONE && !headers_sent()) session_start();
 }
-
-function nipgl_pin_verified() {
+function nipgl_get_auth_club() {
     nipgl_session_start();
-    return !empty($_SESSION['nipgl_pin_ok']);
+    return $_SESSION['nipgl_club'] ?? '';
+}
+function nipgl_pin_verified() {
+    return (bool) nipgl_get_auth_club();
 }
 
-// ── Scorecard lookup: find by home+away team+date ─────────────────────────────
+// ── Club helpers ──────────────────────────────────────────────────────────────
+function nipgl_get_clubs() {
+    return get_option('nipgl_clubs', array());
+    // array of ['name'=>'Ards','pin'=>'<sha256>']
+}
+
+function nipgl_club_matches_team($club, $team) {
+    // Club "Ards" matches team "Ards A", "Ards B", "Ards" etc.
+    $club = strtoupper(trim($club));
+    $team = strtoupper(trim($team));
+    if ($club === $team) return true;
+    if (strpos($team, $club) === 0) {
+        $rest = substr($team, strlen($club));
+        return $rest === '' || $rest[0] === ' ';
+    }
+    return false;
+}
+
+function nipgl_club_involved($club, $home_team, $away_team) {
+    return nipgl_club_matches_team($club, $home_team) ||
+           nipgl_club_matches_team($club, $away_team);
+}
+
+// ── Scorecard lookup ──────────────────────────────────────────────────────────
 function nipgl_get_scorecard($home, $away, $date) {
     $key = sanitize_title($home . '-' . $away . '-' . $date);
     $posts = get_posts(array(
@@ -47,20 +70,104 @@ function nipgl_get_scorecard_data($post_id) {
     return get_post_meta($post_id, 'nipgl_scorecard_data', true);
 }
 
-// ── AJAX: PIN check ───────────────────────────────────────────────────────────
+// ── AJAX: PIN / club login ────────────────────────────────────────────────────
 add_action('wp_ajax_nopriv_nipgl_check_pin', 'nipgl_ajax_check_pin');
 add_action('wp_ajax_nipgl_check_pin',        'nipgl_ajax_check_pin');
 function nipgl_ajax_check_pin() {
     check_ajax_referer('nipgl_submit_nonce', 'nonce');
-    $entered  = sanitize_text_field($_POST['pin'] ?? '');
-    $stored   = get_option('nipgl_submit_pin', '');
-    if ($stored && hash_equals($stored, hash('sha256', $entered))) {
-        nipgl_session_start();
-        $_SESSION['nipgl_pin_ok'] = true;
-        wp_send_json_success();
-    } else {
-        wp_send_json_error('Incorrect PIN');
+    $club_name = sanitize_text_field($_POST['club'] ?? '');
+    $entered   = sanitize_text_field($_POST['pin']  ?? '');
+    $clubs     = nipgl_get_clubs();
+
+    foreach ($clubs as $club) {
+        if (strtolower($club['name']) === strtolower($club_name)) {
+            if (!empty($club['pin']) && hash_equals($club['pin'], hash('sha256', $entered))) {
+                nipgl_session_start();
+                $_SESSION['nipgl_club'] = $club['name'];
+                // Find any pending scorecards for this club
+                $pending = nipgl_get_pending_for_club($club['name']);
+                wp_send_json_success(array(
+                    'club'    => $club['name'],
+                    'pending' => $pending,
+                ));
+            }
+        }
     }
+    wp_send_json_error('Incorrect club or PIN');
+}
+
+// ── AJAX: Logout ──────────────────────────────────────────────────────────────
+add_action('wp_ajax_nopriv_nipgl_logout', 'nipgl_ajax_logout');
+add_action('wp_ajax_nipgl_logout',        'nipgl_ajax_logout');
+function nipgl_ajax_logout() {
+    nipgl_session_start();
+    unset($_SESSION['nipgl_club']);
+    wp_send_json_success();
+}
+
+// ── Pending scorecard lookup for a club ───────────────────────────────────────
+function nipgl_get_pending_for_club($club) {
+    $posts = get_posts(array(
+        'post_type'      => 'nipgl_scorecard',
+        'posts_per_page' => 20,
+        'post_status'    => 'publish',
+        'meta_key'       => 'nipgl_sc_status',
+        'meta_value'     => 'pending',
+    ));
+    $pending = array();
+    foreach ($posts as $p) {
+        $sc = nipgl_get_scorecard_data($p->ID);
+        if (!$sc) continue;
+        // Only show if this club is the OTHER team (not the one who submitted)
+        $submitted_by = get_post_meta($p->ID, 'nipgl_submitted_by', true);
+        if (nipgl_club_involved($club, $sc['home_team'], $sc['away_team']) &&
+            !nipgl_club_matches_team($club, $submitted_by)) {
+            $pending[] = array(
+                'id'        => $p->ID,
+                'home_team' => $sc['home_team'],
+                'away_team' => $sc['away_team'],
+                'date'      => $sc['date'],
+                'submitted_by' => $submitted_by,
+            );
+        }
+    }
+    return $pending;
+}
+
+// ── AJAX: Get full scorecard for review ───────────────────────────────────────
+add_action('wp_ajax_nopriv_nipgl_get_scorecard_by_id', 'nipgl_ajax_get_scorecard_by_id');
+add_action('wp_ajax_nipgl_get_scorecard_by_id',        'nipgl_ajax_get_scorecard_by_id');
+function nipgl_ajax_get_scorecard_by_id() {
+    $id = intval($_GET['id'] ?? 0);
+    if (!$id) wp_send_json_error('Missing ID');
+    $sc = nipgl_get_scorecard_data($id);
+    if (!$sc) wp_send_json_error('Not found');
+    $sc['_status']       = get_post_meta($id, 'nipgl_sc_status',     true);
+    $sc['_submitted_by'] = get_post_meta($id, 'nipgl_submitted_by',  true);
+    $sc['_confirmed_by'] = get_post_meta($id, 'nipgl_confirmed_by',  true);
+    $sc['_away_version'] = get_post_meta($id, 'nipgl_away_scorecard', true);
+    wp_send_json_success($sc);
+}
+
+// ── AJAX: Confirm scorecard ───────────────────────────────────────────────────
+add_action('wp_ajax_nopriv_nipgl_confirm_scorecard', 'nipgl_ajax_confirm_scorecard');
+add_action('wp_ajax_nipgl_confirm_scorecard',        'nipgl_ajax_confirm_scorecard');
+function nipgl_ajax_confirm_scorecard() {
+    check_ajax_referer('nipgl_submit_nonce', 'nonce');
+    if (!nipgl_pin_verified()) wp_send_json_error('Not authorised');
+
+    $id   = intval($_POST['id'] ?? 0);
+    $club = nipgl_get_auth_club();
+    if (!$id) wp_send_json_error('Missing ID');
+
+    $sc = nipgl_get_scorecard_data($id);
+    if (!$sc) wp_send_json_error('Scorecard not found');
+    if (!nipgl_club_involved($club, $sc['home_team'], $sc['away_team']))
+        wp_send_json_error('Your club is not involved in this match');
+
+    update_post_meta($id, 'nipgl_sc_status',    'confirmed');
+    update_post_meta($id, 'nipgl_confirmed_by', $club);
+    wp_send_json_success(array('message' => 'Scorecard confirmed. Thank you!'));
 }
 
 // ── AJAX: Parse photo via Anthropic vision ────────────────────────────────────
@@ -74,10 +181,10 @@ function nipgl_ajax_parse_photo() {
     if (!$api_key) wp_send_json_error('No API key configured. Add your Anthropic API key in NIPGL Widget Settings.');
 
     if (empty($_FILES['photo']['tmp_name'])) wp_send_json_error('No file received');
-    $file = $_FILES['photo'];
+    $file    = $_FILES['photo'];
     $allowed = array('image/jpeg','image/png','image/gif','image/webp');
     if (!in_array($file['type'], $allowed)) wp_send_json_error('Please upload a JPG, PNG or WebP image');
-    if ($file['size'] > 8 * 1024 * 1024) wp_send_json_error('Image too large (max 8MB)');
+    if ($file['size'] > 8 * 1024 * 1024)   wp_send_json_error('Image too large (max 8MB)');
 
     $image_data = base64_encode(file_get_contents($file['tmp_name']));
     $media_type = $file['type'];
@@ -136,7 +243,6 @@ Return exactly 4 rink objects. Use null for any value you cannot read clearly.';
     $http_code = wp_remote_retrieve_response_code($response);
     $result    = json_decode(wp_remote_retrieve_body($response), true);
 
-    // Surface API-level errors clearly
     if ($http_code !== 200) {
         $api_error = $result['error']['message'] ?? 'Unknown API error';
         wp_send_json_error('API error (' . $http_code . '): ' . $api_error);
@@ -144,21 +250,17 @@ Return exactly 4 rink objects. Use null for any value you cannot read clearly.';
 
     $text = $result['content'][0]['text'] ?? '';
     if (empty($text)) {
-        $stop_reason = $result['stop_reason'] ?? 'unknown';
-        wp_send_json_error('Empty response from API (stop_reason: ' . $stop_reason . '). Please try again.');
+        wp_send_json_error('Empty response from API (stop_reason: ' . ($result['stop_reason'] ?? 'unknown') . '). Please try again.');
     }
 
-    // Strip any accidental markdown fences
-    $text = preg_replace('/^```json\s*/i', '', trim($text));
-    $text = preg_replace('/^```\s*/i',     '', $text);
-    $text = preg_replace('/```\s*$/',      '', $text);
+    $text   = preg_replace('/^```json\s*/i', '', trim($text));
+    $text   = preg_replace('/^```\s*/i',     '', $text);
+    $text   = preg_replace('/```\s*$/',      '', $text);
     $parsed = json_decode(trim($text), true);
 
     if (!$parsed || !isset($parsed['rinks'])) {
-        // Return the raw text so the admin can diagnose what came back
-        wp_send_json_error('Could not parse response into scorecard format. Raw response: ' . substr($text, 0, 300));
+        wp_send_json_error('Could not parse response. Raw: ' . substr($text, 0, 300));
     }
-
     wp_send_json_success($parsed);
 }
 
@@ -174,63 +276,35 @@ function nipgl_ajax_parse_excel() {
     $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, array('xlsx','xls'))) wp_send_json_error('Please upload an .xlsx or .xls file');
 
-    // Use PhpSpreadsheet if available, otherwise fall back to simple XML parse
-    if (class_exists('PhpOffice\PhpSpreadsheet\IOFactory')) {
-        try {
-            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file['tmp_name']);
-            $ws = $spreadsheet->getActiveSheet();
-            $data = array();
-            foreach ($ws->getRowIterator() as $row) {
-                $cells = array();
-                foreach ($row->getCellIterator() as $cell) {
-                    $cells[] = $cell->getFormattedValue();
-                }
-                $data[] = $cells;
-            }
-        } catch (Exception $e) {
-            wp_send_json_error('Could not read spreadsheet: ' . $e->getMessage());
-        }
-    } else {
-        // Fallback: read xlsx as zip and extract shared strings + sheet data
-        $data = nipgl_parse_xlsx_basic($file['tmp_name']);
-        if (!$data) wp_send_json_error('Could not read spreadsheet. Please try the manual entry form.');
-    }
+    $data = nipgl_parse_xlsx_basic($file['tmp_name']);
+    if (!$data) wp_send_json_error('Could not read spreadsheet. Please try the manual entry form.');
 
     $parsed = nipgl_map_xlsx_to_scorecard($data);
-    if (!$parsed) wp_send_json_error('Could not map spreadsheet to scorecard format. Please check the file matches the NIPGL template.');
-
+    if (!$parsed) wp_send_json_error('Could not map spreadsheet to scorecard format.');
     wp_send_json_success($parsed);
 }
 
-// Basic xlsx parser (no external library needed)
 function nipgl_parse_xlsx_basic($filepath) {
     if (!class_exists('ZipArchive')) return false;
     $zip = new ZipArchive();
     if ($zip->open($filepath) !== true) return false;
-
-    // Read shared strings
     $strings = array();
     $ss = $zip->getFromName('xl/sharedStrings.xml');
     if ($ss) {
         preg_match_all('/<t[^>]*>(.*?)<\/t>/s', $ss, $m);
         $strings = array_map('html_entity_decode', $m[1]);
     }
-
-    // Read first sheet
     $sheet_xml = $zip->getFromName('xl/worksheets/sheet1.xml');
     $zip->close();
     if (!$sheet_xml) return false;
-
     preg_match_all('/<row[^>]*>(.*?)<\/row>/s', $sheet_xml, $rows);
     $data = array();
     foreach ($rows[1] as $row_xml) {
         preg_match_all('/<c r="([A-Z]+)(\d+)"[^>]*(?:t="([^"]*)")?[^>]*>.*?<v>(.*?)<\/v>.*?<\/c>/s', $row_xml, $cells, PREG_SET_ORDER);
         $row = array();
         foreach ($cells as $c) {
-            $col   = nipgl_col_to_idx($c[1]);
-            $type  = $c[3];
-            $val   = $c[4];
-            $row[$col] = ($type === 's') ? ($strings[intval($val)] ?? '') : $val;
+            $col = nipgl_col_to_idx($c[1]);
+            $row[$col] = ($c[3] === 's') ? ($strings[intval($c[4])] ?? '') : $c[4];
         }
         if (!empty($row)) {
             $max = max(array_keys($row));
@@ -248,31 +322,27 @@ function nipgl_col_to_idx($col) {
     return $idx - 1;
 }
 
-// Map xlsx rows to scorecard structure matching the NIPGL template
 function nipgl_map_xlsx_to_scorecard($data) {
     if (empty($data)) return null;
     $sc = array('division'=>'','venue'=>'','date'=>'','home_team'=>'','away_team'=>'',
                 'rinks'=>array(),'home_total'=>null,'away_total'=>null,'home_points'=>null,'away_points'=>null);
-
     foreach ($data as $i => $row) {
         $r0 = trim($row[0] ?? ''); $r1 = trim($row[1] ?? '');
         if ($r0 === 'Division/Cup' || $r0 === 'Division') $sc['division'] = $r1;
-        if ($r0 === 'Played at')  { $sc['venue'] = $r1; $sc['date'] = trim($row[5] ?? $row[4] ?? ''); }
-        if ($r0 === 'Home Team')  continue;
+        if ($r0 === 'Played at') { $sc['venue'] = $r1; $sc['date'] = trim($row[5] ?? $row[4] ?? ''); }
+        if ($r0 === 'Home Team') continue;
         if (!empty($r0) && isset($row[3]) && trim($row[3]) === 'v') {
             $sc['home_team'] = $r0; $sc['away_team'] = trim($row[4] ?? '');
         }
         if (preg_match('/^Rink\s*(\d)/i', $r0, $m)) {
-            $rink_num = intval($m[1]);
-            $rink = array('rink'=>$rink_num,'home_players'=>array(),'away_players'=>array(),'home_score'=>null,'away_score'=>null);
-            // Next 4 rows are player rows
+            $rn   = intval($m[1]);
+            $rink = array('rink'=>$rn,'home_players'=>array(),'away_players'=>array(),'home_score'=>null,'away_score'=>null);
             for ($p = $i+1; $p <= $i+4 && $p < count($data); $p++) {
                 $pr = $data[$p];
                 if (preg_match('/^Rink/i', $pr[0] ?? '')) break;
                 $hp = trim($pr[0] ?? ''); $ap = trim($pr[3] ?? $pr[4] ?? '');
                 if ($hp) $rink['home_players'][] = $hp;
                 if ($ap) $rink['away_players'][] = $ap;
-                // Score is in col 2 (home) and col 6 (away) — appears on any player row
                 if (!empty($pr[2]) && is_numeric($pr[2])) $rink['home_score'] = floatval($pr[2]);
                 if (!empty($pr[6]) && is_numeric($pr[6])) $rink['away_score'] = floatval($pr[6]);
             }
@@ -287,7 +357,6 @@ function nipgl_map_xlsx_to_scorecard($data) {
             $sc['away_points'] = is_numeric($row[6]??$row[5]??'') ? floatval($row[6]??$row[5]) : null;
         }
     }
-
     if (empty($sc['rinks'])) return null;
     return $sc;
 }
@@ -299,23 +368,22 @@ function nipgl_ajax_save_scorecard() {
     check_ajax_referer('nipgl_submit_nonce', 'nonce');
     if (!nipgl_pin_verified()) wp_send_json_error('Not authorised');
 
-    $raw = json_decode(stripslashes($_POST['scorecard'] ?? ''), true);
+    $club = nipgl_get_auth_club();
+    $raw  = json_decode(stripslashes($_POST['scorecard'] ?? ''), true);
     if (!$raw) wp_send_json_error('Invalid data');
 
-    // Sanitise
     $sc = array(
-        'division'     => sanitize_text_field($raw['division']     ?? ''),
-        'venue'        => sanitize_text_field($raw['venue']        ?? ''),
-        'date'         => sanitize_text_field($raw['date']         ?? ''),
-        'home_team'    => sanitize_text_field($raw['home_team']    ?? ''),
-        'away_team'    => sanitize_text_field($raw['away_team']    ?? ''),
-        'home_total'   => is_numeric($raw['home_total']   ?? '') ? floatval($raw['home_total'])   : null,
-        'away_total'   => is_numeric($raw['away_total']   ?? '') ? floatval($raw['away_total'])   : null,
-        'home_points'  => is_numeric($raw['home_points']  ?? '') ? floatval($raw['home_points'])  : null,
-        'away_points'  => is_numeric($raw['away_points']  ?? '') ? floatval($raw['away_points'])  : null,
-        'rinks'        => array(),
+        'division'    => sanitize_text_field($raw['division']    ?? ''),
+        'venue'       => sanitize_text_field($raw['venue']       ?? ''),
+        'date'        => sanitize_text_field($raw['date']        ?? ''),
+        'home_team'   => sanitize_text_field($raw['home_team']   ?? ''),
+        'away_team'   => sanitize_text_field($raw['away_team']   ?? ''),
+        'home_total'  => is_numeric($raw['home_total']  ?? '') ? floatval($raw['home_total'])  : null,
+        'away_total'  => is_numeric($raw['away_total']  ?? '') ? floatval($raw['away_total'])  : null,
+        'home_points' => is_numeric($raw['home_points'] ?? '') ? floatval($raw['home_points']) : null,
+        'away_points' => is_numeric($raw['away_points'] ?? '') ? floatval($raw['away_points']) : null,
+        'rinks'       => array(),
     );
-
     foreach (($raw['rinks'] ?? array()) as $rk) {
         $sc['rinks'][] = array(
             'rink'         => intval($rk['rink'] ?? 0),
@@ -328,29 +396,74 @@ function nipgl_ajax_save_scorecard() {
 
     if (empty($sc['home_team']) || empty($sc['away_team'])) wp_send_json_error('Home and away team are required');
 
-    $match_key = sanitize_title($sc['home_team'] . '-' . $sc['away_team'] . '-' . $sc['date']);
+    // Club auth check — club must be involved in this match
+    if (!nipgl_club_involved($club, $sc['home_team'], $sc['away_team']))
+        wp_send_json_error('You can only submit scorecards for matches involving ' . $club);
 
-    // Check for duplicate
-    $existing = nipgl_get_scorecard($sc['home_team'], $sc['away_team'], $sc['date']);
+    $match_key = sanitize_title($sc['home_team'] . '-' . $sc['away_team'] . '-' . $sc['date']);
+    $existing  = nipgl_get_scorecard($sc['home_team'], $sc['away_team'], $sc['date']);
+
     if ($existing) {
-        // Update existing
-        update_post_meta($existing->ID, 'nipgl_scorecard_data', $sc);
-        wp_send_json_success(array('message' => 'Scorecard updated successfully.', 'id' => $existing->ID));
+        $existing_status = get_post_meta($existing->ID, 'nipgl_sc_status', true);
+        $submitted_by    = get_post_meta($existing->ID, 'nipgl_submitted_by', true);
+
+        if (nipgl_club_matches_team($club, $submitted_by)) {
+            // Same club resubmitting — update their version
+            if ($existing_status === 'confirmed') {
+                update_post_meta($existing->ID, 'nipgl_sc_status', 'pending');
+                update_post_meta($existing->ID, 'nipgl_confirmed_by', '');
+            }
+            update_post_meta($existing->ID, 'nipgl_scorecard_data', $sc);
+            wp_send_json_success(array('message' => 'Scorecard updated. Awaiting confirmation from the other club.', 'status' => 'pending'));
+        } else {
+            // Second club submitting — compare scores
+            $original = nipgl_get_scorecard_data($existing->ID);
+            if (nipgl_scores_match($sc, $original)) {
+                // Scores agree — confirm
+                update_post_meta($existing->ID, 'nipgl_sc_status',    'confirmed');
+                update_post_meta($existing->ID, 'nipgl_confirmed_by', $club);
+                wp_send_json_success(array('message' => 'Scores match — scorecard confirmed! ✅', 'status' => 'confirmed'));
+            } else {
+                // Scores differ — store away version, mark disputed
+                update_post_meta($existing->ID, 'nipgl_away_scorecard', $sc);
+                update_post_meta($existing->ID, 'nipgl_sc_status',      'disputed');
+                update_post_meta($existing->ID, 'nipgl_confirmed_by',   $club);
+                wp_send_json_success(array('message' => 'Scores differ from the submitted version — result marked as disputed. The league admin will review.', 'status' => 'disputed'));
+            }
+        }
     } else {
-        $title = $sc['home_team'] . ' v ' . $sc['away_team'] . ' (' . $sc['date'] . ')';
+        // First submission
+        $title   = $sc['home_team'] . ' v ' . $sc['away_team'] . ' (' . $sc['date'] . ')';
         $post_id = wp_insert_post(array(
             'post_type'   => 'nipgl_scorecard',
             'post_title'  => $title,
             'post_status' => 'publish',
         ));
         if (is_wp_error($post_id)) wp_send_json_error('Failed to save: ' . $post_id->get_error_message());
-        update_post_meta($post_id, 'nipgl_match_key',      $match_key);
-        update_post_meta($post_id, 'nipgl_scorecard_data', $sc);
-        wp_send_json_success(array('message' => 'Scorecard saved successfully.', 'id' => $post_id));
+        update_post_meta($post_id, 'nipgl_match_key',     $match_key);
+        update_post_meta($post_id, 'nipgl_scorecard_data',$sc);
+        update_post_meta($post_id, 'nipgl_sc_status',     'pending');
+        update_post_meta($post_id, 'nipgl_submitted_by',  $club);
+        wp_send_json_success(array('message' => 'Scorecard submitted. The other club will be notified to confirm.', 'status' => 'pending', 'id' => $post_id));
     }
 }
 
-// ── AJAX: Fetch scorecard for display (public) ────────────────────────────────
+function nipgl_scores_match($a, $b) {
+    if (!$a || !$b) return false;
+    if ($a['home_total'] != $b['home_total']) return false;
+    if ($a['away_total'] != $b['away_total']) return false;
+    if ($a['home_points'] != $b['home_points']) return false;
+    if ($a['away_points'] != $b['away_points']) return false;
+    foreach (($a['rinks'] ?? array()) as $i => $rk) {
+        $brk = $b['rinks'][$i] ?? null;
+        if (!$brk) return false;
+        if ($rk['home_score'] != $brk['home_score']) return false;
+        if ($rk['away_score'] != $brk['away_score']) return false;
+    }
+    return true;
+}
+
+// ── AJAX: Fetch scorecard for public display ──────────────────────────────────
 add_action('wp_ajax_nopriv_nipgl_get_scorecard', 'nipgl_ajax_get_scorecard');
 add_action('wp_ajax_nipgl_get_scorecard',        'nipgl_ajax_get_scorecard');
 function nipgl_ajax_get_scorecard() {
@@ -359,7 +472,11 @@ function nipgl_ajax_get_scorecard() {
     $date = sanitize_text_field($_GET['date'] ?? '');
     $post = nipgl_get_scorecard($home, $away, $date);
     if (!$post) { wp_send_json_error('No scorecard found'); }
-    wp_send_json_success(nipgl_get_scorecard_data($post->ID));
+    $sc              = nipgl_get_scorecard_data($post->ID);
+    $sc['_status']   = get_post_meta($post->ID, 'nipgl_sc_status',    true) ?: 'pending';
+    $sc['_submitted_by'] = get_post_meta($post->ID, 'nipgl_submitted_by', true);
+    $sc['_confirmed_by'] = get_post_meta($post->ID, 'nipgl_confirmed_by', true);
+    wp_send_json_success($sc);
 }
 
 // ── Shortcode: submission form ────────────────────────────────────────────────
@@ -371,43 +488,69 @@ function nipgl_submit_shortcode($atts) {
     return ob_get_clean();
 }
 
-function nipgl_render_submit_form($csv_url = '') {
-    $pin_set = (bool) get_option('nipgl_submit_pin', '');
+function nipgl_render_submit_form() {
+    $clubs     = nipgl_get_clubs();
+    $auth_club = nipgl_get_auth_club();
+    $has_clubs = !empty($clubs);
     ?>
-    <div class="nipgl-submit-wrap" id="nipgl-submit-wrap">
+    <div class="nipgl-submit-wrap" id="nipgl-submit-wrap"
+         data-auth-club="<?php echo esc_attr($auth_club); ?>">
 
-      <!-- PIN gate -->
-      <div id="nipgl-pin-gate" style="<?php echo nipgl_pin_verified() ? 'display:none' : ''; ?>">
+      <!-- PIN / club login gate -->
+      <div id="nipgl-pin-gate" <?php echo $auth_club ? 'style="display:none"' : ''; ?>>
         <div class="nipgl-submit-card">
-          <h2>Score Entry</h2>
-          <?php if (!$pin_set): ?>
-            <p class="nipgl-notice nipgl-notice-warn">No PIN has been set. Please configure a Score Entry PIN in <strong>Settings → NIPGL Widget</strong> before using this page.</p>
+          <h2>Score Entry Login</h2>
+          <?php if (!$has_clubs): ?>
+            <p class="nipgl-notice nipgl-notice-warn">No clubs have been configured yet. Please add clubs and PINs in <strong>Settings → NIPGL Widget</strong>.</p>
           <?php else: ?>
-            <p>Enter the score entry PIN to submit a scorecard.</p>
+            <p>Select your club and enter your PIN to submit or confirm a scorecard.</p>
+            <div class="nipgl-form-row">
+              <label>Club</label>
+              <select id="nipgl-club-select" style="width:100%;padding:9px 12px;border:1px solid #d0d5e8;border-radius:6px;font-size:14px;font-family:inherit">
+                <option value="">— Select your club —</option>
+                <?php foreach ($clubs as $c): ?>
+                <option value="<?php echo esc_attr($c['name']); ?>"><?php echo esc_html($c['name']); ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
             <div class="nipgl-pin-row">
               <input type="password" id="nipgl-pin-input" placeholder="Enter PIN" maxlength="20" autocomplete="off">
-              <button class="nipgl-btn nipgl-btn-primary" id="nipgl-pin-submit">Enter</button>
+              <button class="nipgl-btn nipgl-btn-primary" id="nipgl-pin-submit">Login</button>
             </div>
             <p id="nipgl-pin-error" class="nipgl-notice nipgl-notice-error" style="display:none"></p>
           <?php endif; ?>
         </div>
       </div>
 
-      <!-- Main form (shown after PIN) -->
-      <div id="nipgl-submit-form" style="<?php echo nipgl_pin_verified() ? '' : 'display:none'; ?>">
+      <!-- Main area (shown after login) -->
+      <div id="nipgl-submit-form" <?php echo $auth_club ? '' : 'style="display:none"'; ?>>
+
+        <!-- Club header bar -->
+        <div class="nipgl-club-bar">
+          <span>Logged in as <strong id="nipgl-club-name"><?php echo esc_html($auth_club); ?></strong></span>
+          <button class="nipgl-btn nipgl-btn-secondary nipgl-btn-sm" id="nipgl-logout">Log out</button>
+        </div>
+
+        <!-- Pending confirmations for this club -->
+        <div id="nipgl-pending-wrap" style="display:none">
+          <div class="nipgl-submit-card nipgl-pending-card">
+            <h3>⏳ Awaiting Your Confirmation</h3>
+            <p class="nipgl-hint">The following matches have been submitted by the other club. Please review and confirm or amend.</p>
+            <div id="nipgl-pending-list"></div>
+          </div>
+        </div>
+
+        <!-- Submit new scorecard -->
         <div class="nipgl-submit-card">
           <h2>Submit Scorecard</h2>
-
-          <!-- Method tabs -->
           <div class="nipgl-submit-tabs">
             <button class="nipgl-stab active" data-tab="photo">📷 Photo</button>
             <button class="nipgl-stab" data-tab="excel">📊 Excel</button>
             <button class="nipgl-stab" data-tab="manual">✏️ Manual</button>
           </div>
 
-          <!-- Photo upload -->
           <div class="nipgl-stab-panel active" data-panel="photo">
-            <p class="nipgl-hint">Upload a photo of the scorecard. AI will read it and pre-fill the form below for you to check.</p>
+            <p class="nipgl-hint">Upload a photo of the scorecard. AI will read it and pre-fill the form below.</p>
             <div class="nipgl-upload-area" id="nipgl-photo-drop">
               <input type="file" id="nipgl-photo-input" accept="image/*" capture="environment" style="display:none">
               <div class="nipgl-upload-inner" id="nipgl-photo-trigger">
@@ -416,15 +559,12 @@ function nipgl_render_submit_form($csv_url = '') {
               </div>
               <img id="nipgl-photo-preview" src="" alt="" style="display:none;max-width:100%;max-height:220px;border-radius:6px;margin-top:10px">
             </div>
-            <button class="nipgl-btn nipgl-btn-primary" id="nipgl-parse-photo" style="margin-top:10px;display:none">
-              <span id="nipgl-parse-photo-lbl">Read Scorecard with AI</span>
-            </button>
+            <button class="nipgl-btn nipgl-btn-primary" id="nipgl-parse-photo" style="margin-top:10px;display:none">Read Scorecard with AI</button>
             <p id="nipgl-parse-photo-status" class="nipgl-notice" style="display:none"></p>
           </div>
 
-          <!-- Excel upload -->
           <div class="nipgl-stab-panel" data-panel="excel">
-            <p class="nipgl-hint">Upload the NIPGL Excel scorecard template (.xlsx). It will be read automatically and fill the form below.</p>
+            <p class="nipgl-hint">Upload the NIPGL Excel scorecard template (.xlsx).</p>
             <div class="nipgl-upload-area">
               <input type="file" id="nipgl-excel-input" accept=".xlsx,.xls">
               <div class="nipgl-upload-inner">
@@ -436,7 +576,6 @@ function nipgl_render_submit_form($csv_url = '') {
             <p id="nipgl-parse-excel-status" class="nipgl-notice" style="display:none"></p>
           </div>
 
-          <!-- Manual entry hint -->
           <div class="nipgl-stab-panel" data-panel="manual">
             <p class="nipgl-hint">Fill in the scorecard details manually using the form below.</p>
           </div>
@@ -450,27 +589,14 @@ function nipgl_render_submit_form($csv_url = '') {
             <input type="text" id="sc-division" placeholder="e.g. Division 1">
           </div>
           <div class="nipgl-form-row nipgl-form-row-2">
-            <div>
-              <label>Venue / Played at</label>
-              <input type="text" id="sc-venue" placeholder="e.g. Ards">
-            </div>
-            <div>
-              <label>Date</label>
-              <input type="text" id="sc-date" placeholder="e.g. 10th May">
-            </div>
+            <div><label>Venue / Played at</label><input type="text" id="sc-venue" placeholder="e.g. Ards"></div>
+            <div><label>Date</label><input type="text" id="sc-date" placeholder="e.g. 10th May"></div>
           </div>
           <div class="nipgl-form-row nipgl-form-row-2">
-            <div>
-              <label>Home Team</label>
-              <input type="text" id="sc-home-team" placeholder="e.g. Ards A">
-            </div>
-            <div>
-              <label>Away Team</label>
-              <input type="text" id="sc-away-team" placeholder="e.g. Belmont A">
-            </div>
+            <div><label>Home Team</label><input type="text" id="sc-home-team" placeholder="e.g. Ards A"></div>
+            <div><label>Away Team</label><input type="text" id="sc-away-team" placeholder="e.g. Belmont A"></div>
           </div>
 
-          <!-- Rinks -->
           <?php for ($r = 1; $r <= 4; $r++): ?>
           <div class="nipgl-rink-block">
             <div class="nipgl-rink-header">Rink <?php echo $r; ?></div>
@@ -499,7 +625,6 @@ function nipgl_render_submit_form($csv_url = '') {
           </div>
           <?php endfor; ?>
 
-          <!-- Totals -->
           <div class="nipgl-totals-block">
             <div class="nipgl-totals-row">
               <span>Total Shots</span>
@@ -524,7 +649,6 @@ function nipgl_render_submit_form($csv_url = '') {
       </div>
 
     </div>
-
     <?php
     wp_nonce_field('nipgl_submit_nonce', 'nipgl_submit_nonce_field');
 }
@@ -540,8 +664,8 @@ function nipgl_enqueue_scorecard() {
     wp_enqueue_style('nipgl-scorecard',  plugin_dir_url(__FILE__) . 'nipgl-scorecard.css', array(), NIPGL_VERSION);
     wp_enqueue_script('nipgl-scorecard', plugin_dir_url(__FILE__) . 'nipgl-scorecard.js',  array(), NIPGL_VERSION, true);
     wp_localize_script('nipgl-scorecard', 'nipglSubmit', array(
-        'ajaxUrl' => admin_url('admin-ajax.php'),
-        'nonce'   => wp_create_nonce('nipgl_submit_nonce'),
-        'pinOk'   => nipgl_pin_verified(),
+        'ajaxUrl'  => admin_url('admin-ajax.php'),
+        'nonce'    => wp_create_nonce('nipgl_submit_nonce'),
+        'authClub' => nipgl_get_auth_club(),
     ));
 }
