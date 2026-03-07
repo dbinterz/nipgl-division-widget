@@ -18,6 +18,8 @@ function nipgl_create_player_tables() {
         id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
         club        VARCHAR(100) NOT NULL,
         name        VARCHAR(150) NOT NULL,
+        starred     TINYINT(1)   NOT NULL DEFAULT 0,
+        female      TINYINT(1)   NOT NULL DEFAULT 0,
         created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY club_name (club(100), name(150))
@@ -46,8 +48,18 @@ function nipgl_create_player_tables() {
 add_action('plugins_loaded', 'nipgl_maybe_create_player_tables');
 function nipgl_maybe_create_player_tables() {
     global $wpdb;
-    if ($wpdb->get_var("SHOW TABLES LIKE '" . nipgl_players_table() . "'") !== nipgl_players_table()) {
+    $tbl = nipgl_players_table();
+    if ($wpdb->get_var("SHOW TABLES LIKE '$tbl'") !== $tbl) {
         nipgl_create_player_tables();
+        return;
+    }
+    // Migrate: add starred + female columns if missing (upgrade from pre-5.11.0)
+    $cols = $wpdb->get_col("SHOW COLUMNS FROM $tbl");
+    if (!in_array('starred', $cols)) {
+        $wpdb->query("ALTER TABLE $tbl ADD COLUMN starred TINYINT(1) NOT NULL DEFAULT 0");
+    }
+    if (!in_array('female', $cols)) {
+        $wpdb->query("ALTER TABLE $tbl ADD COLUMN female TINYINT(1) NOT NULL DEFAULT 0");
     }
 }
 
@@ -64,10 +76,11 @@ function nipgl_season_where() {
     global $wpdb;
     $season = nipgl_get_season();
     if (!empty($season['start']) && !empty($season['end'])) {
+        // match_date is stored as dd/mm/yyyy — convert via STR_TO_DATE for comparison
         return $wpdb->prepare(
-            "AND a.played_at >= %s AND a.played_at <= %s",
-            $season['start'] . ' 00:00:00',
-            $season['end']   . ' 23:59:59'
+            "AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') >= %s AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') <= %s",
+            $season['start'],
+            $season['end']
         );
     }
     return ''; // no filter — show all time
@@ -155,18 +168,6 @@ function nipgl_get_or_create_player($club, $name) {
 }
 
 // ── Admin menu ────────────────────────────────────────────────────────────────
-add_action('admin_menu', 'nipgl_players_admin_menu');
-function nipgl_players_admin_menu() {
-    add_submenu_page(
-        'nipgl-settings',
-        'Player Tracking',
-        'Players',
-        'manage_options',
-        'nipgl-players',
-        'nipgl_players_admin_page'
-    );
-}
-
 // ── Admin page ────────────────────────────────────────────────────────────────
 function nipgl_players_admin_page() {
     global $wpdb;
@@ -228,11 +229,25 @@ function nipgl_players_admin_page() {
                 echo '<div class="notice notice-success"><p>Player renamed.</p></div>';
             }
         }
+
+        if ($action === 'update_flags') {
+            $pid     = intval($_POST['player_id'] ?? 0);
+            $starred = isset($_POST['starred']) ? 1 : 0;
+            $female  = isset($_POST['female'])  ? 1 : 0;
+            if ($pid) {
+                $wpdb->update($pt,
+                    array('starred' => $starred, 'female' => $female),
+                    array('id' => $pid),
+                    array('%d','%d'), array('%d')
+                );
+            }
+            // Silently return — called via inline form
+        }
     }
 
     // Fetch all players with appearance counts
     $players = $wpdb->get_results("
-        SELECT p.id, p.club, p.name,
+        SELECT p.id, p.club, p.name, p.starred, p.female,
                COUNT(DISTINCT a.id) as appearances,
                GROUP_CONCAT(DISTINCT a.team ORDER BY a.team SEPARATOR ', ') as teams
         FROM $pt p
@@ -343,6 +358,8 @@ function nipgl_players_admin_page() {
                     <th>Name</th>
                     <th>Teams played for</th>
                     <th style="text-align:center">Appearances<?php echo $season_where ? ' (this season)' : ''; ?></th>
+                    <th style="text-align:center" title="Starred player">⭐</th>
+                    <th style="text-align:center" title="Female player">♀</th>
                     <th>Actions</th>
                 </tr></thead>
                 <tbody>
@@ -351,6 +368,30 @@ function nipgl_players_admin_page() {
                     <td><strong><?php echo esc_html($pl->name); ?></strong></td>
                     <td><?php echo esc_html($pl->teams ?: '—'); ?></td>
                     <td style="text-align:center"><?php echo intval($pl->appearances); ?></td>
+                    <td style="text-align:center">
+                        <form method="post" style="display:inline">
+                            <?php wp_nonce_field('nipgl_players_nonce','nipgl_players_nonce_field'); ?>
+                            <input type="hidden" name="nipgl_players_action" value="update_flags">
+                            <input type="hidden" name="player_id" value="<?php echo $pl->id; ?>">
+                            <input type="hidden" name="female" value="<?php echo $pl->female ? '1' : '0'; ?>">
+                            <input type="checkbox" name="starred" value="1"
+                                <?php checked($pl->starred, 1); ?>
+                                onchange="this.form.submit()"
+                                title="Mark as starred player">
+                        </form>
+                    </td>
+                    <td style="text-align:center">
+                        <form method="post" style="display:inline">
+                            <?php wp_nonce_field('nipgl_players_nonce','nipgl_players_nonce_field'); ?>
+                            <input type="hidden" name="nipgl_players_action" value="update_flags">
+                            <input type="hidden" name="player_id" value="<?php echo $pl->id; ?>">
+                            <input type="hidden" name="starred" value="<?php echo $pl->starred ? '1' : '0'; ?>">
+                            <input type="checkbox" name="female" value="1"
+                                <?php checked($pl->female, 1); ?>
+                                onchange="this.form.submit()"
+                                title="Mark as female player">
+                        </form>
+                    </td>
                     <td>
                         <div class="nipgl-player-actions">
                             <button class="button button-small" onclick="nipglStartRename(<?php echo $pl->id; ?>, <?php echo json_encode($pl->name); ?>)">Rename</button>
@@ -486,114 +527,323 @@ function nipgl_export_players_xlsx() {
     $at = nipgl_appearances_table();
     $season_where = nipgl_season_where();
     $season = nipgl_get_season();
-
-    // Fetch all appearances with player/club info
-    $rows = $wpdb->get_results("
-        SELECT p.club, p.name, a.team, a.match_title, a.match_date, a.rink
-        FROM $pt p
-        JOIN $at a ON a.player_id = p.id
-        " . ($season_where ? "WHERE 1=1 $season_where" : "") . "
-        ORDER BY p.club, p.name, a.match_date, a.match_title
-    ");
-
-    // Group by club
-    $by_club = array();
-    foreach ($rows as $row) {
-        $by_club[$row->club][] = $row;
-    }
-
-    // Also get players with zero appearances this season
-    $all_players = $wpdb->get_results("SELECT id, club, name FROM $pt ORDER BY club, name");
-    $players_with_apps = array();
-    foreach ($rows as $r) {
-        // We'll track this via appearance data
-    }
-
-    // Build CSV-style data per club, then output as simple HTML table Excel file
-    $label = !empty($season['label']) ? ' - ' . $season['label'] : '';
+    $label  = !empty($season['label']) ? ' - ' . $season['label'] : '';
     $filename = 'nipgl-players' . str_replace('/', '-', $label) . '.xls';
 
+    // ── Fetch all players ─────────────────────────────────────────────────────
+    $all_players = $wpdb->get_results(
+        "SELECT id, club, name, starred, female FROM $pt ORDER BY club, name"
+    );
+
+    // ── Fetch all appearances within season ───────────────────────────────────
+    $app_rows = $wpdb->get_results(
+        "SELECT a.player_id, a.team, a.match_date, a.match_title, a.scorecard_id
+         FROM $at a
+         " . ($season_where ? "WHERE 1=1 $season_where" : "") . "
+         ORDER BY a.match_date, a.match_title"
+    );
+
+    // ── Build per-player appearance index ─────────────────────────────────────
+    // $player_apps[player_id][match_key] = team_label (A/B/MW etc.)
+    $player_apps = array();
+    foreach ($all_players as $pl) {
+        $player_apps[$pl->id] = array();
+    }
+
+    // ── Collect match column metadata ─────────────────────────────────────────
+    // $match_meta[match_key] = [date, home_team, away_team, comp, venue]
+    $match_meta  = array();
+    $match_order = array(); // ordered list of match keys
+
+    // We need scorecard data for comp/venue — fetch all relevant scorecards
+    $sc_ids = array_unique(array_column($app_rows, 'scorecard_id'));
+    $sc_data = array();
+    foreach ($sc_ids as $sid) {
+        if (!$sid) continue;
+        $d = get_post_meta($sid, 'nipgl_scorecard_data', true);
+        if ($d) $sc_data[$sid] = $d;
+    }
+
+    foreach ($app_rows as $row) {
+        $match_key = $row->match_date . '||' . $row->match_title;
+        if (!isset($match_meta[$match_key])) {
+            // Parse home/away from title "Home v Away"
+            $parts = explode(' v ', $row->match_title, 2);
+            $home  = trim($parts[0] ?? $row->match_title);
+            $away  = trim($parts[1] ?? '');
+            $sc    = $sc_data[$row->scorecard_id] ?? array();
+            $match_meta[$match_key] = array(
+                'date'  => $row->match_date,
+                'home'  => $home,
+                'away'  => $away,
+                'comp'  => $sc['competition'] ?? '',
+                'venue' => $sc['venue'] ?? '',
+            );
+            $match_order[] = $match_key;
+        }
+
+        // Determine team label for this player in this match
+        // Compare team name suffix to get A/B/MW etc.
+        $team_label = nipgl_team_suffix($row->team);
+        $player_apps[$row->player_id][$match_key] = $team_label;
+    }
+    $match_order = array_unique($match_order);
+
+    // ── Group players by club ─────────────────────────────────────────────────
+    $by_club = array();
+    foreach ($all_players as $pl) {
+        $by_club[$pl->club][] = $pl;
+    }
+
+    // ── Build sheet names ─────────────────────────────────────────────────────
+    $sheet_names = array('Summary');
+    foreach (array_keys($by_club) as $club) {
+        $sheet_names[] = nipgl_safe_sheet_name($club);
+    }
+    $sheet_names = array_values(array_unique($sheet_names));
+
+    // ── Output headers ────────────────────────────────────────────────────────
     header('Content-Type: application/vnd.ms-excel');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Cache-Control: max-age=0');
 
     echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">';
     echo '<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>';
-
-    // Sheet names
-    $sheet_names = array('Summary');
-    foreach (array_keys($by_club) as $club) {
-        $sheet_names[] = substr(preg_replace('/[^A-Za-z0-9 ]/', '', $club), 0, 31);
-    }
-    // Also add clubs with no appearances
-    foreach ($all_players as $pl) {
-        $sn = substr(preg_replace('/[^A-Za-z0-9 ]/', '', $pl->club), 0, 31);
-        if (!in_array($sn, $sheet_names)) $sheet_names[] = $sn;
-    }
-    $sheet_names = array_unique($sheet_names);
-
     foreach ($sheet_names as $sn) {
-        echo '<x:ExcelWorksheet><x:Name>' . esc_html($sn) . '</x:Name><x:WorksheetSource HRef="#' . esc_attr($sn) . '"/></x:ExcelWorksheet>';
+        echo '<x:ExcelWorksheet><x:Name>' . esc_html($sn) . '</x:Name>'
+           . '<x:WorksheetSource HRef="#' . esc_attr($sn) . '"/></x:ExcelWorksheet>';
     }
     echo '</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->';
     echo '<style>
-        td,th{font-family:Arial;font-size:11pt;border:1px solid #ccc;padding:4px 8px}
-        th{background:#1a2e5a;color:#fff;font-weight:bold}
-        .hdr{background:#d0d8ee;font-weight:bold}
+        body{font-family:Arial;font-size:10pt}
+        td,th{font-family:Arial;font-size:10pt;border:1px solid #ccc;padding:3px 6px;white-space:nowrap}
+        .hdr1{background:#1a2e5a;color:#fff;font-weight:bold;text-align:center}
+        .hdr2{background:#2e4a8a;color:#fff;font-size:9pt;text-align:center}
+        .hdr3{background:#d0d8ee;font-weight:bold;font-size:9pt;text-align:center}
+        .total-hdr{background:#c8d4f0;font-weight:bold;text-align:center}
+        .flag-hdr{background:#e8eaf6;font-weight:bold;text-align:center;font-size:9pt}
+        .player-name{font-weight:600;text-align:left}
+        .app-cell{text-align:center;font-weight:700;font-size:10pt}
+        .app-a{background:#dff0d8;color:#155724}
+        .app-b{background:#d0e8ff;color:#003d7a}
+        .app-mw{background:#fff3cd;color:#856404}
+        .app-other{background:#f3e5f5;color:#4a235a}
+        .total-cell{text-align:center;font-weight:700;background:#eef2ff}
+        .starred{background:#fffde7}
+        .summary-hdr{background:#1a2e5a;color:#fff;font-weight:bold}
+        .summary-club{background:#f0f2f8;font-weight:bold}
+        .even{background:#f9f9f9}
     </style></head><body>';
 
-    // Summary sheet
-    echo '<table id="Summary"><tr><th colspan="4">NIPGL Player Appearances' . esc_html($label) . '</th></tr>';
-    echo '<tr class="hdr"><td>Club</td><td>Player</td><td>Teams</td><td>Appearances</td></tr>';
+    // ════════════════════════════════════════════════════════════════════════
+    // SUMMARY SHEET
+    // ════════════════════════════════════════════════════════════════════════
+    $total_players = count($all_players);
+    $total_ladies  = array_sum(array_column($all_players, 'female'));
+    $total_clubs   = count($by_club);
 
-    // Get summary data
-    $summary = $wpdb->get_results("
-        SELECT p.club, p.name,
-               COUNT(DISTINCT a.id) as apps,
-               GROUP_CONCAT(DISTINCT a.team ORDER BY a.team SEPARATOR ', ') as teams
-        FROM $pt p
-        LEFT JOIN $at a ON a.player_id = p.id " .
-        ($season_where ? "WHERE 1=1 $season_where" : "") . "
-        GROUP BY p.id ORDER BY p.club, p.name
-    ");
-    foreach ($summary as $s) {
-        echo '<tr><td>' . esc_html($s->club) . '</td><td>' . esc_html($s->name) . '</td><td>'
-            . esc_html($s->teams ?: '—') . '</td><td style="text-align:center">' . intval($s->apps) . '</td></tr>';
+    echo '<table id="Summary">';
+    echo '<tr><td class="hdr1" colspan="6">NIPGL Player Tracking' . esc_html($label) . '</td></tr>';
+    echo '<tr><td class="hdr3" colspan="6">&nbsp;</td></tr>';
+    echo '<tr>'
+       . '<td class="summary-hdr"></td>'
+       . '<td class="summary-hdr">No. of Teams</td>'
+       . '<td class="summary-hdr">Players Listed</td>'
+       . '<td class="summary-hdr">Ladies</td>'
+       . '<td class="summary-hdr">% of Total Players</td>'
+       . '<td class="summary-hdr">% Ladies</td>'
+       . '</tr>';
+
+    // TOTAL row
+    echo '<tr>'
+       . '<td class="player-name"><strong>TOTAL</strong></td>'
+       . '<td class="total-cell">' . $total_clubs . '</td>'
+       . '<td class="total-cell">' . $total_players . '</td>'
+       . '<td class="total-cell">' . $total_ladies . '</td>'
+       . '<td class="total-cell">100%</td>'
+       . '<td class="total-cell">' . ($total_players > 0 ? round($total_ladies / $total_players * 100, 2) . '%' : '0%') . '</td>'
+       . '</tr>';
+    echo '<tr><td colspan="6">&nbsp;</td></tr>';
+
+    $row_i = 0;
+    foreach ($by_club as $club => $players) {
+        $n_players = count($players);
+        $n_ladies  = count(array_filter($players, function($p){ return $p->female; }));
+        // Count distinct teams (suffix labels) this club has played
+        $teams_set = array();
+        foreach ($players as $pl) {
+            foreach (($player_apps[$pl->id] ?? array()) as $mk => $lbl) {
+                $teams_set[$lbl] = true;
+            }
+        }
+        $n_teams = count($teams_set) ?: 1;
+
+        $pct_total  = $total_players > 0 ? round($n_players / $total_players * 100, 2) . '%' : '0%';
+        $pct_ladies = $n_players > 0 ? round($n_ladies / $n_players * 100, 2) . '%' : '0%';
+        $row_cls    = ($row_i++ % 2 === 0) ? '' : ' class="even"';
+
+        echo '<tr' . $row_cls . '>'
+           . '<td class="summary-club">' . esc_html($club) . '</td>'
+           . '<td class="total-cell">' . $n_teams . '</td>'
+           . '<td class="total-cell">' . $n_players . '</td>'
+           . '<td class="total-cell">' . $n_ladies . '</td>'
+           . '<td class="total-cell">' . $pct_total . '</td>'
+           . '<td class="total-cell">' . $pct_ladies . '</td>'
+           . '</tr>';
     }
     echo '</table>';
 
-    // One sheet per club
-    foreach ($sheet_names as $sn) {
-        if ($sn === 'Summary') continue;
-        // Find the matching club name
-        $club_name = '';
-        foreach (array_keys($by_club) as $c) {
-            if (substr(preg_replace('/[^A-Za-z0-9 ]/', '', $c), 0, 31) === $sn) { $club_name = $c; break; }
-        }
-        if (!$club_name) {
-            // Club exists but no appearances — just show player list
-            echo '<table id="' . esc_attr($sn) . '"><tr><th colspan="4">' . esc_html($sn) . '</th></tr>';
-            echo '<tr class="hdr"><td>Player</td><td colspan="3">No appearances recorded this season</td></tr>';
-            foreach ($all_players as $pl) {
-                if (substr(preg_replace('/[^A-Za-z0-9 ]/', '', $pl->club), 0, 31) === $sn) {
-                    echo '<tr><td>' . esc_html($pl->name) . '</td><td colspan="3"></td></tr>';
-                }
+    // ════════════════════════════════════════════════════════════════════════
+    // PER-CLUB MATRIX SHEETS
+    // ════════════════════════════════════════════════════════════════════════
+    foreach ($by_club as $club => $players) {
+        $sn = nipgl_safe_sheet_name($club);
+
+        // Get match keys relevant to this club
+        $club_match_keys = array();
+        foreach ($players as $pl) {
+            foreach (array_keys($player_apps[$pl->id] ?? array()) as $mk) {
+                $club_match_keys[$mk] = true;
             }
-            echo '</table>';
-            continue;
         }
+        // Keep original chronological order, filtered to this club
+        $club_matches = array_values(array_filter($match_order, function($mk) use ($club_match_keys) {
+            return isset($club_match_keys[$mk]);
+        }));
+
+        $n_matches  = count($club_matches);
+        $fixed_cols = 7; // Name, T, A, B, MW, Starred, Female
+        $total_cols = $fixed_cols + $n_matches;
 
         echo '<table id="' . esc_attr($sn) . '">';
-        echo '<tr><th colspan="5">' . esc_html($club_name) . esc_html($label) . '</th></tr>';
-        echo '<tr class="hdr"><td>Player</td><td>Team</td><td>Match</td><td>Date</td><td>Rink</td></tr>';
-        foreach ($by_club[$club_name] as $r) {
-            echo '<tr><td>' . esc_html($r->name) . '</td><td>' . esc_html($r->team) . '</td>'
-                . '<td>' . esc_html($r->match_title) . '</td><td>' . esc_html($r->match_date) . '</td>'
-                . '<td style="text-align:center">' . intval($r->rink) . '</td></tr>';
+
+        // Row 1: Club name header spanning all columns
+        echo '<tr><td class="hdr1" colspan="' . $total_cols . '">' . esc_html($club) . esc_html($label) . '</td></tr>';
+
+        // Row 2: match dates
+        echo '<tr>'
+           . '<td class="hdr2">Player</td>'
+           . '<td class="total-hdr">T</td>'
+           . '<td class="total-hdr">A</td>'
+           . '<td class="total-hdr">B</td>'
+           . '<td class="total-hdr">MW</td>'
+           . '<td class="flag-hdr">⭐</td>'
+           . '<td class="flag-hdr">♀</td>';
+        foreach ($club_matches as $mk) {
+            echo '<td class="hdr2">' . esc_html($match_meta[$mk]['date']) . '</td>';
         }
+        echo '</tr>';
+
+        // Row 3: team playing (home/away label for this club)
+        echo '<tr>'
+           . '<td class="hdr3">Team</td>'
+           . '<td class="hdr3" colspan="4"></td>'
+           . '<td class="hdr3"></td>'
+           . '<td class="hdr3"></td>';
+        foreach ($club_matches as $mk) {
+            $m = $match_meta[$mk];
+            $club_team = nipgl_club_team_in_match($club, $m['home'], $m['away']);
+            $label_t   = nipgl_team_suffix($club_team);
+            echo '<td class="hdr3">' . esc_html($label_t) . '</td>';
+        }
+        echo '</tr>';
+
+        // Row 4: opposition
+        echo '<tr>'
+           . '<td class="hdr3">Opposition</td>'
+           . '<td class="hdr3" colspan="4"></td>'
+           . '<td class="hdr3"></td>'
+           . '<td class="hdr3"></td>';
+        foreach ($club_matches as $mk) {
+            $m   = $match_meta[$mk];
+            $opp = nipgl_club_team_in_match($club, $m['home'], $m['away']) === $m['home']
+                 ? $m['away'] : $m['home'];
+            echo '<td class="hdr3">' . esc_html($opp) . '</td>';
+        }
+        echo '</tr>';
+
+        // Row 5: venue
+        echo '<tr>'
+           . '<td class="hdr3">Venue</td>'
+           . '<td class="hdr3" colspan="4"></td>'
+           . '<td class="hdr3"></td>'
+           . '<td class="hdr3"></td>';
+        foreach ($club_matches as $mk) {
+            $m     = $match_meta[$mk];
+            $is_home = nipgl_club_matches_team($club, $m['home']);
+            $venue = $is_home ? 'Home' : 'Away';
+            echo '<td class="hdr3">' . esc_html($venue) . '</td>';
+        }
+        echo '</tr>';
+
+        // Row 6: competition
+        echo '<tr>'
+           . '<td class="hdr3">Comp</td>'
+           . '<td class="hdr3" colspan="4"></td>'
+           . '<td class="hdr3"></td>'
+           . '<td class="hdr3"></td>';
+        foreach ($club_matches as $mk) {
+            echo '<td class="hdr3">' . esc_html($match_meta[$mk]['comp'] ?? '') . '</td>';
+        }
+        echo '</tr>';
+
+        // Player rows
+        foreach ($players as $pl) {
+            $apps     = $player_apps[$pl->id] ?? array();
+            $t_total  = count($apps);
+            $t_a      = count(array_filter($apps, function($v){ return strtoupper($v)==='A'; }));
+            $t_b      = count(array_filter($apps, function($v){ return strtoupper($v)==='B'; }));
+            $t_mw     = count(array_filter($apps, function($v){ return strtoupper($v)==='MW'; }));
+            $row_cls  = $pl->starred ? ' class="starred"' : '';
+
+            echo '<tr' . $row_cls . '>'
+               . '<td class="player-name">' . esc_html($pl->name) . '</td>'
+               . '<td class="total-cell">' . ($t_total ?: '') . '</td>'
+               . '<td class="total-cell">' . ($t_a  ?: '') . '</td>'
+               . '<td class="total-cell">' . ($t_b  ?: '') . '</td>'
+               . '<td class="total-cell">' . ($t_mw ?: '') . '</td>'
+               . '<td style="text-align:center">' . ($pl->starred ? 'X' : '') . '</td>'
+               . '<td style="text-align:center">' . ($pl->female  ? 'X' : '') . '</td>';
+
+            foreach ($club_matches as $mk) {
+                $val = $apps[$mk] ?? '';
+                $cls = '';
+                switch (strtoupper($val)) {
+                    case 'A':  $cls = 'app-a';     break;
+                    case 'B':  $cls = 'app-b';     break;
+                    case 'MW': $cls = 'app-mw';    break;
+                    default:   $cls = $val ? 'app-other' : ''; break;
+                }
+                echo '<td class="app-cell ' . $cls . '">' . esc_html($val) . '</td>';
+            }
+            echo '</tr>';
+        }
+
         echo '</table>';
     }
 
     echo '</body></html>';
     exit;
+}
+
+// ── Helper: extract team suffix label (A, B, MW, C etc.) ─────────────────────
+function nipgl_team_suffix($team_name) {
+    $team_name = trim($team_name);
+    // Match trailing label: "Salisbury A" -> "A", "Salisbury MW" -> "MW", "Salisbury" -> "A"
+    if (preg_match('/\s+([A-Z]{1,3})$/', $team_name, $m)) {
+        return $m[1];
+    }
+    return 'A'; // default — single-team clubs
+}
+
+// ── Helper: which team in this match belongs to this club ────────────────────
+function nipgl_club_team_in_match($club, $home, $away) {
+    if (nipgl_club_matches_team($club, $home)) return $home;
+    if (nipgl_club_matches_team($club, $away)) return $away;
+    return $home; // fallback
+}
+
+// ── Helper: safe Excel sheet name (max 31 chars, no special chars) ────────────
+function nipgl_safe_sheet_name($name) {
+    return substr(preg_replace('/[^A-Za-z0-9 ]/', '', $name), 0, 31);
 }

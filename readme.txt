@@ -3,24 +3,57 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 5.9
+Stable tag: 5.11.1
 License: GPLv2 or later
 
-Mobile-friendly league table and fixtures widget for NIPGL, powered by Google Sheets CSV.
+Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
 
 == Description ==
 
-Renders a tabbed widget showing a league table and fixtures/results for each NIPGL division, fetched live from a published Google Sheet. Features include:
+A full league management widget for bowls clubs and leagues. Displays live league tables and fixtures fetched from a published Google Sheet, and includes an optional scorecard submission system with two-party verification and player tracking.
 
-* Mobile-responsive with sticky team column
+= League Table & Fixtures =
+
+* Mobile-responsive tabbed widget with sticky team name column
 * Club badge support via WordPress Media Library
-* Promotion and relegation zone highlighting
-* Clinched promotion/relegation shading
-* Server-side caching to speed up page loads
-* All/Results/Upcoming fixture filters
+* Promotion and relegation zone highlighting with clinched-position shading
+* All / Results / Upcoming fixture filter tabs
+* Sponsor logo display with per-division override
+* Server-side caching to minimise Google Sheets requests
+* Dark mode toggle and print view
 
-Use the shortcode on any page:
-`[nipgl_division csv="YOUR_CSV_URL" title="Division 1" promote="2" relegate="2"]`
+= Scorecard Submission =
+
+* Per-club PIN authentication — each club gets a private PIN to submit scores
+* Two-party verification — both home and away clubs must confirm before a scorecard is marked confirmed
+* Dispute resolution — admin can view side-by-side versions and accept either
+* Score entry via typed input, Excel file upload, or photo (AI-parsed via Claude)
+* Submitted scorecards visible inline when clicking a played fixture
+
+= Player Tracking =
+
+* Appearances automatically logged from confirmed scorecards
+* Grouped by club, showing which teams each player has appeared for
+* Season date range filtering
+* Merge tool for duplicate player names
+* Export to Excel — one sheet per club
+
+= Shortcodes =
+
+League table and fixtures:
+`[nipgl_division csv="URL" title="Division 1"]`
+
+All parameters:
+* `csv` — required. Published Google Sheets CSV URL
+* `title` — division name shown above the widget
+* `promote` — number of promotion places to highlight (default 0)
+* `relegate` — number of relegation places to highlight (default 0)
+* `sponsor_img` — override primary sponsor image URL for this division
+* `sponsor_url` — override primary sponsor link URL for this division
+* `sponsor_name` — override primary sponsor alt text for this division
+
+Scorecard submission form:
+`[nipgl_submit]`
 
 == Installation ==
 

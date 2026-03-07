@@ -107,6 +107,43 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
+### v5.11.1
+- Fixed: season date filter was comparing against `played_at` (log time) instead of `match_date` (actual match date), causing all players to vanish when a season range was set
+- Season filter now uses `STR_TO_DATE` to correctly parse dd/mm/yyyy match dates for comparison
+
+### v5.11.0
+- Player records now have Starred (⭐) and Female (♀) flags, editable inline in the Players admin tab
+- Auto-migration adds columns to existing installations on first load
+- Export completely rebuilt — now generates a matrix format matching the existing tracking sheet
+- Summary tab: club totals (teams, players listed, ladies, % of total, % ladies)
+- Per-club tabs: player × match matrix with date/team/opposition/venue/comp header rows, T/A/B/MW totals, Starred and Female columns, colour-coded appearance cells
+
+### v5.10.4
+- Fixed: Players menu was invisible — parent slug corrected from `nipgl-settings` to `nipgl-scorecards`
+- Players now appears as a submenu under the Scorecards top-level menu item
+
+### v5.10.4
+- Fixed: Players page not appearing in wp-admin — menu registration moved into main `nipgl_admin_menu()` to guarantee load order
+- NIPGL top-level menu now shows Scorecards and Players as submenus
+
+### v5.10.3
+- Updated plugin description in PHP header, readme.txt, and settings page to reflect all current features
+- Shortcode reference in settings page now uses a table and includes all parameters including sponsor overrides
+- Added `[nipgl_submit]` documentation alongside `[nipgl_division]` in the settings page
+
+### v5.10.2
+- Fixed: rink label in team modal scorecard now shows light background / dark text in light mode (was inheriting dark navy from scorecard.css)
+
+### v5.10.1
+- Fixed: team modal fixture rows now show inline scorecard when clicked
+- Added missing CSS for `modal-fx-row`, `modal-sc-row`, `modal-sc-inline`, `modal-sc-hint`
+- Compact scorecard layout styled for display inside the modal fixture table
+
+### v5.10.0
+- Scorecard display in fixture modal — clicking a played fixture now loads the full rink-by-rink scorecard
+- Fixed script load order — nipgl-scorecard.js now correctly loads before nipgl-widget.js on all pages with [nipgl_division]
+- Switched to semantic versioning (MAJOR.MINOR.PATCH)
+
 ### v5.9
 - Player tracking system — appearances auto-logged from confirmed/admin-resolved scorecards
 - Players grouped by club, showing which teams they've played for and appearance count

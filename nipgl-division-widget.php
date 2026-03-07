@@ -1,15 +1,15 @@
 <?php
 /**
  * Plugin Name: NIPGL Division Widget
- * Description: Renders mobile-friendly league table and fixtures from Google Sheets CSV. Use shortcode [nipgl_division csv="URL" title="Division 1"] on any page.
- * Version: 5.9
+ * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club PIN authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, and sponsor branding.
+ * Version: 5.11.1
  * Author: NIPGL
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * Primary Branch: main
  */
 
 define('NIPGL_PLUGIN_FILE', __FILE__);
-define('NIPGL_VERSION', '5.9');
+define('NIPGL_VERSION', '5.11.1');
 
 // Include scorecard feature
 require_once plugin_dir_path(__FILE__) . 'nipgl-scorecards.php';
@@ -81,7 +81,7 @@ function nipgl_plugin_info($result, $action, $args) {
         'author'        => 'NIPGL',
         'homepage'      => "https://github.com/{$github_user}/{$github_repo}",
         'sections'      => array(
-            'description' => 'Mobile-friendly league table and fixtures widget for NIPGL, powered by Google Sheets.',
+            'description' => 'Scorecard records submitted via the NIPGL scorecard submission form.',
             'changelog'   => nl2br(isset($release->body) ? esc_html($release->body) : 'See GitHub releases for changelog.'),
         ),
         'download_link' => $release->zipball_url,
@@ -159,7 +159,25 @@ function nipgl_enqueue() {
 
     wp_enqueue_style('nipgl-saira', 'https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap', array(), null);
     wp_enqueue_style('nipgl-widget', plugin_dir_url(__FILE__) . 'nipgl-widget.css', array('nipgl-saira'), NIPGL_VERSION);
-    wp_enqueue_script('nipgl-widget', plugin_dir_url(__FILE__) . 'nipgl-widget.js', array(), NIPGL_VERSION, true);
+
+    // Register scorecard script here so nipgl-widget can declare it as a dependency.
+    // This guarantees nipgl-scorecard.js loads before nipgl-widget.js on any page
+    // with [nipgl_division], even if [nipgl_submit] is on a different page.
+    if (!wp_script_is('nipgl-scorecard', 'registered')) {
+        wp_register_script('nipgl-scorecard', plugin_dir_url(__FILE__) . 'nipgl-scorecard.js', array(), NIPGL_VERSION, true);
+        wp_register_style('nipgl-scorecard',  plugin_dir_url(__FILE__) . 'nipgl-scorecard.css', array(), NIPGL_VERSION);
+    }
+    if (!wp_script_is('nipgl-scorecard', 'enqueued')) {
+        wp_enqueue_script('nipgl-scorecard');
+        wp_enqueue_style('nipgl-scorecard');
+        wp_localize_script('nipgl-scorecard', 'nipglSubmit', array(
+            'ajaxUrl'  => admin_url('admin-ajax.php'),
+            'nonce'    => wp_create_nonce('nipgl_submit_nonce'),
+            'authClub' => nipgl_get_auth_club(),
+        ));
+    }
+
+    wp_enqueue_script('nipgl-widget', plugin_dir_url(__FILE__) . 'nipgl-widget.js', array('nipgl-scorecard'), NIPGL_VERSION, true);
 
     $badges       = get_option('nipgl_badges',       array());
     $club_badges  = get_option('nipgl_club_badges',  array());
@@ -248,15 +266,33 @@ function nipgl_admin_menu() {
         'nipgl-settings',
         'nipgl_settings_page'
     );
-    // Scorecards viewer in admin
+    // Scorecards top-level menu
     add_menu_page(
         'NIPGL Scorecards',
-        'Scorecards',
+        'NIPGL',
         'manage_options',
         'nipgl-scorecards',
         'nipgl_scorecards_admin_page',
         'dashicons-clipboard',
         30
+    );
+    // Rename the auto-created first submenu item
+    add_submenu_page(
+        'nipgl-scorecards',
+        'NIPGL Scorecards',
+        'Scorecards',
+        'manage_options',
+        'nipgl-scorecards',
+        'nipgl_scorecards_admin_page'
+    );
+    // Players submenu — registered here to guarantee it appears after Scorecards
+    add_submenu_page(
+        'nipgl-scorecards',
+        'Player Tracking',
+        'Players',
+        'manage_options',
+        'nipgl-players',
+        'nipgl_players_admin_page'
     );
 }
 
@@ -592,22 +628,28 @@ function nipgl_settings_page() {
 
             <hr>
             <h2>Shortcode Usage</h2>
-            <p>Use this shortcode in a <strong>Shortcode block</strong> on any division page:</p>
-            <pre style="background:#f6f7f7;padding:12px;border:1px solid #ddd;display:inline-block">[nipgl_division csv="YOUR_CSV_URL" title="Division 1"]</pre>
-            <ul style="margin-top:10px;list-style:disc;padding-left:20px;line-height:2">
-                <li><code>csv</code> — published Google Sheets CSV URL <em>(required)</em></li>
-                <li><code>title</code> — heading displayed above the widget <em>(optional)</em></li>
-                <li><code>promote</code> — number of promotion places <em>(optional)</em></li>
-                <li><code>relegate</code> — number of relegation places <em>(optional)</em></li>
-                <li><code>sponsor_img</code> — override primary sponsor image for this division <em>(optional)</em></li>
-                <li><code>sponsor_url</code> — override primary sponsor link for this division <em>(optional)</em></li>
-                <li><code>sponsor_name</code> — override primary sponsor alt text for this division <em>(optional)</em></li>
-            </ul>
+            <h3 style="margin-bottom:4px">League table &amp; fixtures</h3>
+            <pre style="background:#f6f7f7;padding:12px;border:1px solid #ddd;display:inline-block;margin-top:0">[nipgl_division csv="YOUR_CSV_URL" title="Division 1"]</pre>
+            <table class="widefat striped" style="max-width:680px;margin-top:8px">
+                <thead><tr><th style="width:160px">Parameter</th><th>Description</th><th style="width:80px">Required</th></tr></thead>
+                <tbody>
+                <tr><td><code>csv</code></td><td>Published Google Sheets CSV URL</td><td>Yes</td></tr>
+                <tr><td><code>title</code></td><td>Heading displayed above the widget</td><td>No</td></tr>
+                <tr><td><code>promote</code></td><td>Number of promotion places to highlight (default: 0)</td><td>No</td></tr>
+                <tr><td><code>relegate</code></td><td>Number of relegation places to highlight (default: 0)</td><td>No</td></tr>
+                <tr><td><code>sponsor_img</code></td><td>Override primary sponsor image URL for this division only</td><td>No</td></tr>
+                <tr><td><code>sponsor_url</code></td><td>Override primary sponsor link URL for this division only</td><td>No</td></tr>
+                <tr><td><code>sponsor_name</code></td><td>Override primary sponsor alt text for this division only</td><td>No</td></tr>
+                </tbody>
+            </table>
+
+            <h3 style="margin-top:20px;margin-bottom:4px">Scorecard submission form</h3>
+            <pre style="background:#f6f7f7;padding:12px;border:1px solid #ddd;display:inline-block;margin-top:0">[nipgl_submit]</pre>
+            <p style="margin-top:6px;color:#555;font-size:13px">Add to any page to allow clubs to submit match scorecards. Clubs authenticate with their PIN before submitting. Both home and away clubs must confirm before a scorecard is marked as confirmed.</p>
 
             <hr>
             <h2>Score Entry</h2>
             <p>Add clubs and set a PIN for each one. Secretaries select their club and enter the PIN to submit scorecards. Leave the PIN blank when editing to keep the existing PIN.</p>
-            <p>Add the <code>[nipgl_submit]</code> shortcode to any page to create the score entry form.</p>
 
             <table class="widefat nipgl-badge-table" id="nipgl-club-table">
                 <thead><tr><th>Club Name</th><th>PIN (leave blank to keep existing)</th><th></th></tr></thead>

@@ -340,20 +340,57 @@
           else if(p===3){rowCls='drew';resultLbl='D';}
           else{rowCls='lost';resultLbl='L';}
         }
-        fixtureRows+='<tr'+(rowCls?' class="'+rowCls+'"':'')+'>'
+        var scRowId='sc-row-'+m.homeTeam.replace(/[^a-z0-9]/gi,'_')+'-'+m.awayTeam.replace(/[^a-z0-9]/gi,'_');
+        var scAttrs=m.played
+          ? ' data-home="'+m.homeTeam.replace(/"/g,'&quot;')+'" data-away="'+m.awayTeam.replace(/"/g,'&quot;')+'" data-scrowid="'+scRowId+'" title="Click to view scorecard"'
+          : '';
+        fixtureRows+='<tr class="modal-fx-row'+(rowCls?' '+rowCls:'')+'"'+scAttrs+'>'
           +'<td>'+g.date+'</td>'
           +'<td style="text-align:center;font-weight:700;color:'+(isHome?'#1a2e5a':'#c0202a')+'">'+ha+'</td>'
           +'<td>'+badgeImg(opponent)+opponent+'</td>'
           +'<td style="text-align:center">'+scoreStr+'</td>'
           +'<td style="text-align:center;font-weight:700">'+(m.played?myPts:'')+'</td>'
-          +'<td>'+(rowCls?'<span class="modal-result-lbl">'+resultLbl+'</span>':'')+'</td>'
-          +'</tr>';
+          +'<td style="text-align:center">'+(rowCls?'<span class="modal-result-lbl">'+resultLbl+'</span>':'')
+          +(m.played?' <span class="modal-sc-hint" title="View scorecard">&#x1F4CB;</span>':'')+'</td>'
+          +'</tr>'
+          +(m.played?'<tr class="modal-sc-row" id="'+scRowId+'" style="display:none"><td colspan="6"><div class="modal-sc-inline"></div></td></tr>':'');
       });
     });
 
     if(!hasRows) fixtureRows+='<tr><td colspan="6" style="text-align:center;color:#999">No fixtures found</td></tr>';
     fixtureRows+='</tbody></table>';
     openModal(titleHtml,statsHtml+fixtureRows);
+
+    // Bind scorecard click handlers on played rows in the team modal
+    if(modalEl){
+      modalEl.querySelectorAll('.modal-fx-row[data-home]').forEach(function(row){
+        row.style.cursor='pointer';
+        row.addEventListener('click', function(){
+          var scRowId = row.getAttribute('data-scrowid');
+          var scRow   = scRowId ? document.getElementById(scRowId) : null;
+          if(!scRow) return;
+          var isOpen  = scRow.style.display !== 'none';
+          // Collapse any other open scorecard rows
+          modalEl.querySelectorAll('.modal-sc-row').forEach(function(r){ r.style.display='none'; });
+          if(isOpen){ return; } // toggle off if already open
+          scRow.style.display='';
+          var container = scRow.querySelector('.modal-sc-inline');
+          if(!container) return;
+          if(container.dataset.loaded){ return; } // already fetched
+          if(typeof window.nipglFetchScorecard === 'function'){
+            window.nipglFetchScorecard(
+              row.getAttribute('data-home'),
+              row.getAttribute('data-away'),
+              '',
+              container
+            );
+            container.dataset.loaded = '1';
+          } else {
+            container.innerHTML='<p class="nipgl-sc-none">Scorecard feature not available.</p>';
+          }
+        });
+      });
+    }
   }
 
   // ── Render table ──────────────────────────────────────────────────────────────

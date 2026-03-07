@@ -295,3 +295,40 @@ body.nipgl-modal-open{overflow:hidden}
 .fx-row.played[data-home]:hover{background:var(--nipgl-bg-hover);cursor:pointer}
 .fx-row.played[data-home]::after{content:'📋';font-size:11px;position:absolute;right:8px;top:50%;transform:translateY(-50%);opacity:.4}
 .fx-row{position:relative}
+
+/* ── Team modal: clickable fixture rows + inline scorecard ───────────────────── */
+.modal-fx-row[data-home]{cursor:pointer;transition:background .15s}
+.modal-fx-row[data-home]:hover td{background:var(--nipgl-bg-hover)}
+.modal-sc-hint{font-size:11px;opacity:.5;margin-left:4px;pointer-events:none;vertical-align:middle}
+.modal-fx-row[data-home]:hover .modal-sc-hint{opacity:1}
+.modal-sc-row td{padding:0 !important;background:var(--nipgl-bg-alt) !important}
+.modal-sc-inline{padding:12px 16px;border-top:2px solid var(--nipgl-primary);border-bottom:2px solid var(--nipgl-primary)}
+
+/* Compact scorecard styling when shown inside the team modal table */
+.modal-sc-inline .nipgl-sc-full{font-size:13px}
+.modal-sc-inline .nipgl-sc-rink{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--nipgl-border)}
+.modal-sc-inline .nipgl-sc-rink:last-child{border-bottom:none}
+.modal-sc-inline .nipgl-sc-rink-hdr{font-weight:700;color:var(--nipgl-primary);background:var(--nipgl-bg-alt);min-width:44px;font-size:11px;text-transform:uppercase;padding:3px 8px;border-radius:3px}
+.modal-sc-inline .nipgl-sc-rink-body{display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap}
+.modal-sc-inline .nipgl-sc-players{font-size:12px;color:var(--nipgl-text-muted);min-width:100px;flex:1}
+.modal-sc-inline .nipgl-sc-player{line-height:1.4}
+.modal-sc-inline .nipgl-sc-scores{display:flex;align-items:center;gap:4px;font-weight:700;font-size:15px;white-space:nowrap}
+.modal-sc-inline .nipgl-sc-score.nipgl-sc-win{color:var(--nipgl-win)}
+.modal-sc-inline .nipgl-sc-sep{color:var(--nipgl-text-muted);font-weight:400}
+.modal-sc-inline .nipgl-sc-totals{margin-top:8px;padding-top:8px;border-top:2px solid var(--nipgl-border)}
+.modal-sc-inline .nipgl-sc-total-row{display:flex;gap:8px;align-items:center;font-size:13px;padding:2px 0}
+.modal-sc-inline .nipgl-sc-total-lbl{min-width:80px;color:var(--nipgl-text-muted);font-size:11px;text-transform:uppercase}
+.modal-sc-inline .nipgl-sc-total-val{font-weight:700}
+.modal-sc-inline .nipgl-sc-total-val.nipgl-sc-win{color:var(--nipgl-win)}
+.modal-sc-inline .nipgl-sc-pts{font-size:15px}
+.modal-sc-inline .nipgl-sc-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:3px;margin-bottom:8px}
+.modal-sc-inline .nipgl-sc-badge-confirmed{background:#d4edda;color:#155724}
+.modal-sc-inline .nipgl-sc-badge-pending{background:#fff3cd;color:#856404}
+.modal-sc-inline .nipgl-sc-badge-disputed{background:#f8d7da;color:#721c24}
+.modal-sc-inline .nipgl-sc-meta{font-size:11px;color:var(--nipgl-text-muted);margin-bottom:8px;display:flex;gap:12px;flex-wrap:wrap}
+.modal-sc-inline .nipgl-sc-none,.modal-sc-inline .nipgl-sc-loading{color:var(--nipgl-text-muted);font-size:13px;font-style:italic;padding:8px 0}
+
+@media(max-width:480px){
+  .modal-sc-inline .nipgl-sc-players{min-width:70px;font-size:11px}
+  .modal-sc-inline .nipgl-sc-rink-body{gap:4px}
+}

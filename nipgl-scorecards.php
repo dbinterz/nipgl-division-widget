@@ -766,13 +766,20 @@ function nipgl_enqueue_scorecard() {
     if (!has_shortcode($post->post_content, 'nipgl_submit') &&
         !has_shortcode($post->post_content, 'nipgl_division')) return;
 
-    wp_enqueue_style('nipgl-scorecard',  plugin_dir_url(__FILE__) . 'nipgl-scorecard.css', array(), NIPGL_VERSION);
-    wp_enqueue_script('nipgl-scorecard', plugin_dir_url(__FILE__) . 'nipgl-scorecard.js',  array(), NIPGL_VERSION, true);
-    wp_localize_script('nipgl-scorecard', 'nipglSubmit', array(
-        'ajaxUrl'  => admin_url('admin-ajax.php'),
-        'nonce'    => wp_create_nonce('nipgl_submit_nonce'),
-        'authClub' => nipgl_get_auth_club(),
-    ));
+    // Register if not already done by nipgl_enqueue() (widget on same page)
+    if (!wp_script_is('nipgl-scorecard', 'registered')) {
+        wp_register_script('nipgl-scorecard', plugin_dir_url(__FILE__) . 'nipgl-scorecard.js', array(), NIPGL_VERSION, true);
+        wp_register_style('nipgl-scorecard',  plugin_dir_url(__FILE__) . 'nipgl-scorecard.css', array(), NIPGL_VERSION);
+    }
+    if (!wp_script_is('nipgl-scorecard', 'enqueued')) {
+        wp_enqueue_script('nipgl-scorecard');
+        wp_enqueue_style('nipgl-scorecard');
+        wp_localize_script('nipgl-scorecard', 'nipglSubmit', array(
+            'ajaxUrl'  => admin_url('admin-ajax.php'),
+            'nonce'    => wp_create_nonce('nipgl_submit_nonce'),
+            'authClub' => nipgl_get_auth_club(),
+        ));
+    }
 }
 
 // ── DEBUG: Excel parser diagnostic (admin only, remove after testing) ─────────
