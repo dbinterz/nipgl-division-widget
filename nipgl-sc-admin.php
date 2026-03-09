@@ -106,6 +106,7 @@ function nipgl_audit_on_resolve($post_id, $version, $sub_by, $con_by) {
 // ── AJAX: save admin edit ─────────────────────────────────────────────────────
 add_action('wp_ajax_nipgl_admin_edit_scorecard', 'nipgl_ajax_admin_edit_scorecard');
 function nipgl_ajax_admin_edit_scorecard() {
+    try {
     if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
     check_ajax_referer('nipgl_admin_nonce', 'nonce');
 
@@ -163,6 +164,12 @@ function nipgl_ajax_admin_edit_scorecard() {
     // Save
     update_post_meta($post_id, 'nipgl_scorecard_data', $after);
     update_post_meta($post_id, 'nipgl_admin_edited',   current_time('mysql'));
+    // Clear division-unresolved flag if division now maps to a known sheet tab
+    $drive_opts    = get_option('nipgl_drive', array());
+    $resolved_tab  = nipgl_sheets_tab_for_division($after['division'], $drive_opts);
+    if (!empty($after['division']) && $resolved_tab) {
+        delete_post_meta($post_id, 'nipgl_division_unresolved');
+    }
 
     // Update post title if teams changed
     $new_title = $after['home_team'] . ' v ' . $after['away_team'] . ' (' . $after['date'] . ')';
@@ -174,16 +181,29 @@ function nipgl_ajax_admin_edit_scorecard() {
     // Re-log appearances (idempotent)
     nipgl_log_appearances($post_id);
 
-    // Fire action — triggers Drive upload (versioned)
-    do_action('nipgl_scorecard_admin_edited', $post_id);
+    // Fire action — triggers Drive upload (versioned) and sheets writeback
+    // Wrapped separately so a Drive/Sheets failure doesn't 500 the whole request
+    try {
+        do_action('nipgl_scorecard_admin_edited', $post_id);
+    } catch (\Throwable $e) {
+        // Log but don't fail the save
+        nipgl_audit_log($post_id, 'error', 'Post-save action failed: ' . $e->getMessage());
+    }
 
     wp_send_json_success(array('message' => 'Scorecard updated. ✅'));
+
+    } catch (\Throwable $e) {
+        wp_send_json_error('Server error: ' . $e->getMessage() . ' in ' . basename($e->getFile()) . ':' . $e->getLine());
+    }
 }
 
 // ── Admin edit form renderer ──────────────────────────────────────────────────
 function nipgl_render_admin_edit_form($post_id, $sc) {
     if (!$sc) { echo '<p>No scorecard data to edit.</p>'; return; }
-    $rinks = $sc['rinks'] ?? array();
+    $rinks           = $sc['rinks'] ?? array();
+    $div_unresolved  = get_post_meta($post_id, 'nipgl_division_unresolved', true);
+    $drive_opts      = get_option('nipgl_drive', array());
+    $known_divisions = array_map(function($e){ return $e['division']; }, $drive_opts['sheets_tabs'] ?? array());
     ?>
     <div class="nipgl-edit-form" id="nipgl-edit-<?php echo $post_id; ?>">
         <h4 style="margin:0 0 12px;color:#1a2e5a">✏️ Edit Scorecard</h4>
@@ -206,8 +226,18 @@ function nipgl_render_admin_edit_form($post_id, $sc) {
                 <input type="text" name="venue" value="<?php echo esc_attr($sc['venue'] ?? ''); ?>" class="regular-text">
             </div>
             <div class="nipgl-edit-row">
-                <label>Division</label>
-                <input type="text" name="division" value="<?php echo esc_attr($sc['division'] ?? ''); ?>" class="regular-text">
+                <label>Division
+                    <?php if ($div_unresolved): ?>
+                        <span style="font-size:11px;background:#f8d7da;color:#842029;padding:1px 6px;border-radius:3px;font-weight:600;margin-left:6px">⚠️ Unresolved — sheet writeback blocked</span>
+                    <?php endif; ?>
+                </label>
+                <input type="text" name="division" value="<?php echo esc_attr($sc['division'] ?? ''); ?>" class="regular-text"
+                    <?php if ($div_unresolved): ?>style="border-color:#dc3545"<?php endif; ?>>
+                <?php if (!empty($known_divisions)): ?>
+                    <span style="font-size:11px;color:#666;margin-top:2px">
+                        Known: <?php echo esc_html(implode(', ', $known_divisions)); ?>
+                    </span>
+                <?php endif; ?>
             </div>
             <div class="nipgl-edit-row">
                 <label>Competition</label>

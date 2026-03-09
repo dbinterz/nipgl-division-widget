@@ -1,4 +1,4 @@
-/* NIPGL Scorecard JS - v5.3 */
+/* NIPGL Scorecard JS - v5.17.0 */
 (function(){
   'use strict';
 
@@ -30,7 +30,7 @@
     var xhr = new XMLHttpRequest();
     xhr.open('POST', ajaxUrl);
     xhr.onload  = function(){ cb(JSON.parse(xhr.responseText || '{}')); };
-    xhr.onerror = function(){ cb({success:false, data:'Network error'}); };
+    xhr.onerror = function(){ cb({success:false, data:'Network error — please check your connection and try again.'}); };
     xhr.send(fd);
   }
 
@@ -284,7 +284,8 @@
   function populateForm(sc) {
     setVal('sc-division',    sc.division   || '');
     setVal('sc-venue',       sc.venue      || '');
-    setVal('sc-date',        sc.date       || '');
+    var normDate = normaliseDate(sc.date || '');
+    setVal('sc-date',        normDate || sc.date || '');
     setVal('sc-home-team',   sc.home_team  || '');
     setVal('sc-away-team',   sc.away_team  || '');
     setVal('sc-home-total',  sc.home_total  !== null ? sc.home_total  : '');
@@ -308,6 +309,328 @@
     });
     var form = qs('#nipgl-scorecard-form');
     if(form) form.scrollIntoView({behavior:'smooth', block:'start'});
+    // Validate team names against division if we have one
+    var div = (qs('#sc-division') || {}).value || '';
+    if (div) {
+      fetchDivisionTeams(div, function(teams) {
+        if (teams) validateBothTeams();
+      });
+    }
+  }
+
+  // ── Team name validation against division ─────────────────────────────────────
+  var divisionTeams    = null;
+  var divisionFixtures = null;   // array of {home, away}
+  var lastFetchedDiv   = '';
+
+  function fetchDivisionTeams(division, cb) {
+    if (!division) { divisionTeams = null; divisionFixtures = null; lastFetchedDiv = ''; cb(null); return; }
+    if (division === lastFetchedDiv && divisionTeams !== null) { cb(divisionTeams); return; }
+    var fd = new FormData();
+    fd.append('action',   'nipgl_get_division_teams');
+    fd.append('nonce',    nonce);
+    fd.append('division', division);
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', ajaxUrl);
+    xhr.onload = function() {
+      var res = JSON.parse(xhr.responseText || '{}');
+      if (res.success && res.data.teams && res.data.teams.length) {
+        divisionTeams    = res.data.teams;
+        divisionFixtures = res.data.fixtures || [];
+        lastFetchedDiv   = division;
+        cb(divisionTeams);
+      } else {
+        divisionTeams    = null;
+        divisionFixtures = null;
+        lastFetchedDiv   = division;
+        cb(null);
+      }
+    };
+    xhr.onerror = function() { cb(null); };
+    xhr.send(fd);
+  }
+
+  /**
+   * Find the best matching fixture for a home+away pair.
+   * Does exact match first, then prefix match (e.g. "Belmont" matches "Belmont A").
+   *
+   * Returns an object:
+   *   { status: 'found' | 'found_corrected' | 'reversed' | 'reversed_corrected' | 'not_found',
+   *     canonical: { home, away } }  — canonical names from the fixture list
+   */
+  function checkFixture(home, away) {
+    if (!divisionFixtures || !home || !away) return { status: 'unknown', canonical: null };
+    var h = home.trim().toUpperCase();
+    var a = away.trim().toUpperCase();
+
+    // Helper: does a typed value match a fixture team name (exact or prefix)?
+    function teamMatches(typed, fixture) {
+      var f = fixture.trim().toUpperCase();
+      if (f === typed) return true;
+      // fixture starts with typed and next char is a space (e.g. "BELMONT A" starts with "BELMONT ")
+      return f.indexOf(typed) === 0 && (f.length === typed.length || f[typed.length] === ' ');
+    }
+
+    for (var i = 0; i < divisionFixtures.length; i++) {
+      var fx = divisionFixtures[i];
+      var fh = fx.home.trim().toUpperCase();
+      var fa = fx.away.trim().toUpperCase();
+
+      if (fh === h && fa === a) {
+        return { status: 'found', canonical: { home: fx.home, away: fx.away } };
+      }
+    }
+    // Exact reversed
+    for (var i = 0; i < divisionFixtures.length; i++) {
+      var fx = divisionFixtures[i];
+      var fh = fx.home.trim().toUpperCase();
+      var fa = fx.away.trim().toUpperCase();
+      if (fh === a && fa === h) {
+        return { status: 'reversed', canonical: { home: fx.home, away: fx.away } };
+      }
+    }
+    // Prefix match (e.g. "Belmont" → "Belmont A")
+    for (var i = 0; i < divisionFixtures.length; i++) {
+      var fx = divisionFixtures[i];
+      var fh = fx.home.trim().toUpperCase();
+      var fa = fx.away.trim().toUpperCase();
+      if (teamMatches(h, fx.home) && teamMatches(a, fx.away)) {
+        var corrected = (fh !== h || fa !== a);
+        return { status: corrected ? 'found_corrected' : 'found', canonical: { home: fx.home, away: fx.away } };
+      }
+    }
+    // Prefix match reversed
+    for (var i = 0; i < divisionFixtures.length; i++) {
+      var fx = divisionFixtures[i];
+      if (teamMatches(a, fx.home) && teamMatches(h, fx.away)) {
+        return { status: 'reversed_corrected', canonical: { home: fx.home, away: fx.away } };
+      }
+    }
+    return { status: 'not_found', canonical: null };
+  }
+
+  /**
+   * Match a typed value against the known team list.
+   * Returns: { exact: bool, matches: [teamName, ...] }
+   * - exact: true if value matches one team name exactly (case-insensitive)
+   * - matches: all team names that start with the typed value (club-prefix match)
+   */
+  function matchTeams(value, teams) {
+    if (!teams || !value) return { exact: false, matches: [] };
+    var v = value.trim().toUpperCase();
+    var exact = false;
+    var matches = [];
+    teams.forEach(function(t) {
+      var tu = t.trim().toUpperCase();
+      if (tu === v) { exact = true; matches = [t]; return; }
+    });
+    if (exact) return { exact: true, matches: matches };
+    // Partial / club-prefix matches
+    teams.forEach(function(t) {
+      var tu = t.trim().toUpperCase();
+      if (tu.indexOf(v) === 0 && (tu.length === v.length || tu[v.length] === ' ')) {
+        matches.push(t);
+      }
+    });
+    return { exact: false, matches: matches };
+  }
+
+  /**
+   * Show team validation hint below an input.
+   * fieldId: 'sc-home-team' or 'sc-away-team'
+   * otherFieldId: the opposite field (used to exclude already-selected team when only 1 team per club)
+   */
+  function validateTeamField(fieldId, otherFieldId) {
+    var input     = qs('#' + fieldId);
+    var hintId    = fieldId + '-hint';
+    var existing  = qs('#' + hintId);
+    if (existing) existing.parentNode.removeChild(existing);
+    if (!input || !divisionTeams) return;
+
+    var value = input.value.trim();
+    if (!value) return;
+
+    var result = matchTeams(value, divisionTeams);
+
+    if (result.exact) {
+      // Exact match — show a quiet confirmation tick and clear any border
+      input.style.borderColor = '';
+      var hint = document.createElement('div');
+      hint.id = hintId;
+      hint.style.cssText = 'font-size:11px;color:#2a7a2a;margin-top:2px';
+      hint.textContent = '✓ Matched in division';
+      input.parentNode.insertBefore(hint, input.nextSibling);
+      return;
+    }
+
+    // Exclude the team already chosen in the other field
+    var otherVal = (qs('#' + otherFieldId) || {}).value || '';
+    var filtered = result.matches.filter(function(t) {
+      return t.trim().toUpperCase() !== otherVal.trim().toUpperCase();
+    });
+
+    if (filtered.length === 0 && result.matches.length === 0) {
+      // No match at all
+      input.style.borderColor = '#dc3545';
+      var hint = document.createElement('div');
+      hint.id = hintId;
+      hint.style.cssText = 'font-size:11px;color:#c0202a;margin-top:2px';
+      hint.textContent = '⚠ "' + value + '" not found in this division — check the team name.';
+      input.parentNode.insertBefore(hint, input.nextSibling);
+      return;
+    }
+
+    var candidates = filtered.length > 0 ? filtered : result.matches;
+
+    if (candidates.length === 1) {
+      // One candidate — prompt to confirm or auto-fill if it's clearly a club-only entry
+      input.style.borderColor = '#856404';
+      var hint = document.createElement('div');
+      hint.id = hintId;
+      hint.style.cssText = 'font-size:12px;color:#7a5a00;background:#fff8e0;border:1px solid #e8d080;border-radius:4px;padding:5px 8px;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      hint.innerHTML = 'Did you mean <strong>' + escHtml(candidates[0]) + '</strong>?'
+        + ' <button type="button" style="font-size:11px;padding:1px 8px;cursor:pointer" class="button button-small nipgl-team-confirm" data-field="' + fieldId + '" data-team="' + escHtml(candidates[0]) + '">Use this</button>'
+        + ' <span style="font-size:11px;color:#999">or edit the field above</span>';
+      input.parentNode.insertBefore(hint, input.nextSibling);
+    } else {
+      // Multiple candidates (e.g. club has two teams in division) — show a select
+      input.style.borderColor = '#856404';
+      var hint = document.createElement('div');
+      hint.id = hintId;
+      hint.style.cssText = 'font-size:12px;color:#7a5a00;background:#fff8e0;border:1px solid #e8d080;border-radius:4px;padding:5px 8px;margin-top:3px';
+      var opts = candidates.map(function(t) {
+        return '<option value="' + escHtml(t) + '">' + escHtml(t) + '</option>';
+      }).join('');
+      hint.innerHTML = 'Multiple teams found — please select:'
+        + ' <select class="nipgl-team-select" data-field="' + fieldId + '" style="font-size:12px;margin-left:4px">'
+        + '<option value="">— choose —</option>' + opts + '</select>';
+      input.parentNode.insertBefore(hint, input.nextSibling);
+    }
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Delegate clicks on "Use this" buttons and changes on team selects
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('nipgl-team-confirm')) {
+      var fieldId = e.target.getAttribute('data-field');
+      var team    = e.target.getAttribute('data-team');
+      var input   = qs('#' + fieldId);
+      if (input) { input.value = team; }
+      validateTeamField(fieldId, fieldId === 'sc-home-team' ? 'sc-away-team' : 'sc-home-team');
+      validateFixturePairing();
+    }
+  });
+  document.addEventListener('change', function(e) {
+    if (e.target && e.target.classList.contains('nipgl-team-select')) {
+      var fieldId = e.target.getAttribute('data-field');
+      var team    = e.target.value;
+      if (!team) return;
+      var input   = qs('#' + fieldId);
+      if (input) { input.value = team; }
+      validateTeamField(fieldId, fieldId === 'sc-home-team' ? 'sc-away-team' : 'sc-home-team');
+      validateFixturePairing();
+    }
+  });
+
+  function validateBothTeams() {
+    validateTeamField('sc-home-team', 'sc-away-team');
+    validateTeamField('sc-away-team', 'sc-home-team');
+    validateFixturePairing();
+  }
+
+  function validateFixturePairing() {
+    var pairingHintId = 'sc-fixture-pairing-hint';
+    var existing = qs('#' + pairingHintId);
+    if (existing) existing.parentNode.removeChild(existing);
+
+    if (!divisionFixtures || !divisionFixtures.length) return;
+
+    var homeVal = (qs('#sc-home-team') || {}).value || '';
+    var awayVal = (qs('#sc-away-team') || {}).value || '';
+    if (!homeVal || !awayVal) return;
+
+    // Skip if either field still has an unresolved multi-candidate prompt
+    var homeHint = qs('#sc-home-team-hint');
+    var awayHint = qs('#sc-away-team-hint');
+    if ((homeHint && homeHint.querySelector('.nipgl-team-select')) ||
+        (awayHint && awayHint.querySelector('.nipgl-team-select'))) return;
+
+    var match = checkFixture(homeVal, awayVal);
+
+    if (match.status === 'found') return; // exact match, all good
+
+    var hint = document.createElement('div');
+    hint.id = pairingHintId;
+
+    if (match.status === 'found_corrected') {
+      // Right pairing, wrong suffix — offer to correct both names
+      hint.style.cssText = 'font-size:12px;color:#7a5a00;background:#fff8e0;border:1px solid #e8d080;border-radius:4px;padding:6px 10px;margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      hint.innerHTML = '⚠ Did you mean <strong>' + escHtml(match.canonical.home) + '</strong> v <strong>' + escHtml(match.canonical.away) + '</strong>?'
+        + ' <button type="button" class="button button-small nipgl-apply-fixture"'
+        + '  data-home="' + escHtml(match.canonical.home) + '" data-away="' + escHtml(match.canonical.away) + '">'
+        + 'Correct both names</button>';
+
+    } else if (match.status === 'reversed') {
+      // Home and away swapped, names exact
+      hint.style.cssText = 'font-size:12px;color:#7a5a00;background:#fff8e0;border:1px solid #e8d080;border-radius:4px;padding:6px 10px;margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      hint.innerHTML = '⚠ This fixture is listed as <strong>' + escHtml(match.canonical.home) + '</strong> (home) v <strong>' + escHtml(match.canonical.away) + '</strong> (away) in the schedule.'
+        + ' <button type="button" class="button button-small nipgl-apply-fixture"'
+        + '  data-home="' + escHtml(match.canonical.home) + '" data-away="' + escHtml(match.canonical.away) + '">'
+        + 'Swap home/away</button>';
+
+    } else if (match.status === 'reversed_corrected') {
+      // Both swapped AND names need correcting
+      hint.style.cssText = 'font-size:12px;color:#7a5a00;background:#fff8e0;border:1px solid #e8d080;border-radius:4px;padding:6px 10px;margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      hint.innerHTML = '⚠ Did you mean <strong>' + escHtml(match.canonical.home) + '</strong> (home) v <strong>' + escHtml(match.canonical.away) + '</strong> (away)?'
+        + ' <button type="button" class="button button-small nipgl-apply-fixture"'
+        + '  data-home="' + escHtml(match.canonical.home) + '" data-away="' + escHtml(match.canonical.away) + '">'
+        + 'Correct &amp; swap</button>';
+
+    } else {
+      // not_found
+      hint.style.cssText = 'font-size:12px;color:#c0202a;background:#fff0f0;border:1px solid #f5b2b2;border-radius:4px;padding:6px 10px;margin-top:6px';
+      hint.textContent = '✗ No fixture found for ' + homeVal + ' v ' + awayVal + ' in this division — please check the team names.';
+    }
+
+    var awayFormRow = (qs('#sc-away-team') && qs('#sc-away-team').closest('.nipgl-form-row-2')) || (qs('#sc-away-team') && qs('#sc-away-team').parentNode);
+    if (awayFormRow) awayFormRow.parentNode.insertBefore(hint, awayFormRow.nextSibling);
+  }
+
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('nipgl-apply-fixture')) {
+      var homeInput = qs('#sc-home-team');
+      var awayInput = qs('#sc-away-team');
+      if (homeInput) homeInput.value = e.target.getAttribute('data-home');
+      if (awayInput) awayInput.value = e.target.getAttribute('data-away');
+      validateBothTeams();
+    }
+  });
+
+  // Wire up blur events on team fields
+  var homeTeamInput = qs('#sc-home-team');
+  var awayTeamInput = qs('#sc-away-team');
+  if (homeTeamInput) homeTeamInput.addEventListener('blur', function() {
+    validateTeamField('sc-home-team', 'sc-away-team');
+    validateFixturePairing();
+  });
+  if (awayTeamInput) awayTeamInput.addEventListener('blur', function() {
+    validateTeamField('sc-away-team', 'sc-home-team');
+    validateFixturePairing();
+  });
+
+  // Wire up division field — fetch teams when division changes
+  var divisionInput = qs('#sc-division');
+  if (divisionInput) {
+    divisionInput.addEventListener('blur', function() {
+      var div = divisionInput.value.trim();
+      if (!div) return;
+      fetchDivisionTeams(div, function(teams) {
+        if (teams) validateBothTeams();
+      });
+    });
   }
 
   // ── Collect form ──────────────────────────────────────────────────────────────
@@ -343,6 +666,68 @@
   }
   function pn(v){ if(v===''||v==null) return null; var n=parseFloat(v); return isNaN(n)?null:n; }
 
+  // ── Date normalisation ────────────────────────────────────────────────────────
+  /**
+   * Try to parse a freeform date string and return dd/mm/yyyy.
+   * Handles: dd/mm/yyyy, dd-mm-yyyy, dd/mm/yy, d/m/yyyy,
+   *          "10th May 2025", "10 May 2025", "10 May", "Sat 10-May-2025" etc.
+   * Returns null if it can't be parsed confidently.
+   */
+  function normaliseDate(raw) {
+    if (!raw) return null;
+    var s = raw.trim();
+
+    // Already dd/mm/yyyy or d/m/yyyy
+    var m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+    if (m) {
+      var d = parseInt(m[1], 10), mo = parseInt(m[2], 10), y = parseInt(m[3], 10);
+      if (y < 100) y += 2000;
+      if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12)
+        return pad2(d) + '/' + pad2(mo) + '/' + y;
+    }
+
+    var months = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+
+    // "Sat 10-May-2025" or "Sat 10 May 2025" (from sheet format)
+    m = s.match(/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2})[\-\s]([A-Za-z]{3,})[\-\s](\d{4})$/i);
+    if (m) {
+      var mo = months[m[2].toLowerCase().slice(0,3)];
+      if (mo) return pad2(parseInt(m[1],10)) + '/' + pad2(mo) + '/' + m[3];
+    }
+
+    // "10th May 2025", "10 May 2025", "10th May", "10 May"
+    m = s.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,})(?:\s+(\d{4}))?$/i);
+    if (m) {
+      var mo = months[m[2].toLowerCase().slice(0,3)];
+      var y  = m[3] ? parseInt(m[3], 10) : new Date().getFullYear();
+      if (mo) return pad2(parseInt(m[1],10)) + '/' + pad2(mo) + '/' + y;
+    }
+
+    // "May 10 2025" / "May 10th 2025"
+    m = s.match(/^([A-Za-z]{3,})\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(\d{4}))?$/i);
+    if (m) {
+      var mo = months[m[1].toLowerCase().slice(0,3)];
+      var y  = m[3] ? parseInt(m[3], 10) : new Date().getFullYear();
+      if (mo) return pad2(parseInt(m[2],10)) + '/' + pad2(mo) + '/' + y;
+    }
+
+    return null;
+  }
+
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+  // Normalise date field on blur
+  var dateInput = qs('#sc-date');
+  if (dateInput) {
+    dateInput.addEventListener('blur', function() {
+      var normalised = normaliseDate(dateInput.value);
+      if (normalised && normalised !== dateInput.value) {
+        dateInput.value = normalised;
+        dateInput.style.borderColor = '#b2dfb2';
+      }
+    });
+  }
+
   // ── Save scorecard ────────────────────────────────────────────────────────────
   var saveBtn    = qs('#nipgl-save-scorecard');
   var saveStatus = qs('#nipgl-save-status');
@@ -354,17 +739,70 @@
       if (!sc.home_team || !sc.away_team) {
         showStatus(saveStatus, '❌ Please enter both home and away team names', 'error'); return;
       }
+
+      // If we have division teams loaded, validate names and fixture pairing now
+      if (divisionTeams) {
+        var homeResult = matchTeams(sc.home_team, divisionTeams);
+        var awayResult = matchTeams(sc.away_team, divisionTeams);
+
+        if (!homeResult.exact) {
+          // Run the visual validation so the user sees the hints
+          validateBothTeams();
+          var msg = homeResult.matches.length
+            ? '❌ "' + sc.home_team + '" is not an exact team name — please confirm the correct team from the suggestion below.'
+            : '❌ "' + sc.home_team + '" was not found in this division. Please check the home team name.';
+          showStatus(saveStatus, msg, 'error'); return;
+        }
+        if (!awayResult.exact) {
+          validateBothTeams();
+          var msg = awayResult.matches.length
+            ? '❌ "' + sc.away_team + '" is not an exact team name — please confirm the correct team from the suggestion below.'
+            : '❌ "' + sc.away_team + '" was not found in this division. Please check the away team name.';
+          showStatus(saveStatus, msg, 'error'); return;
+        }
+
+        // Both names are exact — check the fixture pairing
+        if (divisionFixtures && divisionFixtures.length) {
+          var match = checkFixture(sc.home_team, sc.away_team);
+          if (match.status === 'not_found') {
+            validateFixturePairing();
+            showStatus(saveStatus, '❌ No fixture found for ' + sc.home_team + ' v ' + sc.away_team + ' in this division. Please check the team names.', 'error'); return;
+          }
+          if (match.status === 'found_corrected' || match.status === 'reversed' || match.status === 'reversed_corrected') {
+            validateFixturePairing();
+            showStatus(saveStatus, '❌ Please apply the suggested team name correction shown below before submitting.', 'error'); return;
+          }
+        }
+      }
       setLoading(saveBtn, 'Save Scorecard', true);
       showStatus(saveStatus, 'Saving…', 'info');
       post('nipgl_save_scorecard', {scorecard: JSON.stringify(sc)}, function(res){
         setLoading(saveBtn, 'Save Scorecard', false);
         if (res.success) {
           var type = res.data.status === 'confirmed' ? 'ok' : res.data.status === 'disputed' ? 'error' : 'ok';
-          showStatus(saveStatus, res.data.message, type);
+          var msg  = res.data.message;
+          if (res.data.division_unresolved) {
+            msg += ' ⚠️ Note: the division name wasn\'t recognised — the league admin will need to correct it before the result is written to the sheet.';
+            type = 'warn';
+          }
+          showStatus(saveStatus, msg, type);
         } else {
-          showStatus(saveStatus, '❌ ' + (res.data || 'Save failed'), 'error');
+          var errMsg = res.data || '';
+          if (!errMsg || errMsg === 'Save failed') {
+            errMsg = 'The scorecard could not be saved. Please check your connection and try again.';
+          } else if (errMsg === 'Not authorised') {
+            errMsg = 'Your session has expired. Please log out and log back in.';
+          }
+          showStatus(saveStatus, '❌ ' + errMsg, 'error');
         }
       });
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('error', function(){
+      setLoading(saveBtn, 'Save Scorecard', false);
+      showStatus(saveStatus, '❌ Network error — please check your connection and try again.', 'error');
     });
   }
 

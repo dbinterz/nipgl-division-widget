@@ -153,3 +153,8 @@
 .nipgl-sc-badge-pending  {background:#fff8e0;color:#7a5a00;border:1px solid #e8d080}
 .nipgl-sc-badge-confirmed{background:#e8f5e9;color:#2a7a2a;border:1px solid #b2dfb2}
 .nipgl-sc-badge-disputed {background:#fff0f0;color:#c0202a;border:1px solid #f5b2b2}
+
+/* ── Team name validation hints ──────────────────────────────────────────────── */
+.nipgl-form-row input.team-valid   { border-color: #b2dfb2; }
+.nipgl-form-row input.team-warn    { border-color: #e8d080; }
+.nipgl-form-row input.team-invalid { border-color: #f5b2b2; }

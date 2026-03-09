@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 5.13.6
+Stable tag: 5.17.0
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -63,6 +63,33 @@ Scorecard submission form:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 5.17.0 =
+* Scorecard lookup now falls back to normalised team name matching when exact slug key doesn't match — fixes "No scorecard submitted yet" when CSV team name differs from submitted name (e.g. "U. Transport A" vs "Ulster Transport A")
+
+= 5.16.0 =
+* Fixed JS syntax error (missing closing brace) that broke tab switching and scorecard submission
+* Team name validation now runs actively on submit — blocks club-name-only entries even without blurring fields
+* Date field normalises freeform dates (e.g. "10th May 2025") to dd/mm/yyyy on blur and after AI parse
+* AI photo parse prompt updated to request dd/mm/yyyy directly
+* Fixed missing nipgl_safe_filename() function causing Drive upload fatal after admin edit
+* Drive folders now use full team name (e.g. "Dunbarton A") not stripped club prefix
+* Drive API errors now surfaced in Drive log rather than silently failing
+* Added OAuth 2.0 support for Drive uploads — works with personal Gmail accounts
+* Service account JWT retained as fallback for Sheets writeback
+* Admin edit handler wrapped in try/catch — Drive/Sheets errors no longer return HTTP 500
+* Fixed variable name collision in nipgl_ajax_get_division_teams
+
+= 5.15.0 =
+* Scorecard submission now allowed even when division name is unrecognised — admin can correct via wp-admin
+* Admin scorecards list shows ⚠ Unresolved badge on affected scorecards
+* Admin edit form highlights division field in red with known divisions listed when unresolved
+* Clearing division to a valid value automatically retries Google Sheets writeback
+* Meaningful save error messages — JSON parse detail, session expiry, network errors surfaced clearly
+* Division → CSV URL mapping added to sheet tab settings (used for team name validation)
+* Team name validation on scorecard form — checks each field against division team list from CSV
+* Fixture pairing validation — detects unknown pairings, home/away swaps, and missing suffixes (e.g. "Belmont" → "Belmont A")
+* Single-click correction offered for all fixable name issues
 
 = 5.2 =
 * Fixed photo parsing — model name corrected to claude-sonnet-4-5

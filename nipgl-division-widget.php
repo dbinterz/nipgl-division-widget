@@ -2,20 +2,21 @@
 /**
  * Plugin Name: NIPGL Division Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club PIN authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, and sponsor branding.
- * Version: 5.13.6
+ * Version: 5.17.0
  * Author: NIPGL
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * Primary Branch: main
  */
 
 define('NIPGL_PLUGIN_FILE', __FILE__);
-define('NIPGL_VERSION', '5.13.6');
+define('NIPGL_VERSION', '5.17.0');
 
 // Include scorecard feature
 require_once plugin_dir_path(__FILE__) . 'nipgl-scorecards.php';
 require_once plugin_dir_path(__FILE__) . 'nipgl-players.php';
 require_once plugin_dir_path(__FILE__) . 'nipgl-sc-admin.php';
 require_once plugin_dir_path(__FILE__) . 'nipgl-drive.php';
+require_once plugin_dir_path(__FILE__) . 'nipgl-sheets.php';
 
 // ── Auto-updater (checks GitHub releases) ────────────────────────────────────
 add_filter('pre_set_site_transient_update_plugins', 'nipgl_check_for_update');
@@ -345,6 +346,7 @@ function nipgl_scorecards_admin_page() {
     .nipgl-audit-changes{margin:4px 0 0 18px;padding:0;color:#666}
     .nipgl-audit-changes li{margin-bottom:2px}
     .nipgl-sc-amended{font-size:10px;background:#fff3cd;color:#856404;padding:1px 5px;border-radius:3px;margin-left:6px;vertical-align:middle}
+    .nipgl-sc-div-warn{font-size:10px;background:#f8d7da;color:#842029;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle;font-weight:600}
     </style>
     <script>
     function nipglResolve(postId, version, nonce){
@@ -415,7 +417,13 @@ function nipgl_scorecards_admin_page() {
                 btn.disabled = true;
                 btn.textContent = 'Saving…';
                 fetch(ajaxurl,{method:'POST',body:data,credentials:'same-origin'})
-                    .then(function(r){return r.json();})
+                    .then(function(r){
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        return r.text().then(function(txt){
+                            try { return JSON.parse(txt); }
+                            catch(e) { throw new Error('Bad JSON: ' + txt.slice(0,300)); }
+                        });
+                    })
                     .then(function(res){
                         btn.disabled = false;
                         btn.textContent = '💾 Save Changes';
@@ -423,10 +431,20 @@ function nipgl_scorecards_admin_page() {
                             msgEl.style.display = '';
                             msgEl.className = 'nipgl-edit-msg ' + (res.success ? 'success' : 'error');
                             msgEl.textContent = res.success ? (res.data.message||'Saved.') : ('Error: '+(res.data||'unknown'));
-                            setTimeout(function(){ location.reload(); }, 1800);
+                            if (res.success) setTimeout(function(){ location.reload(); }, 1800);
                         }
                     })
-                    .catch(function(){ btn.disabled=false; btn.textContent='💾 Save Changes'; alert('Request failed'); });
+                    .catch(function(err){
+                        btn.disabled = false;
+                        btn.textContent = '💾 Save Changes';
+                        if (msgEl) {
+                            msgEl.style.display = '';
+                            msgEl.className = 'nipgl-edit-msg error';
+                            msgEl.textContent = 'Request failed: ' + err.message;
+                        } else {
+                            alert('Request failed: ' + err.message);
+                        }
+                    });
             });
         });
     });
@@ -449,6 +467,7 @@ function nipgl_scorecards_admin_page() {
         $sub_by   = get_post_meta($p->ID, 'nipgl_submitted_by',    true);
         $con_by   = get_post_meta($p->ID, 'nipgl_confirmed_by',    true);
         $away_sc  = get_post_meta($p->ID, 'nipgl_away_scorecard',  true);
+        $div_unresolved = get_post_meta($p->ID, 'nipgl_division_unresolved', true);
         $result   = ($sc && isset($sc['home_total']))
             ? $sc['home_total'].' ('.$sc['home_points'].'pts) – '.$sc['away_total'].' ('.$sc['away_points'].'pts)'
             : '—';
@@ -461,7 +480,12 @@ function nipgl_scorecards_admin_page() {
                 <span class="nipgl-sc-amended" title="Amended by admin">Amended</span>
             <?php endif; ?>
         </td>
-        <td><?php echo esc_html($sc['division'] ?? '—'); ?></td>
+        <td>
+            <?php echo esc_html($sc['division'] ?? '—'); ?>
+            <?php if ($div_unresolved): ?>
+                <span class="nipgl-sc-div-warn" title="Division not matched to a sheet tab — sheet writeback will be skipped until corrected">⚠️ Unresolved</span>
+            <?php endif; ?>
+        </td>
         <td><?php echo esc_html($result); ?></td>
         <td><span class="nipgl-sc-status <?php echo esc_attr($status); ?>"><?php echo $status_labels[$status] ?? $status; ?></span></td>
         <td><?php echo get_the_date('d M Y H:i', $p); ?><br><small>by <?php echo esc_html($sub_by ?: '—'); ?></small></td>
@@ -518,6 +542,7 @@ function nipgl_scorecards_admin_page() {
             <?php nipgl_render_audit_log($p->ID); ?>
             <h4 style="margin:14px 0 6px;color:#1a2e5a">☁️ Google Drive Log</h4>
             <?php nipgl_render_drive_log($p->ID); ?>
+            <?php nipgl_render_sheets_log($p->ID); ?>
         </div>
 
         </div>
@@ -620,6 +645,7 @@ function nipgl_save_settings() {
 
     // Drive settings
     nipgl_drive_save_settings();
+    nipgl_sheets_save_settings();
 
     wp_redirect(admin_url('options-general.php?page=nipgl-settings&saved=1'));
     exit;
@@ -805,6 +831,7 @@ function nipgl_settings_page() {
             </table>
 
             <?php nipgl_drive_settings_section(); ?>
+            <?php nipgl_sheets_settings_html(); ?>
 
             <?php submit_button('Save Settings'); ?>
         </form>

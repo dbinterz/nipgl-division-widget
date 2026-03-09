@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Scorecard Feature - v5.3
+ * NIPGL Scorecard Feature - v5.17.0
  * Per-club PIN auth, two-party submission, confirm/amend/dispute flow.
  */
 
@@ -55,8 +55,8 @@ function nipgl_club_involved($club, $home_team, $away_team) {
 
 // ── Scorecard lookup ──────────────────────────────────────────────────────────
 function nipgl_get_scorecard($home, $away, $date = '') {
-    // Key is home+away only — date formats differ between CSV and form input
-    $key = sanitize_title($home . '-' . $away);
+    // Primary: match by sanitized key (home+away slug)
+    $key   = sanitize_title($home . '-' . $away);
     $posts = get_posts(array(
         'post_type'      => 'nipgl_scorecard',
         'posts_per_page' => 1,
@@ -64,7 +64,42 @@ function nipgl_get_scorecard($home, $away, $date = '') {
         'meta_key'       => 'nipgl_match_key',
         'meta_value'     => $key,
     ));
-    return !empty($posts) ? $posts[0] : null;
+    if (!empty($posts)) return $posts[0];
+
+    // Fallback: scan recent scorecards and match on normalised team names
+    // Handles cases where submitted name differs from CSV name (e.g. "Ulster Transport A" vs "U. Transport A")
+    $all = get_posts(array(
+        'post_type'      => 'nipgl_scorecard',
+        'posts_per_page' => 50,
+        'post_status'    => 'publish',
+        'orderby'        => 'date',
+        'order'          => 'DESC',
+    ));
+    $home_norm = nipgl_normalise_team($home);
+    $away_norm = nipgl_normalise_team($away);
+    foreach ($all as $p) {
+        $sc = get_post_meta($p->ID, 'nipgl_scorecard_data', true);
+        if (!$sc) continue;
+        if (nipgl_normalise_team($sc['home_team'] ?? '') === $home_norm &&
+            nipgl_normalise_team($sc['away_team'] ?? '') === $away_norm) {
+            return $p;
+        }
+    }
+    return null;
+}
+
+/**
+ * Normalise a team name for fuzzy matching:
+ * lowercased, punctuation removed, whitespace collapsed.
+ * "U. Transport A" → "u transport a"
+ * "Ulster Transport A" → "ulster transport a"
+ * These won't match each other, but "U. Transport A" stored == "U. Transport A" from CSV will.
+ */
+function nipgl_normalise_team($name) {
+    $name = strtolower(trim($name));
+    $name = preg_replace('/[^a-z0-9\s]/', '', $name); // strip punctuation inc dots
+    $name = preg_replace('/\s+/', ' ', $name);
+    return $name;
 }
 
 function nipgl_get_scorecard_data($post_id) {
@@ -208,7 +243,7 @@ function nipgl_ajax_parse_photo() {
 {
   "division": "string",
   "venue": "string",
-  "date": "string (as written)",
+  "date": "string in dd/mm/yyyy format",
   "home_team": "string",
   "away_team": "string",
   "rinks": [
@@ -485,9 +520,14 @@ function nipgl_ajax_save_scorecard() {
     check_ajax_referer('nipgl_submit_nonce', 'nonce');
     if (!nipgl_pin_verified()) wp_send_json_error('Not authorised');
 
-    $club = nipgl_get_auth_club();
-    $raw  = json_decode(stripslashes($_POST['scorecard'] ?? ''), true);
-    if (!$raw) wp_send_json_error('Invalid data');
+    $club        = nipgl_get_auth_club();
+    $raw_string  = stripslashes($_POST['scorecard'] ?? '');
+    $raw         = json_decode($raw_string, true);
+    if (!$raw) {
+        $json_err = json_last_error_msg();
+        $preview  = $raw_string === '' ? '(empty)' : '"' . mb_substr($raw_string, 0, 120) . (mb_strlen($raw_string) > 120 ? '\u2026' : '') . '"';
+        wp_send_json_error('Invalid scorecard data \u2014 could not parse submission (' . $json_err . '). Received: ' . $preview);
+    }
 
     $sc = array(
         'division'    => sanitize_text_field($raw['division']    ?? ''),
@@ -559,19 +599,30 @@ function nipgl_ajax_save_scorecard() {
             'post_title'  => $title,
             'post_status' => 'publish',
         ));
-        if (is_wp_error($post_id)) wp_send_json_error('Failed to save: ' . $post_id->get_error_message());
+        if (is_wp_error($post_id)) wp_send_json_error('The scorecard could not be saved to the database: ' . $post_id->get_error_message() . '. Please try again or contact the league administrator.');
         update_post_meta($post_id, 'nipgl_match_key',     $match_key);
         update_post_meta($post_id, 'nipgl_scorecard_data',$sc);
         update_post_meta($post_id, 'nipgl_sc_status',     'pending');
         update_post_meta($post_id, 'nipgl_submitted_by',  $club);
         nipgl_audit_log($post_id, 'submitted', 'Submitted by ' . $club);
+        // Flag if division is missing or doesn't map to a known sheet tab
+        $drive_opts = get_option('nipgl_drive', array());
+        $resolved_tab = nipgl_sheets_tab_for_division($sc['division'], $drive_opts);
+        if (empty($sc['division']) || !$resolved_tab) {
+            update_post_meta($post_id, 'nipgl_division_unresolved', 1);
+        }
         // Attach photo if one was parsed this session
         $photo_path = get_transient('nipgl_photo_' . $club);
         if ($photo_path) {
             update_post_meta($post_id, 'nipgl_photo_path', $photo_path);
             delete_transient('nipgl_photo_' . $club);
         }
-        wp_send_json_success(array('message' => 'Scorecard submitted. The other club will be notified to confirm.', 'status' => 'pending', 'id' => $post_id));
+        wp_send_json_success(array(
+            'message'             => 'Scorecard submitted. The other club will be notified to confirm.',
+            'status'              => 'pending',
+            'id'                  => $post_id,
+            'division_unresolved' => (empty($sc['division']) || !$resolved_tab) ? 1 : 0,
+        ));
     }
 }
 

@@ -16,6 +16,7 @@ A WordPress plugin that renders mobile-friendly league tables and fixtures for N
 - 💰 **Sponsor logos** — primary sponsor above title, additional sponsors rotate randomly below table
 - ⚡ **Server-side caching** — configurable cache duration to speed up page loads
 - 🔄 **GitHub auto-updates** — WordPress update notifications direct from GitHub releases
+- 🔍 **Team name validation** — scorecard form checks team names and fixture pairings against the division CSV, with one-click correction for swapped home/away or missing suffixes (e.g. "Belmont" → "Belmont A")
 
 ---
 
@@ -106,6 +107,24 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 ---
 
 ## Changelog
+
+### v5.17.0
+
+* Scorecard submission now allowed even when division name is unrecognised — scorecard saves as pending, admin flagged to correct
+* Admin scorecards list shows ⚠ Unresolved badge on affected rows; edit form highlights division field in red with known divisions listed
+* Clearing division to a valid value in admin automatically retries Google Sheets writeback
+* Meaningful save error messages — JSON parse detail (with raw preview), session expiry, and network errors surfaced clearly to the user
+* Division → CSV URL mapping added to sheet tab settings table (enables team name validation)
+* Team name validation on scorecard form — each team field checked against the division's team list from CSV; partial matches (e.g. "Ards") prompt selection; multiple matches from same club show a dropdown
+* Fixture pairing validation — detects pairings not in the schedule, home/away swaps, and missing suffixes (e.g. "Belmont" v "Salisbury" → "Belmont A" v "Salisbury A")
+* Single-click correction offered for all fixable name issues — "Correct both names", "Swap home/away", "Correct & swap"
+
+### v5.14.0
+- Google Sheets writeback — confirmed scorecards automatically write scores and points into the matching fixture row
+- Division → sheet tab mapping in settings (supports multi-division sheets)
+- Sheets connection test button shows spreadsheet title and available tabs
+- Manual retry button in scorecard History panel
+- Sheets writeback log visible alongside Drive and audit logs in History panel
 
 ### v5.13.5
 - Fix: OAuth scope changed from `drive.file` to `drive` — required to access folders shared with the service account

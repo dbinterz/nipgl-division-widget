@@ -16,15 +16,87 @@
 
 function nipgl_drive_get_settings() {
     return get_option('nipgl_drive', array(
-        'enabled'        => false,
-        'key_path'       => '',
-        'root_folder_id' => '',
+        'enabled'              => false,
+        'key_path'             => '',
+        'root_folder_id'       => '',
+        'oauth_client_id'      => '',
+        'oauth_client_secret'  => '',
+        'oauth_refresh_token'  => '',
     ));
 }
 
 function nipgl_drive_enabled() {
     $s = nipgl_drive_get_settings();
-    return !empty($s['enabled']) && !empty($s['key_path']) && !empty($s['root_folder_id']);
+    if (empty($s['enabled']) || empty($s['root_folder_id'])) return false;
+    // Either OAuth refresh token OR service account key must be present
+    $has_oauth = !empty($s['oauth_refresh_token']) && !empty($s['oauth_client_id']) && !empty($s['oauth_client_secret']);
+    $has_sa    = !empty($s['key_path']) && file_exists($s['key_path']);
+    return $has_oauth || $has_sa;
+}
+
+// ── OAuth callback — handles redirect from Google after user authorises ────────
+add_action('admin_init', 'nipgl_drive_oauth_callback');
+function nipgl_drive_oauth_callback() {
+    if (!isset($_GET['nipgl_oauth_callback']) || !current_user_can('manage_options')) return;
+
+    $code  = sanitize_text_field($_GET['code']  ?? '');
+    $error = sanitize_text_field($_GET['error'] ?? '');
+
+    if ($error) {
+        add_settings_error('nipgl_drive_oauth', 'oauth_error', 'Google OAuth error: ' . $error, 'error');
+        return;
+    }
+    if (!$code) return;
+
+    $s            = nipgl_drive_get_settings();
+    $redirect_uri = nipgl_drive_oauth_redirect_uri();
+
+    $response = wp_remote_post('https://oauth2.googleapis.com/token', array(
+        'timeout' => 15,
+        'body'    => array(
+            'code'          => $code,
+            'client_id'     => $s['oauth_client_id'],
+            'client_secret' => $s['oauth_client_secret'],
+            'redirect_uri'  => $redirect_uri,
+            'grant_type'    => 'authorization_code',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        add_settings_error('nipgl_drive_oauth', 'oauth_error', 'Token exchange failed: ' . $response->get_error_message(), 'error');
+        return;
+    }
+
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+    if (empty($data['refresh_token'])) {
+        $msg = $data['error_description'] ?? $data['error'] ?? 'No refresh token returned — ensure you set access_type=offline and prompt=consent';
+        add_settings_error('nipgl_drive_oauth', 'oauth_error', 'OAuth failed: ' . $msg, 'error');
+        return;
+    }
+
+    $s['oauth_refresh_token'] = $data['refresh_token'];
+    update_option('nipgl_drive', $s);
+    delete_transient('nipgl_drive_token');
+    delete_transient('nipgl_drive_oauth_token');
+
+    // Redirect back to settings without the OAuth params in the URL
+    wp_redirect(admin_url('options-general.php?page=nipgl-settings&nipgl_oauth_connected=1'));
+    exit;
+}
+
+function nipgl_drive_oauth_redirect_uri() {
+    return admin_url('options-general.php?page=nipgl-settings&nipgl_oauth_callback=1');
+}
+
+function nipgl_drive_oauth_auth_url($client_id) {
+    return 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query(array(
+        'client_id'     => $client_id,
+        'redirect_uri'  => nipgl_drive_oauth_redirect_uri(),
+        'response_type' => 'code',
+        'scope'         => 'https://www.googleapis.com/auth/drive',
+        'access_type'   => 'offline',
+        'prompt'        => 'consent',  // force refresh_token to be issued every time
+    ));
 }
 
 // ── Main entry point ──────────────────────────────────────────────────────────
@@ -35,6 +107,13 @@ function nipgl_drive_enabled() {
  * @param int  $post_id   Scorecard post ID
  * @param bool $is_edit   True if this is an admin edit (triggers versioning)
  */
+function nipgl_safe_filename($str) {
+    // Strip characters that are unsafe in filenames/folder names
+    $str = preg_replace('/[\/\\\\:*?"<>|]/', '', $str);
+    $str = trim(preg_replace('/\s+/', ' ', $str));
+    return $str ?: 'Unknown';
+}
+
 function nipgl_drive_save_scorecard($post_id, $is_edit = false) {
     if (!nipgl_drive_enabled()) return;
 
@@ -44,18 +123,18 @@ function nipgl_drive_save_scorecard($post_id, $is_edit = false) {
     if (!$sc) return;
 
     $settings = nipgl_drive_get_settings();
-    $token    = nipgl_drive_get_access_token($settings['key_path']);
+    $token    = nipgl_drive_get_access_token();
     if (!$token) {
-        nipgl_drive_log($post_id, 'error', 'Could not obtain access token — check service account key path');
+        nipgl_drive_log($post_id, 'error', 'Could not obtain access token — check OAuth or service account settings');
         return;
     }
 
-    // Folder path components
+    // Folder path components — use full team name for folder, not club prefix
     $date      = $sc['date'] ?? '';
     $year      = nipgl_drive_year_from_date($date);
     $division  = nipgl_safe_filename($sc['division'] ?? 'Unknown Division');
-    $home_club = nipgl_safe_filename(nipgl_team_to_club($sc['home_team'] ?? '') ?: ($sc['home_team'] ?? 'Unknown'));
-    $away_club = nipgl_safe_filename(nipgl_team_to_club($sc['away_team'] ?? '') ?: ($sc['away_team'] ?? 'Unknown'));
+    $home_team_folder = nipgl_safe_filename($sc['home_team'] ?? 'Unknown');
+    $away_team_folder = nipgl_safe_filename($sc['away_team'] ?? 'Unknown');
     $root_id   = $settings['root_folder_id'];
 
     // Generate PDF
@@ -80,28 +159,28 @@ function nipgl_drive_save_scorecard($post_id, $is_edit = false) {
     $photo_mime  = $photo_bytes ? nipgl_drive_mime_from_ext($photo_ext) : '';
     $photo_name  = $photo_bytes ? ($base_name . '-original.' . $photo_ext) : '';
 
-    // Upload to home club folder and away club folder
-    foreach (array($home_club, $away_club) as $club) {
-        $folder_id = nipgl_drive_ensure_path($token, $root_id, array($year, $division, $club));
+    // Upload to home team folder and away team folder
+    foreach (array($home_team_folder, $away_team_folder) as $team_folder) {
+        $folder_id = nipgl_drive_ensure_path($token, $root_id, array($year, $division, $team_folder));
         if (!$folder_id) {
-            nipgl_drive_log($post_id, 'error', 'Could not create folder path for ' . $club);
+            nipgl_drive_log($post_id, 'error', 'Could not create folder path for ' . $team_folder);
             continue;
         }
 
         // PDF — versioned filename on admin edits
         $pdf_name = nipgl_drive_versioned_name($token, $folder_id, $base_name . '.pdf', $is_edit);
-        $pdf_id   = nipgl_drive_upload_file($token, $folder_id, $pdf_name, $pdf_bytes, 'application/pdf');
+        $pdf_id   = nipgl_drive_upload_file($token, $folder_id, $pdf_name, $pdf_bytes, 'application/pdf', $pdf_error);
         if ($pdf_id) {
-            nipgl_drive_log($post_id, 'success', 'PDF uploaded to ' . $club . ': ' . $pdf_name);
+            nipgl_drive_log($post_id, 'success', 'PDF uploaded to ' . $team_folder . ': ' . $pdf_name);
         } else {
-            nipgl_drive_log($post_id, 'error', 'PDF upload failed for ' . $club);
+            nipgl_drive_log($post_id, 'error', 'PDF upload failed for ' . $team_folder . ($pdf_error ? ': ' . $pdf_error : ''));
         }
 
         // Photo
         if ($photo_bytes) {
             $pid = nipgl_drive_upload_file($token, $folder_id, $photo_name, $photo_bytes, $photo_mime);
             if ($pid) {
-                nipgl_drive_log($post_id, 'success', 'Photo uploaded to ' . $club . ': ' . $photo_name);
+                nipgl_drive_log($post_id, 'success', 'Photo uploaded to ' . $team_folder . ': ' . $photo_name);
             }
         }
     }
@@ -136,7 +215,7 @@ function nipgl_drive_find_folder($token, $parent_id, $name) {
          . " and '" . $parent_id . "' in parents"
          . " and trashed=false";
     $url = 'https://www.googleapis.com/drive/v3/files'
-         . '?q=' . urlencode($q) . '&fields=files(id,name)';
+         . '?q=' . urlencode($q) . '&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true';
     $res = nipgl_drive_request($token, 'GET', $url);
     if (!$res || empty($res['files'])) return false;
     return $res['files'][0]['id'];
@@ -149,14 +228,14 @@ function nipgl_drive_create_folder($token, $parent_id, $name) {
         'parents'  => array($parent_id),
     ));
     $res = nipgl_drive_request($token, 'POST',
-        'https://www.googleapis.com/drive/v3/files?fields=id',
+        'https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true',
         array('Content-Type' => 'application/json'),
         $body
     );
     return $res['id'] ?? false;
 }
 
-function nipgl_drive_upload_file($token, $parent_id, $filename, $content, $mime) {
+function nipgl_drive_upload_file($token, $parent_id, $filename, $content, $mime, &$error = null) {
     $metadata = json_encode(array(
         'name'    => $filename,
         'parents' => array($parent_id),
@@ -170,9 +249,10 @@ function nipgl_drive_upload_file($token, $parent_id, $filename, $content, $mime)
               . $content . "\r\n"
               . "--$boundary--";
     $res = nipgl_drive_request($token, 'POST',
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true',
         array('Content-Type' => 'multipart/related; boundary=' . $boundary),
-        $body
+        $body,
+        $error
     );
     return $res['id'] ?? false;
 }
@@ -212,7 +292,7 @@ function nipgl_drive_versioned_name($token, $folder_id, $base_name, $force_versi
 
 // ── HTTP wrapper ──────────────────────────────────────────────────────────────
 
-function nipgl_drive_request($token, $method, $url, $extra_headers = array(), $body = null) {
+function nipgl_drive_request($token, $method, $url, $extra_headers = array(), $body = null, &$error = null) {
     $args = array(
         'method'  => $method,
         'timeout' => 30,
@@ -225,13 +305,16 @@ function nipgl_drive_request($token, $method, $url, $extra_headers = array(), $b
 
     $response = wp_remote_request($url, $args);
     if (is_wp_error($response)) {
-        error_log('NIPGL Drive WP error: ' . $response->get_error_message());
+        $error = $response->get_error_message();
+        error_log('NIPGL Drive WP error: ' . $error);
         return false;
     }
     $code = wp_remote_retrieve_response_code($response);
-    $data = json_decode(wp_remote_retrieve_body($response), true);
+    $raw  = wp_remote_retrieve_body($response);
+    $data = json_decode($raw, true);
     if ($code >= 400) {
-        error_log('NIPGL Drive API ' . $code . ': ' . wp_remote_retrieve_body($response));
+        $error = 'HTTP ' . $code . ': ' . ($data['error']['message'] ?? substr($raw, 0, 200));
+        error_log('NIPGL Drive API ' . $code . ': ' . $raw);
         return false;
     }
     return $data;
@@ -239,7 +322,46 @@ function nipgl_drive_request($token, $method, $url, $extra_headers = array(), $b
 
 // ── OAuth2 / JWT (pure PHP, no Composer) ─────────────────────────────────────
 
-function nipgl_drive_get_access_token($key_path) {
+function nipgl_drive_get_access_token($key_path = '') {
+    $s = nipgl_drive_get_settings();
+
+    // Prefer OAuth refresh token over service account
+    if (!empty($s['oauth_refresh_token']) && !empty($s['oauth_client_id']) && !empty($s['oauth_client_secret'])) {
+        return nipgl_drive_get_oauth_token($s['oauth_client_id'], $s['oauth_client_secret'], $s['oauth_refresh_token']);
+    }
+
+    // Fall back to service account JWT
+    return nipgl_drive_get_sa_token($key_path ?: ($s['key_path'] ?? ''));
+}
+
+function nipgl_drive_get_oauth_token($client_id, $client_secret, $refresh_token) {
+    $cached = get_transient('nipgl_drive_oauth_token');
+    if ($cached) return $cached;
+
+    $response = wp_remote_post('https://oauth2.googleapis.com/token', array(
+        'timeout' => 15,
+        'body'    => array(
+            'client_id'     => $client_id,
+            'client_secret' => $client_secret,
+            'refresh_token' => $refresh_token,
+            'grant_type'    => 'refresh_token',
+        ),
+    ));
+    if (is_wp_error($response)) {
+        error_log('NIPGL Drive OAuth: ' . $response->get_error_message());
+        return false;
+    }
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+    if (empty($data['access_token'])) {
+        error_log('NIPGL Drive OAuth token refresh failed — ' . wp_remote_retrieve_body($response));
+        return false;
+    }
+    $expires = intval($data['expires_in'] ?? 3600) - 60;
+    set_transient('nipgl_drive_oauth_token', $data['access_token'], $expires);
+    return $data['access_token'];
+}
+
+function nipgl_drive_get_sa_token($key_path) {
     $cached = get_transient('nipgl_drive_token');
     if ($cached) return $cached;
 
@@ -453,6 +575,8 @@ function nipgl_drive_settings_section() {
     $nonce_test = wp_create_nonce('nipgl_drive_test');
     $nonce_key  = wp_create_nonce('nipgl_drive_upload_key');
     $has_key    = !empty($s['key_path']) && file_exists($s['key_path']);
+    $has_oauth  = !empty($s['oauth_refresh_token']);
+    $oauth_url  = !empty($s['oauth_client_id']) ? nipgl_drive_oauth_auth_url($s['oauth_client_id']) : '';
 
     // Read client_email from stored key for display
     $key_email = '';
@@ -460,10 +584,15 @@ function nipgl_drive_settings_section() {
         $kd = json_decode(file_get_contents($s['key_path']), true);
         $key_email = $kd['client_email'] ?? '';
     }
+
+    // Show connected notice if just completed OAuth
+    if (!empty($_GET['nipgl_oauth_connected'])) {
+        echo '<div class="notice notice-success is-dismissible"><p>✅ Google account connected successfully — Drive uploads will now use your Google account.</p></div>';
+    }
     ?>
     <hr>
     <h2>Google Drive Integration</h2>
-    <p>Automatically saves a PDF of each confirmed scorecard — plus the original photo if one was uploaded — to a Google Drive archive folder. Files are saved into both the home and away club folders.</p>
+    <p>Automatically saves a PDF of each confirmed scorecard to a Google Drive archive folder.</p>
 
     <table class="form-table">
     <tr>
@@ -475,38 +604,7 @@ function nipgl_drive_settings_section() {
             </label>
         </td>
     </tr>
-    <tr>
-        <th scope="row">Service Account Key</th>
-        <td>
-            <?php if ($has_key): ?>
-                <div id="nipgl-key-current" style="margin-bottom:10px;padding:10px 14px;background:#d1e7dd;color:#0a3622;border-radius:4px;font-size:13px">
-                    ✅ <strong>Key uploaded</strong><br>
-                    <span style="font-family:monospace;font-size:12px"><?php echo esc_html($key_email); ?></span><br>
-                    <small style="color:#1a5c38">Stored at: <?php echo esc_html($s['key_path']); ?></small>
-                </div>
-            <?php else: ?>
-                <div id="nipgl-key-current" style="margin-bottom:10px;padding:10px 14px;background:#fff3cd;color:#856404;border-radius:4px;font-size:13px">
-                    ⚠️ No key uploaded yet
-                </div>
-            <?php endif; ?>
 
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <label class="button" for="nipgl-key-file-input" style="cursor:pointer">
-                    📁 <?php echo $has_key ? 'Replace Key File' : 'Upload Key File'; ?>
-                </label>
-                <input type="file" id="nipgl-key-file-input" accept=".json,application/json"
-                    style="display:none">
-                <span id="nipgl-key-upload-status" style="font-size:13px"></span>
-            </div>
-            <p class="description" style="margin-top:8px">
-                Download a JSON key from <strong>Google Cloud Console → IAM → Service Accounts → your account → Keys → Add Key → JSON</strong>.<br>
-                The file will be stored in a protected directory on your server — not publicly accessible.<br>
-                Share your Drive archive folder with the service account email as <strong>Editor</strong>.
-            </p>
-            <!-- Hidden field so the path survives the main form save even without re-uploading -->
-            <input type="hidden" name="nipgl_drive_key_path" value="<?php echo esc_attr($s['key_path'] ?? ''); ?>" id="nipgl-key-path-field">
-        </td>
-    </tr>
     <tr>
         <th scope="row">Root Drive Folder ID</th>
         <td>
@@ -518,6 +616,90 @@ function nipgl_drive_settings_section() {
                 The ID of the Google Drive folder that will contain the archive.<br>
                 Find it in the folder URL: <code>drive.google.com/drive/folders/<strong style="color:#1a2e5a">THIS_PART</strong></code>
             </p>
+        </td>
+    </tr>
+
+    <tr>
+        <th scope="row" style="padding-top:20px"><strong>OAuth (Recommended)</strong></th>
+        <td style="padding-top:20px">
+            <p class="description" style="margin:0 0 10px">
+                Uploads files using a Google account you authorise. Works with personal Gmail accounts.<br>
+                Requires an OAuth 2.0 Client ID from <strong>Google Cloud Console → APIs &amp; Services → Credentials</strong>.<br>
+                Set the authorised redirect URI to: <code><?php echo esc_html(nipgl_drive_oauth_redirect_uri()); ?></code>
+            </p>
+        </td>
+    </tr>
+    <tr>
+        <th scope="row">OAuth Client ID</th>
+        <td>
+            <input type="text" name="nipgl_oauth_client_id"
+                value="<?php echo esc_attr($s['oauth_client_id'] ?? ''); ?>"
+                class="regular-text" placeholder="123456789-abc.apps.googleusercontent.com">
+        </td>
+    </tr>
+    <tr>
+        <th scope="row">OAuth Client Secret</th>
+        <td>
+            <input type="password" name="nipgl_oauth_client_secret"
+                value="<?php echo esc_attr($s['oauth_client_secret'] ?? ''); ?>"
+                class="regular-text" placeholder="GOCSPX-…">
+        </td>
+    </tr>
+    <tr>
+        <th scope="row">Google Account</th>
+        <td>
+            <?php if ($has_oauth): ?>
+                <div style="padding:10px 14px;background:#d1e7dd;color:#0a3622;border-radius:4px;font-size:13px;margin-bottom:10px">
+                    ✅ <strong>Google account connected</strong> — OAuth refresh token stored.
+                </div>
+                <?php if ($oauth_url): ?>
+                    <a href="<?php echo esc_url($oauth_url); ?>" class="button">🔄 Reconnect Google Account</a>
+                <?php endif; ?>
+                <button type="button" class="button" id="nipgl-oauth-disconnect" style="margin-left:8px;color:#842029">
+                    ✖ Disconnect
+                </button>
+            <?php elseif ($oauth_url): ?>
+                <a href="<?php echo esc_url($oauth_url); ?>" class="button button-primary">
+                    🔗 Connect Google Account
+                </a>
+                <p class="description" style="margin-top:6px">Save your Client ID and Secret first, then click Connect.</p>
+            <?php else: ?>
+                <p class="description">Enter your OAuth Client ID and Secret above, then save settings to see the Connect button.</p>
+            <?php endif; ?>
+            <input type="hidden" name="nipgl_oauth_disconnect" id="nipgl-oauth-disconnect-flag" value="">
+        </td>
+    </tr>
+
+    <tr>
+        <th scope="row" style="padding-top:20px"><strong>Service Account (Legacy)</strong></th>
+        <td style="padding-top:20px">
+            <p class="description" style="margin:0">
+                Alternative to OAuth. Requires a service account key JSON file.<br>
+                Note: service accounts cannot upload to personal Gmail Drive — use OAuth instead for Gmail accounts.
+            </p>
+        </td>
+    </tr>
+    <tr>
+        <th scope="row">Service Account Key</th>
+        <td>
+            <?php if ($has_key): ?>
+                <div id="nipgl-key-current" style="margin-bottom:10px;padding:10px 14px;background:#d1e7dd;color:#0a3622;border-radius:4px;font-size:13px">
+                    ✅ <strong>Key uploaded</strong><br>
+                    <span style="font-family:monospace;font-size:12px"><?php echo esc_html($key_email); ?></span>
+                </div>
+            <?php else: ?>
+                <div id="nipgl-key-current" style="margin-bottom:10px;padding:10px 14px;background:#f0f0f0;color:#555;border-radius:4px;font-size:13px">
+                    No service account key uploaded
+                </div>
+            <?php endif; ?>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <label class="button" for="nipgl-key-file-input" style="cursor:pointer">
+                    📁 <?php echo $has_key ? 'Replace Key File' : 'Upload Key File'; ?>
+                </label>
+                <input type="file" id="nipgl-key-file-input" accept=".json,application/json" style="display:none">
+                <span id="nipgl-key-upload-status" style="font-size:13px"></span>
+            </div>
+            <input type="hidden" name="nipgl_drive_key_path" value="<?php echo esc_attr($s['key_path'] ?? ''); ?>" id="nipgl-key-path-field">
         </td>
     </tr>
     </table>
@@ -532,6 +714,17 @@ function nipgl_drive_settings_section() {
     <script>
     (function() {
         var uploadNonce = '<?php echo $nonce_key; ?>';
+
+        // OAuth disconnect
+        var discBtn = document.getElementById('nipgl-oauth-disconnect');
+        if (discBtn) {
+            discBtn.addEventListener('click', function() {
+                if (confirm('Disconnect Google account? Drive uploads will stop working until you reconnect.')) {
+                    document.getElementById('nipgl-oauth-disconnect-flag').value = '1';
+                    discBtn.closest('form').submit();
+                }
+            });
+        }
 
         // Key file upload
         document.getElementById('nipgl-key-file-input').addEventListener('change', function() {
@@ -642,11 +835,25 @@ function nipgl_ajax_drive_test() {
 
 function nipgl_drive_save_settings() {
     $s = nipgl_drive_get_settings();
-    update_option('nipgl_drive', array(
-        'enabled'        => !empty($_POST['nipgl_drive_enabled']),
-        // key_path comes from hidden field — preserves uploaded path across saves
-        'key_path'       => sanitize_text_field($_POST['nipgl_drive_key_path']    ?? $s['key_path']),
-        'root_folder_id' => sanitize_text_field($_POST['nipgl_drive_root_folder'] ?? ''),
-    ));
+
+    // Handle OAuth disconnect
+    $disconnect = !empty($_POST['nipgl_oauth_disconnect']);
+
+    $new = array(
+        'enabled'             => !empty($_POST['nipgl_drive_enabled']),
+        'key_path'            => sanitize_text_field($_POST['nipgl_drive_key_path']       ?? $s['key_path']),
+        'root_folder_id'      => sanitize_text_field($_POST['nipgl_drive_root_folder']    ?? ''),
+        'oauth_client_id'     => sanitize_text_field($_POST['nipgl_oauth_client_id']      ?? $s['oauth_client_id'] ?? ''),
+        'oauth_client_secret' => sanitize_text_field($_POST['nipgl_oauth_client_secret']  ?? $s['oauth_client_secret'] ?? ''),
+        // Preserve existing refresh token unless disconnecting
+        'oauth_refresh_token' => $disconnect ? '' : ($s['oauth_refresh_token'] ?? ''),
+        // Preserve other keys from nipgl_drive option (e.g. sheets config)
+        'sheets_enabled'      => $s['sheets_enabled'] ?? false,
+        'sheets_id'           => $s['sheets_id']      ?? '',
+        'sheets_tabs'         => $s['sheets_tabs']    ?? array(),
+    );
+
+    update_option('nipgl_drive', $new);
     delete_transient('nipgl_drive_token');
+    delete_transient('nipgl_drive_oauth_token');
 }
