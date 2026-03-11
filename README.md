@@ -108,7 +108,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
-### v5.17.0
+### v5.17.10
 
 * Scorecard submission now allowed even when division name is unrecognised — scorecard saves as pending, admin flagged to correct
 * Admin scorecards list shows ⚠ Unresolved badge on affected rows; edit form highlights division field in red with known divisions listed

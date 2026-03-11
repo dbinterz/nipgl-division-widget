@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 5.17.0
+Stable tag: 5.17.10
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -63,6 +63,36 @@ Scorecard submission form:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 5.17.10 =
+* Fixed "headers already sent" error on theme reset — handler moved from nipgl_settings_page() to admin_init hook so redirect runs before any output
+
+= 5.17.9 =
+* Fixed ReferenceError: widget is not defined in showTeamModal — widget element now passed as parameter through showTeamModal → openModal rather than assumed in scope
+
+= 5.17.8 =
+* Fixed ReferenceError: wEl is not defined — modal CSS variable propagation now correctly passes the widget element as a parameter to openModal rather than referencing an undeclared variable
+
+= 5.17.7 =
+* Fixed theme colour saves — colour picker sync JS was placed in the scorecard admin page instead of the settings page, so picking a colour never updated the hex field that gets submitted
+
+= 5.17.6 =
+* Fixed theme colours resetting on save — colour picker inputs had duplicate name attributes, causing the hex text field value to be overwritten. Name attribute removed from pickers; hex fields are the single submitted value.
+
+= 5.17.5 =
+* Fixed undefined array key warnings on theme colour inputs when no theme has been saved yet
+
+= 5.17.4 =
+* Customisable theme colours — primary, secondary (gold), and background colours can be set globally in widget settings and overridden per-shortcode via color_primary, color_secondary, color_bg attributes. Modal inherits widget theme.
+
+= 5.17.3 =
+* Sponsor bar width fix — moved max-width/margin constraints to outer wrapper so sponsor bar matches table width correctly
+
+= 5.17.2 =
+* League table column detection now reads header row dynamically — fixes half points (e.g. 76.5) being truncated to integers when sheet has variable empty columns between fields
+
+= 5.17.1 =
+* Sponsor bar now constrained to widget width via wrapper div — no longer stretches full page width
 
 = 5.17.0 =
 * Scorecard lookup now falls back to normalised team name matching when exact slug key doesn't match — fixes "No scorecard submitted yet" when CSV team name differs from submitted name (e.g. "U. Transport A" vs "Ulster Transport A")

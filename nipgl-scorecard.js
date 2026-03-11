@@ -1,4 +1,4 @@
-/* NIPGL Scorecard JS - v5.17.0 */
+/* NIPGL Scorecard JS - v5.17.10 */
 (function(){
   'use strict';
 

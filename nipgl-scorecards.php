@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Scorecard Feature - v5.17.0
+ * NIPGL Scorecard Feature - v5.17.10
  * Per-club PIN auth, two-party submission, confirm/amend/dispute flow.
  */
 

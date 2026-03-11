@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Google Sheets Writeback - v5.17.0
+ * NIPGL Google Sheets Writeback - v5.17.10
  *
  * On scorecard confirmation, finds the matching fixture row in the Google Sheet
  * and writes home score, away score, home points, away points into it.

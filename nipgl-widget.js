@@ -145,19 +145,48 @@
     while(i<rows.length && !nonEmpty(rows[i])) i++;
     while(i<rows.length && rows[i][0]!=='POS') i++;
     if(i>=rows.length) return [];
+
+    // Detect column positions from header row
+    var hdr=rows[i];
+    var colPos=-1,colTeam=-1,colPl=-1,colPts=-1,colDiff=-1,colW=-1,colL=-1,colD=-1,colFor=-1,colAgn=-1;
+    for(var c=0;c<hdr.length;c++){
+      var v=(hdr[c]||'').trim().toUpperCase().replace(/\s+/g,'');
+      if(v==='POS')                          colPos=c;
+      else if(v==='TEAM')                    colTeam=c;
+      else if(v==='PL'||v==='PLAYED')        colPl=c;
+      else if(v==='PTS'||v==='POINTS')       colPts=c;
+      else if(v==='+/-'||v==='DIFF')         colDiff=c;
+      else if(v==='W'||v==='WON')            colW=c;
+      else if(v==='L'||v==='LOST')           colL=c;
+      else if(v==='D'||v==='DRAWN')          colD=c;
+      else if(v==='FOR')                     colFor=c;
+      else if(v==='AGAINST'||v==='AGN')      colAgn=c;
+    }
+    // Fallback to positional guesses if header detection fails
+    if(colPos<0)  colPos=0;
+    if(colTeam<0) colTeam=1;
+    if(colPl<0)   colPl=5;
+    if(colPts<0)  colPts=7;
+    if(colDiff<0) colDiff=8;
+    if(colW<0)    colW=9;
+    if(colL<0)    colL=10;
+    if(colD<0)    colD=11;
+    if(colFor<0)  colFor=12;
+    if(colAgn<0)  colAgn=14;
+
     i++;
     var teams=[];
     while(i<rows.length && nonEmpty(rows[i])){
       var r=rows[i];
-      var pos=r[0], team=r[1];
+      var pos=r[colPos], team=r[colTeam];
       if(pos && team && !isNaN(parseInt(pos,10))){
         teams.push({
-          pos:parseInt(pos,10),team:team,
-          pl:parseInt(r[5]||r[2]||'0',10),
-          pts:parseInt(r[7]||r[3]||'0',10),
-          diff:r[8]||r[4]||'0',
-          w:r[9]||'0',l:r[10]||'0',d:r[11]||'0',
-          f:r[12]||'0',a:r[14]||r[13]||'0'
+          pos:parseInt(pos,10),  team:team,
+          pl:parseInt(r[colPl]||'0',10),
+          pts:parseFloat(r[colPts]||'0'),
+          diff:r[colDiff]||'0',
+          w:r[colW]||'0',  l:r[colL]||'0',  d:r[colD]||'0',
+          f:r[colFor]||'0', a:r[colAgn]||'0'
         });
       }
       i++;
@@ -279,10 +308,20 @@
     });
   }
 
-  function openModal(titleHtml, bodyHtml){
+  function openModal(titleHtml, bodyHtml, sourceWidget){
     ensureModal();
     modalEl.querySelector('.nipgl-modal-title').innerHTML=titleHtml;
     modalEl.querySelector('.nipgl-modal-body').innerHTML=bodyHtml;
+    // Copy scoped CSS variables from widget wrapper onto modal (modal lives on body)
+    var wrap=sourceWidget&&sourceWidget.parentElement;
+    if(wrap){
+      var cs=getComputedStyle(wrap);
+      ['--nipgl-navy','--nipgl-navy-mid','--nipgl-gold','--nipgl-bg','--nipgl-bg-alt',
+       '--nipgl-bg-hover','--nipgl-tab-bg','--nipgl-pts'].forEach(function(v){
+        var val=cs.getPropertyValue(v).trim();
+        if(val) modalEl.style.setProperty(v,val);
+      });
+    }
     modalEl.classList.add('active');
     document.body.classList.add('nipgl-modal-open');
   }
@@ -296,7 +335,7 @@
     return '<div class="modal-stat"><div class="modal-stat-val">'+val+'</div><div class="modal-stat-lbl">'+lbl+'</div></div>';
   }
 
-  function showTeamModal(teamName, allRows){
+  function showTeamModal(teamName, allRows, sourceWidget){
     var teams =parseTableRows(allRows);
     var groups=parseFixtureGroups(allRows);
     var teamData=null;
@@ -359,7 +398,7 @@
 
     if(!hasRows) fixtureRows+='<tr><td colspan="6" style="text-align:center;color:#999">No fixtures found</td></tr>';
     fixtureRows+='</tbody></table>';
-    openModal(titleHtml,statsHtml+fixtureRows);
+    openModal(titleHtml,statsHtml+fixtureRows,sourceWidget);
 
     // Bind scorecard click handlers on played rows in the team modal
     if(modalEl){
@@ -600,7 +639,7 @@
         el.addEventListener('click',function(e){
           e.stopPropagation();
           var team=el.getAttribute('data-team')||el.closest('[data-team]').getAttribute('data-team');
-          if(team&&allRows) showTeamModal(team,allRows);
+          if(team&&allRows) showTeamModal(team,allRows,widget);
         });
       });
       // Played fixture rows — click to show scorecard
@@ -623,7 +662,7 @@
         +'<hr class="nipgl-sc-divider">'
         +'<div class="nipgl-sc-title">Full Scorecard</div>'
         +'<div id="nipgl-sc-container"></div>';
-      openModal(titleHtml, bodyHtml);
+      openModal(titleHtml, bodyHtml, widget);
       // Load scorecard async after modal opens
       var container=document.getElementById('nipgl-sc-container');
       if(container && typeof window.nipglFetchScorecard === 'function'){

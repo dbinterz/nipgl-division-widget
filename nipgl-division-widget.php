@@ -2,14 +2,14 @@
 /**
  * Plugin Name: NIPGL Division Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club PIN authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, and sponsor branding.
- * Version: 5.17.0
+ * Version: 5.17.10
  * Author: NIPGL
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * Primary Branch: main
  */
 
 define('NIPGL_PLUGIN_FILE', __FILE__);
-define('NIPGL_VERSION', '5.17.0');
+define('NIPGL_VERSION', '5.17.10');
 
 // Include scorecard feature
 require_once plugin_dir_path(__FILE__) . 'nipgl-scorecards.php';
@@ -201,15 +201,45 @@ function nipgl_division_shortcode($atts) {
         'title'        => '',
         'promote'      => '0',
         'relegate'     => '0',
-        'sponsor_img'  => '',  // override: image URL for primary sponsor
-        'sponsor_url'  => '',  // override: link URL for primary sponsor
-        'sponsor_name' => '',  // override: alt text for primary sponsor
+        'sponsor_img'  => '',
+        'sponsor_url'  => '',
+        'sponsor_name' => '',
+        'color_primary'   => '',  // e.g. #1a2e5a
+        'color_secondary' => '',  // e.g. #e8b400
+        'color_bg'        => '',  // e.g. #ffffff
     ), $atts);
 
     if (!$atts['csv']) return '<p>No CSV URL provided.</p>';
 
     $id          = 'nipgl-' . substr(md5($atts['csv']), 0, 8);
     $csv_escaped = esc_attr($atts['csv']);
+
+    // Resolve theme: shortcode override > global setting > CSS defaults
+    $global_theme = get_option('nipgl_theme', array());
+    $primary   = sanitize_hex_color($atts['color_primary'])   ?: ($global_theme['color_primary']   ?? '');
+    $secondary = sanitize_hex_color($atts['color_secondary']) ?: ($global_theme['color_secondary'] ?? '');
+    $bg        = sanitize_hex_color($atts['color_bg'])        ?: ($global_theme['color_bg']        ?? '');
+
+    // Build scoped CSS variable overrides if any theme colour is set
+    $theme_style = '';
+    if ($primary || $secondary || $bg) {
+        $vars = '';
+        if ($primary) {
+            $vars .= '--nipgl-navy:' . $primary . ';';
+            $vars .= '--nipgl-navy-mid:' . nipgl_theme_lighten($primary, 20) . ';';
+            $vars .= '--nipgl-tab-bg:' . nipgl_theme_mix($primary, '#ffffff', 85) . ';';
+            $vars .= '--nipgl-pts:' . $primary . ';';
+        }
+        if ($secondary) {
+            $vars .= '--nipgl-gold:' . $secondary . ';';
+        }
+        if ($bg) {
+            $vars .= '--nipgl-bg:' . $bg . ';';
+            $vars .= '--nipgl-bg-alt:' . nipgl_theme_darken($bg, 5) . ';';
+            $vars .= '--nipgl-bg-hover:' . nipgl_theme_darken($bg, 10) . ';';
+        }
+        $theme_style = '<style>#' . $id . '-wrap{' . $vars . '}</style>';
+    }
 
     // Resolve sponsors: shortcode override takes priority over global setting
     $global_sponsors = get_option('nipgl_sponsors', array());
@@ -243,7 +273,9 @@ function nipgl_division_shortcode($atts) {
     // Extra sponsors JSON for JS random rotation below table
     $extra_json = esc_attr(json_encode($extra_sponsors));
 
-    return $primary_html
+    return $theme_style
+        . '<div class="nipgl-widget-wrap" id="' . $id . '-wrap">'
+        . $primary_html
         . $title_html
         . '<div class="nipgl-w" id="' . $id . '"'
         . ' data-csv="' . $csv_escaped . '"'
@@ -256,6 +288,7 @@ function nipgl_division_shortcode($atts) {
         . '</div>'
         . '<div class="nipgl-panel active" data-panel="table"><div class="nipgl-status">Loading&hellip;</div></div>'
         . '<div class="nipgl-panel" data-panel="fixtures"><div class="nipgl-status">Loading&hellip;</div></div>'
+        . '</div>'
         . '</div>';
 }
 
@@ -643,12 +676,53 @@ function nipgl_save_settings() {
     }
     update_option('nipgl_clubs', $clubs);
 
+    // Theme colours
+    $theme = array(
+        'color_primary'   => sanitize_hex_color($_POST['nipgl_color_primary']   ?? '') ?: '',
+        'color_secondary' => sanitize_hex_color($_POST['nipgl_color_secondary'] ?? '') ?: '',
+        'color_bg'        => sanitize_hex_color($_POST['nipgl_color_bg']        ?? '') ?: '',
+    );
+    update_option('nipgl_theme', $theme);
+
     // Drive settings
     nipgl_drive_save_settings();
     nipgl_sheets_save_settings();
 
     wp_redirect(admin_url('options-general.php?page=nipgl-settings&saved=1'));
     exit;
+}
+
+// ── Theme colour helpers ───────────────────────────────────────────────────────
+
+function nipgl_hex_to_rgb($hex) {
+    $hex = ltrim($hex, '#');
+    if (strlen($hex) === 3) $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+    return array(hexdec(substr($hex,0,2)), hexdec(substr($hex,2,2)), hexdec(substr($hex,4,2)));
+}
+
+function nipgl_rgb_to_hex($r, $g, $b) {
+    return sprintf('#%02x%02x%02x', max(0,min(255,$r)), max(0,min(255,$g)), max(0,min(255,$b)));
+}
+
+// Lighten a hex colour by $amount (0-255 per channel)
+function nipgl_theme_lighten($hex, $amount) {
+    list($r,$g,$b) = nipgl_hex_to_rgb($hex);
+    return nipgl_rgb_to_hex($r+$amount, $g+$amount, $b+$amount);
+}
+
+// Darken a hex colour by $pct percent (0-100)
+function nipgl_theme_darken($hex, $pct) {
+    list($r,$g,$b) = nipgl_hex_to_rgb($hex);
+    $f = 1 - ($pct / 100);
+    return nipgl_rgb_to_hex(intval($r*$f), intval($g*$f), intval($b*$f));
+}
+
+// Mix hex colour with white by $whitePct percent (higher = more white)
+function nipgl_theme_mix($hex, $white, $whitePct) {
+    list($r1,$g1,$b1) = nipgl_hex_to_rgb($hex);
+    list($r2,$g2,$b2) = nipgl_hex_to_rgb($white);
+    $t = $whitePct / 100;
+    return nipgl_rgb_to_hex(intval($r1+(($r2-$r1)*$t)), intval($g1+(($g2-$g1)*$t)), intval($b1+(($b2-$b1)*$t)));
 }
 
 // Clear cache action
@@ -659,6 +733,17 @@ function nipgl_clear_cache() {
     global $wpdb;
     $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_nipgl_csv_%' OR option_name LIKE '_transient_timeout_nipgl_csv_%'");
     wp_redirect(admin_url('options-general.php?page=nipgl-settings&saved=1&cleared=1'));
+    exit;
+}
+
+// Reset theme colours — must run on admin_init before any output
+add_action('admin_init', 'nipgl_maybe_reset_theme');
+function nipgl_maybe_reset_theme() {
+    if (!isset($_GET['nipgl_reset_theme'])) return;
+    if (!isset($_GET['page']) || $_GET['page'] !== 'nipgl-settings') return;
+    if (!current_user_can('manage_options')) return;
+    update_option('nipgl_theme', array());
+    wp_redirect(admin_url('options-general.php?page=nipgl-settings&saved=1'));
     exit;
 }
 
@@ -682,6 +767,38 @@ function nipgl_settings_page() {
             <?php wp_nonce_field('nipgl_settings_nonce'); ?>
             <input type="hidden" name="action" value="nipgl_save_settings">
 
+            <h2>Theme Colours</h2>
+            <p>Set the default colours for all division widgets on this site. These can be overridden per-widget using shortcode attributes: <code>color_primary</code>, <code>color_secondary</code>, <code>color_bg</code>.</p>
+            <?php $theme = get_option('nipgl_theme', array()); ?>
+            <table class="form-table">
+                <tr>
+                    <th>Primary Colour <span style="font-weight:400;color:#666">(tabs, headers, accents)</span></th>
+                    <td>
+                        <input type="color" value="<?php echo esc_attr($theme['color_primary'] ?? '#1a2e5a'); ?>">
+                        <input type="text" name="nipgl_color_primary" value="<?php echo esc_attr($theme['color_primary'] ?? '#1a2e5a'); ?>" class="small-text nipgl-hex-input" maxlength="7" placeholder="#1a2e5a">
+                        <?php if (empty($theme['color_primary'])): ?><em style="color:#999;font-size:12px">Using default navy</em><?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Secondary Colour <span style="font-weight:400;color:#666">(highlight / gold)</span></th>
+                    <td>
+                        <input type="color" value="<?php echo esc_attr($theme['color_secondary'] ?? '#e8b400'); ?>">
+                        <input type="text" name="nipgl_color_secondary" value="<?php echo esc_attr($theme['color_secondary'] ?? '#e8b400'); ?>" class="small-text nipgl-hex-input" maxlength="7" placeholder="#e8b400">
+                        <?php if (empty($theme['color_secondary'])): ?><em style="color:#999;font-size:12px">Using default gold</em><?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Background Colour</th>
+                    <td>
+                        <input type="color" value="<?php echo esc_attr($theme['color_bg'] ?? '#ffffff'); ?>">
+                        <input type="text" name="nipgl_color_bg" value="<?php echo esc_attr($theme['color_bg'] ?? '#ffffff'); ?>" class="small-text nipgl-hex-input" maxlength="7" placeholder="#ffffff">
+                        <?php if (empty($theme['color_bg'])): ?><em style="color:#999;font-size:12px">Using default white</em><?php endif; ?>
+                    </td>
+                </tr>
+            </table>
+            <p style="margin-top:0"><a href="<?php echo admin_url('options-general.php?page=nipgl-settings&nipgl_reset_theme=1'); ?>" class="button" onclick="return confirm('Reset theme colours to defaults?')">Reset to defaults</a></p>
+
+            <hr>
             <h2>Sponsors</h2>
             <p>The <strong>first sponsor</strong> appears above the division title on all pages. Additional sponsors rotate randomly below the league table. Add a per-division override via the shortcode if needed.</p>
             <table class="widefat nipgl-badge-table" id="nipgl-sponsor-table">
@@ -854,5 +971,17 @@ function nipgl_settings_page() {
             <p><input type="submit" class="button button-secondary" value="Clear Cache Now"></p>
         </form>
     </div>
+    <script>
+    // Colour picker <-> hex text field sync
+    document.querySelectorAll('input[type="color"]').forEach(function(picker) {
+        var row = picker.parentNode;
+        var hex = row.querySelector('.nipgl-hex-input');
+        if (!hex) return;
+        picker.addEventListener('input', function() { hex.value = picker.value; });
+        hex.addEventListener('input', function() {
+            if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) picker.value = hex.value;
+        });
+    });
+    </script>
     <?php
 }
