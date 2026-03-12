@@ -1,7 +1,7 @@
 <?php
 /**
- * NIPGL Scorecard Feature - v5.17.10
- * Per-club PIN auth, two-party submission, confirm/amend/dispute flow.
+ * NIPGL Scorecard Feature - v5.18.2
+ * Per-club passphrase auth, two-party submission, confirm/amend/dispute flow.
  */
 
 // ── Custom Post Type ──────────────────────────────────────────────────────────
@@ -26,14 +26,14 @@ function nipgl_get_auth_club() {
     nipgl_session_start();
     return $_SESSION['nipgl_club'] ?? '';
 }
-function nipgl_pin_verified() {
+function nipgl_passphrase_verified() {
     return (bool) nipgl_get_auth_club();
 }
 
 // ── Club helpers ──────────────────────────────────────────────────────────────
 function nipgl_get_clubs() {
     return get_option('nipgl_clubs', array());
-    // array of ['name'=>'Ards','pin'=>'<sha256>']
+    // array of ['name'=>'Ards','pin'=>'<sha256 of passphrase>']
 }
 
 function nipgl_club_matches_team($club, $team) {
@@ -106,13 +106,16 @@ function nipgl_get_scorecard_data($post_id) {
     return get_post_meta($post_id, 'nipgl_scorecard_data', true);
 }
 
-// ── AJAX: PIN / club login ────────────────────────────────────────────────────
+// ── AJAX: Passphrase / club login ─────────────────────────────────────────────
 add_action('wp_ajax_nopriv_nipgl_check_pin', 'nipgl_ajax_check_pin');
 add_action('wp_ajax_nipgl_check_pin',        'nipgl_ajax_check_pin');
 function nipgl_ajax_check_pin() {
     check_ajax_referer('nipgl_submit_nonce', 'nonce');
     $club_name = sanitize_text_field($_POST['club'] ?? '');
-    $entered   = sanitize_text_field($_POST['pin']  ?? '');
+    // Accept both 'pin' (legacy) and 'passphrase' field names
+    $entered   = sanitize_text_field($_POST['passphrase'] ?? $_POST['pin'] ?? '');
+    // Normalise: lowercase, collapse whitespace, trim
+    $entered   = strtolower(trim(preg_replace('/\s+/', ' ', $entered)));
     $clubs     = nipgl_get_clubs();
 
     foreach ($clubs as $club) {
@@ -120,7 +123,6 @@ function nipgl_ajax_check_pin() {
             if (!empty($club['pin']) && hash_equals($club['pin'], hash('sha256', $entered))) {
                 nipgl_session_start();
                 $_SESSION['nipgl_club'] = $club['name'];
-                // Find any pending scorecards for this club
                 $pending = nipgl_get_pending_for_club($club['name']);
                 wp_send_json_success(array(
                     'club'    => $club['name'],
@@ -129,7 +131,7 @@ function nipgl_ajax_check_pin() {
             }
         }
     }
-    wp_send_json_error('Incorrect club or PIN');
+    wp_send_json_error('Incorrect club or passphrase');
 }
 
 // ── AJAX: Logout ──────────────────────────────────────────────────────────────
@@ -190,7 +192,7 @@ add_action('wp_ajax_nopriv_nipgl_confirm_scorecard', 'nipgl_ajax_confirm_scoreca
 add_action('wp_ajax_nipgl_confirm_scorecard',        'nipgl_ajax_confirm_scorecard');
 function nipgl_ajax_confirm_scorecard() {
     check_ajax_referer('nipgl_submit_nonce', 'nonce');
-    if (!nipgl_pin_verified()) wp_send_json_error('Not authorised');
+    if (!nipgl_passphrase_verified()) wp_send_json_error('Not authorised');
 
     $id   = intval($_POST['id'] ?? 0);
     $club = nipgl_get_auth_club();
@@ -214,7 +216,7 @@ add_action('wp_ajax_nopriv_nipgl_parse_photo', 'nipgl_ajax_parse_photo');
 add_action('wp_ajax_nipgl_parse_photo',        'nipgl_ajax_parse_photo');
 function nipgl_ajax_parse_photo() {
     check_ajax_referer('nipgl_submit_nonce', 'nonce');
-    if (!nipgl_pin_verified()) wp_send_json_error('Not authorised');
+    if (!nipgl_passphrase_verified()) wp_send_json_error('Not authorised');
 
     $api_key = get_option('nipgl_anthropic_key', '');
     if (!$api_key) wp_send_json_error('No API key configured. Add your Anthropic API key in NIPGL Widget Settings.');
@@ -319,7 +321,7 @@ add_action('wp_ajax_nopriv_nipgl_parse_excel', 'nipgl_ajax_parse_excel');
 add_action('wp_ajax_nipgl_parse_excel',        'nipgl_ajax_parse_excel');
 function nipgl_ajax_parse_excel() {
     check_ajax_referer('nipgl_submit_nonce', 'nonce');
-    if (!nipgl_pin_verified()) wp_send_json_error('Not authorised');
+    if (!nipgl_passphrase_verified()) wp_send_json_error('Not authorised');
 
     if (empty($_FILES['excel']['tmp_name'])) wp_send_json_error('No file received');
     $file = $_FILES['excel'];
@@ -518,7 +520,7 @@ add_action('wp_ajax_nopriv_nipgl_save_scorecard', 'nipgl_ajax_save_scorecard');
 add_action('wp_ajax_nipgl_save_scorecard',        'nipgl_ajax_save_scorecard');
 function nipgl_ajax_save_scorecard() {
     check_ajax_referer('nipgl_submit_nonce', 'nonce');
-    if (!nipgl_pin_verified()) wp_send_json_error('Not authorised');
+    if (!nipgl_passphrase_verified()) wp_send_json_error('Not authorised');
 
     $club        = nipgl_get_auth_club();
     $raw_string  = stripslashes($_POST['scorecard'] ?? '');
@@ -674,27 +676,28 @@ function nipgl_render_submit_form() {
     <div class="nipgl-submit-wrap" id="nipgl-submit-wrap"
          data-auth-club="<?php echo esc_attr($auth_club); ?>">
 
-      <!-- PIN / club login gate -->
+      <!-- Passphrase / club login gate -->
       <div id="nipgl-pin-gate" <?php echo $auth_club ? 'style="display:none"' : ''; ?>>
         <div class="nipgl-submit-card">
           <h2>Score Entry Login</h2>
           <?php if (!$has_clubs): ?>
-            <p class="nipgl-notice nipgl-notice-warn">No clubs have been configured yet. Please add clubs and PINs in <strong>Settings → NIPGL Widget</strong>.</p>
+            <p class="nipgl-notice nipgl-notice-warn">No clubs have been configured yet. Please add clubs and passphrases in <strong>Settings &rarr; NIPGL Widget</strong>.</p>
           <?php else: ?>
-            <p>Select your club and enter your PIN to submit or confirm a scorecard.</p>
+            <p>Select your club and enter your passphrase to submit or confirm a scorecard.</p>
             <div class="nipgl-form-row">
               <label>Club</label>
               <select id="nipgl-club-select" style="width:100%;padding:9px 12px;border:1px solid #d0d5e8;border-radius:6px;font-size:14px;font-family:inherit">
-                <option value="">— Select your club —</option>
+                <option value="">&#8212; Select your club &#8212;</option>
                 <?php foreach ($clubs as $c): ?>
                 <option value="<?php echo esc_attr($c['name']); ?>"><?php echo esc_html($c['name']); ?></option>
                 <?php endforeach; ?>
               </select>
             </div>
             <div class="nipgl-pin-row">
-              <input type="password" id="nipgl-pin-input" placeholder="Enter PIN" maxlength="20" autocomplete="off">
+              <input type="text" id="nipgl-pin-input" placeholder="e.g. filled.count.ripen" maxlength="60" autocomplete="off" autocapitalize="none" spellcheck="false">
               <button class="nipgl-btn nipgl-btn-primary" id="nipgl-pin-submit">Login</button>
             </div>
+            <p class="nipgl-passphrase-hint">Enter the three-word passphrase for your club (format: <code>word.word.word</code>)</p>
             <p id="nipgl-pin-error" class="nipgl-notice nipgl-notice-error" style="display:none"></p>
           <?php endif; ?>
         </div>
@@ -847,12 +850,14 @@ function nipgl_enqueue_scorecard() {
     if (!wp_script_is('nipgl-scorecard', 'enqueued')) {
         wp_enqueue_script('nipgl-scorecard');
         wp_enqueue_style('nipgl-scorecard');
-        wp_localize_script('nipgl-scorecard', 'nipglSubmit', array(
-            'ajaxUrl'  => admin_url('admin-ajax.php'),
-            'nonce'    => wp_create_nonce('nipgl_submit_nonce'),
-            'authClub' => nipgl_get_auth_club(),
-        ));
     }
+    // Always localise — safe to call multiple times, ensures nipglSubmit is defined
+    // even if the script was already enqueued by nipgl_enqueue() on a combined page.
+    wp_localize_script('nipgl-scorecard', 'nipglSubmit', array(
+        'ajaxUrl'  => admin_url('admin-ajax.php'),
+        'nonce'    => wp_create_nonce('nipgl_submit_nonce'),
+        'authClub' => nipgl_get_auth_club(),
+    ));
 }
 
 // ── DEBUG: Excel parser diagnostic (admin only, remove after testing) ─────────

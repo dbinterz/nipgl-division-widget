@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 5.17.10
+Stable tag: 5.18.2
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -24,7 +24,7 @@ A full league management widget for bowls clubs and leagues. Displays live leagu
 
 = Scorecard Submission =
 
-* Per-club PIN authentication — each club gets a private PIN to submit scores
+* Per-club passphrase authentication — each club gets a private passphrase to submit scores (what3words address recommended)
 * Two-party verification — both home and away clubs must confirm before a scorecard is marked confirmed
 * Dispute resolution — admin can view side-by-side versions and accept either
 * Score entry via typed input, Excel file upload, or photo (AI-parsed via Claude)
@@ -63,6 +63,16 @@ Scorecard submission form:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 5.18.2 =
+* Import Passphrases tool — upload the club passphrases xlsx directly from wp-admin (NIPGL → Import Passphrases) to set all club passphrases in one go. Tool removes itself from the menu when dismissed.
+
+= 5.18.1 =
+* PIN authentication replaced with passphrase authentication — clubs now log in with a three-word passphrase instead of a numeric PIN
+* what3words address for the clubhouse recommended as a default passphrase (e.g. filled.count.ripen)
+* Passphrase input is case-insensitive and whitespace-tolerant — filled.count.ripen and Filled.Count.Ripen both work
+* Admin settings updated with passphrase column, format hint, and what3words tip
+* Login form updated with plain-text input, format hint, and autocapitalise disabled for mobile
 
 = 5.17.10 =
 * Fixed "headers already sent" error on theme reset — handler moved from nipgl_settings_page() to admin_init hook so redirect runs before any output

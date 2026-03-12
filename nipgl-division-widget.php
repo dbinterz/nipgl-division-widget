@@ -2,14 +2,14 @@
 /**
  * Plugin Name: NIPGL Division Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club PIN authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, and sponsor branding.
- * Version: 5.17.10
+ * Version: 5.18.2
  * Author: NIPGL
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * Primary Branch: main
  */
 
 define('NIPGL_PLUGIN_FILE', __FILE__);
-define('NIPGL_VERSION', '5.17.10');
+define('NIPGL_VERSION', '5.18.2');
 
 // Include scorecard feature
 require_once plugin_dir_path(__FILE__) . 'nipgl-scorecards.php';
@@ -173,12 +173,14 @@ function nipgl_enqueue() {
     if (!wp_script_is('nipgl-scorecard', 'enqueued')) {
         wp_enqueue_script('nipgl-scorecard');
         wp_enqueue_style('nipgl-scorecard');
-        wp_localize_script('nipgl-scorecard', 'nipglSubmit', array(
-            'ajaxUrl'  => admin_url('admin-ajax.php'),
-            'nonce'    => wp_create_nonce('nipgl_submit_nonce'),
-            'authClub' => nipgl_get_auth_club(),
-        ));
     }
+    // Always localise — safe to call multiple times, ensures nipglSubmit is defined
+    // even if script was registered (not enqueued) by a prior call.
+    wp_localize_script('nipgl-scorecard', 'nipglSubmit', array(
+        'ajaxUrl'  => admin_url('admin-ajax.php'),
+        'nonce'    => wp_create_nonce('nipgl_submit_nonce'),
+        'authClub' => nipgl_get_auth_club(),
+    ));
 
     wp_enqueue_script('nipgl-widget', plugin_dir_url(__FILE__) . 'nipgl-widget.js', array('nipgl-scorecard'), NIPGL_VERSION, true);
 
@@ -655,7 +657,7 @@ function nipgl_save_settings() {
     if (isset($_POST['nipgl_anthropic_key'])) {
         update_option('nipgl_anthropic_key', sanitize_text_field($_POST['nipgl_anthropic_key']));
     }
-    // Per-club PINs
+    // Per-club passphrases
     $club_names = isset($_POST['nipgl_club_name']) ? array_map('sanitize_text_field', $_POST['nipgl_club_name']) : array();
     $club_pins  = isset($_POST['nipgl_club_pin'])  ? $_POST['nipgl_club_pin']  : array();
     $existing_clubs = get_option('nipgl_clubs', array());
@@ -664,14 +666,16 @@ function nipgl_save_settings() {
         $name = trim($name);
         if ($name === '') continue;
         $pin_raw = trim($club_pins[$i] ?? '');
-        // If PIN field is blank, keep existing hash for this club
+        // Normalise passphrase: lowercase, collapse whitespace (mirrors frontend normalisation)
+        $pin_normalised = strtolower(preg_replace('/\s+/', ' ', $pin_raw));
+        // If passphrase field is blank, keep existing hash for this club
         $existing_hash = '';
         foreach ($existing_clubs as $ec) {
             if (strtolower($ec['name']) === strtolower($name)) { $existing_hash = $ec['pin']; break; }
         }
         $clubs[] = array(
             'name' => $name,
-            'pin'  => $pin_raw !== '' ? hash('sha256', $pin_raw) : $existing_hash,
+            'pin'  => $pin_normalised !== '' ? hash('sha256', $pin_normalised) : $existing_hash,
         );
     }
     update_option('nipgl_clubs', $clubs);
@@ -900,14 +904,14 @@ function nipgl_settings_page() {
 
             <h3 style="margin-top:20px;margin-bottom:4px">Scorecard submission form</h3>
             <pre style="background:#f6f7f7;padding:12px;border:1px solid #ddd;display:inline-block;margin-top:0">[nipgl_submit]</pre>
-            <p style="margin-top:6px;color:#555;font-size:13px">Add to any page to allow clubs to submit match scorecards. Clubs authenticate with their PIN before submitting. Both home and away clubs must confirm before a scorecard is marked as confirmed.</p>
+            <p style="margin-top:6px;color:#555;font-size:13px">Add to any page to allow clubs to submit match scorecards. Clubs authenticate with their passphrase before submitting. Both home and away clubs must confirm before a scorecard is marked as confirmed.</p>
 
             <hr>
             <h2>Score Entry</h2>
-            <p>Add clubs and set a PIN for each one. Secretaries select their club and enter the PIN to submit scorecards. Leave the PIN blank when editing to keep the existing PIN.</p>
+            <p>Add clubs and set a passphrase for each one. Secretaries select their club and enter the passphrase to submit scorecards.<br><em>Tip: the <a href="https://what3words.com" target="_blank">what3words</a> address for your clubhouse makes a good default passphrase (e.g. <code>filled.count.ripen</code>).</em><br>Leave the passphrase blank when editing to keep the existing one.</p>
 
             <table class="widefat nipgl-badge-table" id="nipgl-club-table">
-                <thead><tr><th>Club Name</th><th>PIN (leave blank to keep existing)</th><th></th></tr></thead>
+                <thead><tr><th>Club Name</th><th>Passphrase (leave blank to keep existing)</th><th></th></tr></thead>
                 <tbody>
                 <?php
                 $clubs = get_option('nipgl_clubs', array());
@@ -915,7 +919,7 @@ function nipgl_settings_page() {
                 foreach ($clubs as $club): ?>
                 <tr class="nipgl-club-row">
                     <td><input type="text" name="nipgl_club_name[]" value="<?php echo esc_attr($club['name']); ?>" placeholder="e.g. Ards" class="regular-text"></td>
-                    <td><input type="password" name="nipgl_club_pin[]" value="" placeholder="<?php echo $club['pin'] ? '(PIN set — enter new to change)' : 'Set PIN'; ?>" autocomplete="new-password" class="regular-text"></td>
+                    <td><input type="text" name="nipgl_club_pin[]" value="" placeholder="<?php echo $club['pin'] ? '(passphrase set — enter new to change)' : 'Set passphrase (word.word.word)'; ?>" autocomplete="off" autocapitalize="none" spellcheck="false" class="regular-text" style="width:240px"></td>
                     <td><button type="button" class="button-link-delete nipgl-remove-row">Remove</button></td>
                 </tr>
                 <?php endforeach; ?>
@@ -983,5 +987,169 @@ function nipgl_settings_page() {
         });
     });
     </script>
+    <?php
+}
+
+// ── Import Passphrases Tool ───────────────────────────────────────────────────
+add_action('admin_menu', 'nipgl_import_passphrases_menu');
+function nipgl_import_passphrases_menu() {
+    // Only show if the tool hasn't been disabled
+    if (get_option('nipgl_import_tool_disabled')) return;
+    add_submenu_page(
+        'nipgl-scorecards',
+        'Import Passphrases',
+        '🔑 Import Passphrases',
+        'manage_options',
+        'nipgl-import-passphrases',
+        'nipgl_import_passphrases_page'
+    );
+}
+
+function nipgl_import_col_to_idx($col) {
+    $idx = 0;
+    foreach (str_split($col) as $c) {
+        $idx = $idx * 26 + (ord($c) - ord('A') + 1);
+    }
+    return $idx - 1;
+}
+
+function nipgl_read_passphrases_from_xlsx($file_path) {
+    if (!class_exists('ZipArchive')) return new WP_Error('no_zip', 'ZipArchive not available — install php-zip.');
+    $zip = new ZipArchive();
+    if ($zip->open($file_path) !== true) return new WP_Error('bad_zip', 'Could not open xlsx file.');
+
+    $strings = array();
+    $ss = $zip->getFromName('xl/sharedStrings.xml');
+    if ($ss) {
+        preg_match_all('/<t[^>]*>(.*?)<\/t>/s', $ss, $m);
+        $strings = array_map('html_entity_decode', $m[1]);
+    }
+    $sheet_xml = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $zip->close();
+    if (!$sheet_xml) return new WP_Error('no_sheet', 'Could not read sheet data from xlsx.');
+
+    $grid  = array();
+    $cells = explode('</c>', $sheet_xml);
+    foreach ($cells as $cell_str) {
+        if (!preg_match('/\br="([A-Z]+)(\d+)"/', $cell_str, $ref)) continue;
+        $col     = nipgl_import_col_to_idx($ref[1]);
+        $row_num = intval($ref[2]);
+        $type    = '';
+        if (preg_match('/\bt="([^"]*)"/', $cell_str, $tm)) $type = $tm[1];
+        if (!preg_match('/<v>(.*?)<\/v>/s', $cell_str, $vm)) continue;
+        $val = $vm[1];
+        $grid[$row_num][$col] = ($type === 's') ? ($strings[intval($val)] ?? '') : $val;
+    }
+
+    // Col 0 = Club Name, Col 3 = Passphrase. Skip rows 1+2 (header + instructions).
+    $pairs = array();
+    ksort($grid);
+    foreach ($grid as $row_num => $row) {
+        if ($row_num <= 2) continue;
+        $name   = isset($row[0]) ? trim($row[0]) : '';
+        $phrase = isset($row[3]) ? trim($row[3]) : '';
+        if ($name === '') continue;
+        $pairs[$name] = $phrase;
+    }
+    return $pairs;
+}
+
+function nipgl_import_passphrases_page() {
+    if (!current_user_can('manage_options')) wp_die('Unauthorised');
+
+    // Handle disable tool
+    if (isset($_POST['nipgl_disable_tool']) && check_admin_referer('nipgl_import_tool_nonce')) {
+        update_option('nipgl_import_tool_disabled', 1);
+        echo '<div class="wrap"><div class="notice notice-success"><p>Import tool removed from menu. You can re-enable it by deleting the <code>nipgl_import_tool_disabled</code> option from the database.</p></div></div>';
+        return;
+    }
+
+    $result = null;
+    $errors = array();
+
+    // Handle upload + import
+    if (isset($_POST['nipgl_do_import']) && check_admin_referer('nipgl_import_tool_nonce')) {
+        if (empty($_FILES['nipgl_xlsx']['tmp_name'])) {
+            $errors[] = 'No file uploaded.';
+        } else {
+            $pairs = nipgl_read_passphrases_from_xlsx($_FILES['nipgl_xlsx']['tmp_name']);
+            if (is_wp_error($pairs)) {
+                $errors[] = $pairs->get_error_message();
+            } else {
+                $existing = get_option('nipgl_clubs', array());
+                $indexed  = array();
+                foreach ($existing as $club) {
+                    $indexed[strtolower($club['name'])] = $club;
+                }
+                $updated = $inserted = $skipped = 0;
+                foreach ($pairs as $name => $phrase) {
+                    $key = strtolower($name);
+                    if ($phrase === '') {
+                        if (!isset($indexed[$key])) { $indexed[$key] = array('name' => $name, 'pin' => ''); $inserted++; }
+                        else $skipped++;
+                        continue;
+                    }
+                    $normalised = strtolower(preg_replace('/\s+/', ' ', $phrase));
+                    $hash = hash('sha256', $normalised);
+                    if (isset($indexed[$key])) { $indexed[$key]['pin'] = $hash; $updated++; }
+                    else { $indexed[$key] = array('name' => $name, 'pin' => $hash); $inserted++; }
+                }
+                update_option('nipgl_clubs', array_values($indexed));
+                $result = array('updated' => $updated, 'inserted' => $inserted, 'skipped' => $skipped, 'pairs' => $pairs);
+            }
+        }
+    }
+    ?>
+    <div class="wrap">
+        <h1>🔑 Import Club Passphrases</h1>
+        <p>Upload the <code>nipgl-club-passphrases.xlsx</code> file with the Passphrase column filled in. The tool will upsert all clubs — updating existing ones and adding any new ones.</p>
+
+        <?php if (!empty($errors)): ?>
+            <div class="notice notice-error"><p><?php echo implode('<br>', array_map('esc_html', $errors)); ?></p></div>
+        <?php endif; ?>
+
+        <?php if ($result): ?>
+            <div class="notice notice-success">
+                <p>✅ <strong>Import complete.</strong> Passphrases set: <strong><?php echo $result['updated']; ?></strong> &nbsp;|&nbsp; New clubs added: <strong><?php echo $result['inserted']; ?></strong> &nbsp;|&nbsp; Skipped (no passphrase): <strong><?php echo $result['skipped']; ?></strong></p>
+            </div>
+            <?php if (!empty($result['pairs'])): ?>
+            <h3>Imported rows</h3>
+            <table class="widefat striped" style="max-width:500px">
+                <thead><tr><th>Club</th><th>Passphrase</th></tr></thead>
+                <tbody>
+                <?php foreach ($result['pairs'] as $name => $phrase): ?>
+                    <tr>
+                        <td><?php echo esc_html($name); ?></td>
+                        <td><?php echo $phrase ? esc_html($phrase) : '<em style="color:#999">— none —</em>'; ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+        <?php endif; ?>
+
+        <form method="post" enctype="multipart/form-data" style="margin-top:20px">
+            <?php wp_nonce_field('nipgl_import_tool_nonce'); ?>
+            <table class="form-table">
+                <tr>
+                    <th><label for="nipgl_xlsx">Passphrases xlsx</label></th>
+                    <td>
+                        <input type="file" name="nipgl_xlsx" id="nipgl_xlsx" accept=".xlsx">
+                        <p class="description">Upload <code>nipgl-club-passphrases.xlsx</code> with the Passphrase column (column D) filled in.</p>
+                    </td>
+                </tr>
+            </table>
+            <p><input type="submit" name="nipgl_do_import" class="button button-primary" value="Import Passphrases"></p>
+        </form>
+
+        <hr style="margin-top:40px">
+        <h3>Remove this tool</h3>
+        <p>Once you've finished importing, remove this page from the menu to keep the admin tidy.</p>
+        <form method="post">
+            <?php wp_nonce_field('nipgl_import_tool_nonce'); ?>
+            <p><input type="submit" name="nipgl_disable_tool" class="button button-secondary" value="Remove Import Tool from Menu"
+               onclick="return confirm('Remove the import tool from the admin menu?')"></p>
+        </form>
+    </div>
     <?php
 }

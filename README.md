@@ -87,13 +87,13 @@ The `[nipgl_submit]` shortcode adds a scorecard entry page for clubs.
 
 ### Setup
 
-1. Go to **Settings → NIPGL Widget** and add each club with a PIN under **Club PINs**
+1. Go to **Settings → NIPGL Widget** and add each club with a passphrase under **Score Entry** — the [what3words](https://what3words.com) address for the clubhouse makes a good default (e.g. `filled.count.ripen`)
 2. Add an Anthropic API key under **API Settings** if you want AI photo parsing
 3. Create a page with `[nipgl_submit]` — clubs visit this page to submit scorecards
 
 ### How it works
 
-- Clubs log in with their club name and PIN (no WordPress account needed)
+- Clubs log in with their club name and passphrase (no WordPress account needed) — passphrase entry is case-insensitive
 - Three entry methods: **photo** (AI reads the scorecard image), **Excel** (upload the NIPGL template), or **manual**
 - First submission sets status to **Pending** — awaiting confirmation from the other club
 - Second club can **Confirm** (scores agree → Confirmed ✅) or **Amend** (scores differ → Disputed ⚠️)
@@ -107,6 +107,23 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 ---
 
 ## Changelog
+
+### v5.18.2
+
+- Import Passphrases admin tool — upload `nipgl-club-passphrases.xlsx` directly from **NIPGL → 🔑 Import Passphrases** in wp-admin to set all club passphrases in one go
+- Tool hides itself from the menu once dismissed, keeping the admin tidy
+
+### v5.18.1
+
+- Fixed 404 on login button — `nipglSubmit` (ajaxUrl/nonce) was not always localised to the scorecard script when the `[nipgl_submit]` shortcode was on a page without `[nipgl_division]`. `wp_localize_script` now called unconditionally after enqueue in both enqueue functions.
+
+### v5.18.0
+
+- PIN authentication replaced with **passphrase authentication** — clubs now log in with a three-word passphrase instead of a numeric PIN
+- [what3words](https://what3words.com) address for the clubhouse recommended as a default (e.g. `filled.count.ripen`)
+- Passphrase matching is case-insensitive and whitespace-tolerant
+- Admin settings updated with passphrase column, format hint, and what3words tip
+- Login form updated with plain-text input, format hint, and `autocapitalize` disabled for mobile
 
 ### v5.17.10
 
