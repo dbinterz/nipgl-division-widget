@@ -204,8 +204,6 @@
   // ── Live draw animation ───────────────────────────────────────────────────────
   function runDrawAnimation(pairs, onComplete) {
     // pairs = [ {home, away, bye}, ... ] with optional {type:'header', label:'...'} entries
-
-    // Count actual matches (non-headers) for progress display
     var matchCount = pairs.filter(function (p) { return p.type !== 'header'; }).length;
 
     var overlay = document.createElement('div');
@@ -221,7 +219,7 @@
       '</div>',
       '<div class="nipgl-cup-draw-progress" id="nipgl-draw-progress">0 / ' + matchCount + ' drawn</div>',
       '<div class="nipgl-cup-draw-pairs" id="nipgl-draw-pairs"></div>',
-      '<button class="nipgl-cup-draw-btn" id="nipgl-draw-next">Draw Next</button>',
+      '<button class="nipgl-cup-draw-btn nipgl-cup-draw-skip-btn" id="nipgl-draw-skip">Skip to End</button>',
     ].join('');
     document.body.appendChild(overlay);
 
@@ -230,112 +228,242 @@
     var awayEl     = qs('#nipgl-draw-away',      overlay);
     var progressEl = qs('#nipgl-draw-progress',  overlay);
     var pairsEl    = qs('#nipgl-draw-pairs',      overlay);
-    var nextBtn    = qs('#nipgl-draw-next',       overlay);
+    var skipBtn    = qs('#nipgl-draw-skip',        overlay);
 
-    var idx       = 0;  // index into pairs[]
-    var matchIdx  = 0;  // count of actual matches drawn so far (skips headers)
+    var idx      = 0;
+    var matchIdx = 0;
+    var timer    = null;
+    var skipped  = false;
+
+    // Timings (ms)
+    var T_HOME  = 700;   // delay before showing home team
+    var T_AWAY  = 1200;  // delay before showing away team
+    var T_CHIP  = 1800;  // delay before adding chip
+    var T_NEXT  = 2600;  // delay before advancing to next pair
+
+    function addChip(pair) {
+      var chip = document.createElement('div');
+      chip.className = 'nipgl-cup-draw-pair-chip' + (pair.bye ? ' nipgl-cup-draw-bye-chip' : '');
+      chip.innerHTML = escHtml(pair.home)
+        + '<span class="vs-sep">' + (pair.bye ? 'BYE' : 'v') + '</span>'
+        + (pair.bye ? '' : escHtml(pair.away || 'TBD'));
+      pairsEl.appendChild(chip);
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { chip.classList.add('show'); });
+      });
+    }
+
+    function advance() {
+      if (idx < pairs.length) {
+        showPair(idx);
+        idx++;
+      } else {
+        skipBtn.textContent = 'Close';
+        skipBtn.onclick = function () {
+          document.body.removeChild(overlay);
+          if (onComplete) onComplete();
+        };
+      }
+    }
 
     function showPair(i) {
       var pair = pairs[i];
 
-      // Header entry — insert a section divider and immediately advance
       if (pair.type === 'header') {
         var divider = document.createElement('div');
         divider.className = 'nipgl-cup-draw-round-header';
         divider.textContent = pair.label;
         pairsEl.appendChild(divider);
-        idx++;
-        // Reset the reveal card for the new round
         homeEl.classList.remove('show');
         awayEl.classList.remove('show');
         homeEl.textContent = '';
         awayEl.textContent = '';
         labelEl.textContent = pair.label;
-        // If there are more pairs, update button; otherwise close
-        if (idx < pairs.length) {
-          nextBtn.textContent = 'Draw Next';
-          // Don't auto-advance — let user press "Draw Next" for the new round
-        } else {
-          nextBtn.textContent = 'Close Draw';
-        }
+        // Brief pause on header then auto-advance
+        timer = setTimeout(advance, skipped ? 0 : 600);
         return;
       }
 
       matchIdx++;
       labelEl.textContent = 'Match ' + matchIdx;
-
       homeEl.textContent = pair.home;
       awayEl.textContent = pair.bye ? 'BYE' : (pair.away || 'TBD');
       homeEl.classList.remove('show');
       awayEl.classList.remove('show');
 
-      setTimeout(function () {
+      if (skipped) {
+        // Instant reveal — no animation
         homeEl.classList.add('show');
-        setTimeout(function () {
-          awayEl.classList.add('show');
-        }, 600);
-      }, 80);
-
-      progressEl.textContent = matchIdx + ' / ' + matchCount + ' drawn';
-
-      // After both teams shown, add chip to the pairs area
-      setTimeout(function () {
-        var chip = document.createElement('div');
-        chip.className = 'nipgl-cup-draw-pair-chip' + (pair.bye ? ' nipgl-cup-draw-bye-chip' : '');
-        chip.innerHTML = escHtml(pair.home)
-          + '<span class="vs-sep">' + (pair.bye ? 'BYE' : 'v') + '</span>'
-          + (pair.bye ? '' : escHtml(pair.away || 'TBD'));
-        pairsEl.appendChild(chip);
-        requestAnimationFrame(function () {
-          requestAnimationFrame(function () { chip.classList.add('show'); });
-        });
-      }, 900);
-
-      if (i === pairs.length - 1) {
-        nextBtn.textContent = 'Close Draw';
+        awayEl.classList.add('show');
+        addChip(pair);
+        progressEl.textContent = matchIdx + ' / ' + matchCount + ' drawn';
+        timer = setTimeout(advance, 0);
+        return;
       }
+
+      timer = setTimeout(function () { homeEl.classList.add('show'); }, T_HOME);
+      timer = setTimeout(function () { awayEl.classList.add('show'); }, T_AWAY);
+      timer = setTimeout(function () {
+        addChip(pair);
+        progressEl.textContent = matchIdx + ' / ' + matchCount + ' drawn';
+      }, T_CHIP);
+      timer = setTimeout(advance, T_NEXT);
     }
 
-    nextBtn.addEventListener('click', function () {
-      if (idx < pairs.length) {
-        showPair(idx);
+    skipBtn.addEventListener('click', function () {
+      if (skipped) return; // already skipping, button becomes Close
+      skipped = true;
+      clearTimeout(timer);
+      skipBtn.textContent = 'Skip to End';
+      // Drain remaining pairs instantly
+      while (idx < pairs.length) {
+        var pair = pairs[idx];
         idx++;
-      } else {
+        if (pair.type === 'header') {
+          var divider = document.createElement('div');
+          divider.className = 'nipgl-cup-draw-round-header';
+          divider.textContent = pair.label;
+          pairsEl.appendChild(divider);
+          continue;
+        }
+        matchIdx++;
+        addChip(pair);
+      }
+      progressEl.textContent = matchCount + ' / ' + matchCount + ' drawn';
+      labelEl.textContent = '✅ Draw Complete';
+      homeEl.classList.remove('show'); homeEl.textContent = '';
+      awayEl.classList.remove('show'); awayEl.textContent = '';
+      skipBtn.textContent = 'Close';
+      skipBtn.onclick = function () {
         document.body.removeChild(overlay);
         if (onComplete) onComplete();
-      }
+      };
     });
 
-    // Show first pair immediately
-    showPair(idx);
-    idx++;
+    // Kick off automatically
+    advance();
   }
 
-  // ── Admin draw trigger ────────────────────────────────────────────────────────
+  // ── Hide draw/login buttons once draw is complete ─────────────────────────────
+  function hideDrawButtons(wrap) {
+    var actionsEl = qs('.nipgl-cup-header-actions', wrap);
+    if (actionsEl) actionsEl.parentNode.removeChild(actionsEl);
+    // Also hide the "no draw yet" empty state
+    var emptyEl = qs('.nipgl-cup-empty', wrap);
+    if (emptyEl) emptyEl.style.display = 'none';
+  }
+
+  // ── Draw passphrase login modal ───────────────────────────────────────────────
+  var drawToken = null; // stored in memory for session duration
+
+  function openDrawLoginModal(wrap, onSuccess) {
+    var existing = qs('.nipgl-cup-draw-login-modal');
+    if (existing) existing.parentNode.removeChild(existing);
+
+    var nonce = (typeof nipglCupData !== 'undefined') ? nipglCupData.cupNonce : '';
+
+    var modal = document.createElement('div');
+    modal.className = 'nipgl-cup-draw-login-modal';
+    modal.innerHTML =
+      '<div class="nipgl-cup-draw-login-box">' +
+        '<div class="nipgl-cup-draw-login-title">🔑 Draw Authentication</div>' +
+        '<p class="nipgl-cup-draw-login-hint">Enter the draw passphrase to unlock the cup draw.</p>' +
+        '<input class="nipgl-cup-draw-login-input" type="text" placeholder="word.word.word" ' +
+               'autocomplete="off" autocapitalize="none" spellcheck="false">' +
+        '<div class="nipgl-cup-draw-login-actions">' +
+          '<button class="nipgl-cup-draw-login-submit">Unlock Draw</button>' +
+          '<button class="nipgl-cup-draw-login-cancel">Cancel</button>' +
+        '</div>' +
+        '<div class="nipgl-cup-draw-login-msg"></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+
+    var input   = qs('.nipgl-cup-draw-login-input',  modal);
+    var submitBtn = qs('.nipgl-cup-draw-login-submit', modal);
+    var msgEl   = qs('.nipgl-cup-draw-login-msg',    modal);
+    input.focus();
+
+    function doAuth() {
+      var passphrase = input.value.trim().toLowerCase();
+      if (!passphrase) return;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Checking…';
+      post('nipgl_cup_draw_auth', { nonce: nonce, passphrase: passphrase }, function (res) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Unlock Draw';
+        if (!res.success) {
+          msgEl.textContent = res.data || 'Incorrect passphrase.';
+          input.value = '';
+          input.focus();
+          return;
+        }
+        drawToken = res.data.token;
+        modal.parentNode.removeChild(modal);
+        onSuccess();
+      });
+    }
+
+    submitBtn.addEventListener('click', doAuth);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') doAuth(); });
+    qs('.nipgl-cup-draw-login-cancel', modal).addEventListener('click', function () {
+      modal.parentNode.removeChild(modal);
+    });
+    // Close on backdrop click
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) modal.parentNode.removeChild(modal);
+    });
+  }
+
+  // ── Admin/authenticated draw trigger ──────────────────────────────────────────
   function initAdminDraw(wrap) {
     var cupId   = wrap.dataset.cupId;
     var drawBtn = qs('.nipgl-cup-admin-draw-btn', wrap);
-    if (!drawBtn) return;
+    var loginBtn = qs('.nipgl-cup-draw-login-btn', wrap);
 
-    drawBtn.addEventListener('click', function () {
+    function performDraw() {
       if (!confirm('Perform the draw now? This will randomise the bracket and publish it live. This cannot be undone.')) return;
-      drawBtn.disabled = true;
-      drawBtn.textContent = '⏳ Drawing…';
+      var nonce = (drawBtn ? drawBtn.dataset.nonce : '') ||
+                  (typeof nipglCupData !== 'undefined' ? nipglCupData.cupNonce : '');
+      var activeBtn = drawBtn || loginBtn;
+      if (activeBtn) { activeBtn.disabled = true; activeBtn.textContent = '⏳ Drawing…'; }
 
-      post('nipgl_cup_perform_draw', { cup_id: cupId, nonce: drawBtn.dataset.nonce }, function (res) {
-        drawBtn.disabled = false;
-        drawBtn.textContent = '🎲 Perform Draw';
-        if (!res.success) { alert('Draw failed: ' + (res.data || 'Unknown error')); return; }
+      post('nipgl_cup_perform_draw', { cup_id: cupId, nonce: nonce, draw_token: drawToken || '' }, function (res) {
+        if (activeBtn) { activeBtn.disabled = false; }
+        if (!res.success) {
+          if (activeBtn) activeBtn.textContent = drawBtn ? '🎲 Perform Draw' : '🔑 Login to Draw';
+          alert('Draw failed: ' + (res.data || 'Unknown error'));
+          return;
+        }
         var bracket = res.data.bracket;
-        var pairs   = res.data.pairs; // [{home, away, bye}, ...]
+        var pairs   = res.data.pairs;
         runDrawAnimation(pairs, function () {
           renderBracket(wrap, bracket);
           updateStatus(wrap, 'Draw complete — bracket published.');
-          // Hide the draw button — draw is done
-          drawBtn.parentNode.removeChild(drawBtn);
+          hideDrawButtons(wrap);
         });
       });
-    });
+    }
+
+    // Admin draw button — direct
+    if (drawBtn) {
+      drawBtn.addEventListener('click', performDraw);
+    }
+
+    // Login button — open auth modal first, then draw on success
+    if (loginBtn) {
+      loginBtn.addEventListener('click', function () {
+        if (drawToken) {
+          // Already authenticated this session
+          performDraw();
+        } else {
+          openDrawLoginModal(wrap, function () {
+            // Swap login button to draw button appearance
+            loginBtn.textContent = '🎲 Perform Draw';
+            performDraw();
+          });
+        }
+      });
+    }
   }
 
   // ── Admin score entry popover ─────────────────────────────────────────────────
@@ -446,10 +574,12 @@
             runDrawAnimation(pairs, function () {
               renderBracket(wrap, bracket);
               updateStatus(wrap, 'Draw complete.');
+              hideDrawButtons(wrap);
             });
           } else {
             renderBracket(wrap, bracket);
             updateStatus(wrap, 'Bracket updated.');
+            hideDrawButtons(wrap);
           }
         }
       });

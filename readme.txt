@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.0.10
+Stable tag: 6.1.4
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,25 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 6.1.4 =
+* Draw animation is now fully automatic — teams reveal on a timed sequence; Skip to End fast-forwards all remaining matches instantly
+* "No draw performed" message hidden after draw completes
+* Bracket columns flex to fill available width on wider screens
+* Header bar changed to red; round name/date labels have yellow background; Final round header is navy with gold text
+
+= 6.1.3 =
+* Login to Draw and Perform Draw buttons are now hidden from the public page after the draw completes — both when the draw is triggered by the current user and when a watching visitor sees it via polling
+* Draw reset remains wp-admin only (Cups edit page)
+
+= 6.1.2 =
+* Draw passphrase setting moved from Settings > NIPGL Widget to the Cups admin page (NIPGL > Cups)
+
+= 6.1.1 =
+* Draw passphrase gate now applies to everyone on the public page including WP admins — the 🔑 Login to Draw button is shown to all visitors; the wp-admin inline draw button retains direct access for admins
+
+= 6.1.0 =
+* Draw passphrase gate — a global draw passphrase can be set in Settings > NIPGL Widget; when set, the public cup page shows a "Login to Draw" button instead of the draw button; the user enters the passphrase in a modal and on success the draw is unlocked for their browser session; WP admins bypass the gate entirely
 
 = 6.0.10 =
 * Winner row: lighter green background (#e6f4e6) with dark green text (#1a5c1a)

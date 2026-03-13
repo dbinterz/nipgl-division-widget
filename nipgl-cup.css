@@ -33,7 +33,7 @@
 
 /* ── Header ──────────────────────────────────────────────────────────────────── */
 .nipgl-cup-header {
-  background: var(--nipgl-navy, #1a2e5a);
+  background: #c0202a;
   color: #fff;
   padding: 14px 20px;
   display: flex;
@@ -120,26 +120,30 @@
 .nipgl-cup-round {
   display: flex;
   flex-direction: column;
-  min-width: 190px;
-  width: 190px;
+  min-width: 160px;
+  flex: 1;
 }
 .nipgl-cup-round-header {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .08em;
-  color: var(--nipgl-navy, #1a2e5a);
-  padding: 0 8px 10px;
+  color: #1a2e5a;
+  padding: 6px 8px 6px;
   text-align: center;
+  background: #e8b400;
+  border-radius: 4px 4px 0 0;
+  margin: 0 8px 6px;
 }
 .nipgl-cup-round-date {
   display: block;
   font-size: 10px;
-  font-weight: 400;
-  color: var(--nipgl-text-muted, #666);
+  font-weight: 600;
+  color: #1a2e5a;
   letter-spacing: 0;
   text-transform: none;
   margin-top: 2px;
+  opacity: .8;
 }
 .nipgl-cup-round-slots {
   flex: 1;
@@ -273,7 +277,8 @@
   box-shadow: 0 2px 12px rgba(232,180,0,.2);
 }
 .nipgl-cup-round-final .nipgl-cup-round-header {
-  color: var(--nipgl-gold, #e8b400);
+  background: #1a2e5a;
+  color: #e8b400;
 }
 
 /* ── Trophy / winner card ────────────────────────────────────────────────────── */
@@ -355,6 +360,86 @@
 }
 .nipgl-cup-empty-icon { font-size: 36px; margin-bottom: 10px; }
 
+/* ── Draw login modal ────────────────────────────────────────────────────────── */
+.nipgl-cup-draw-login-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,15,30,.75);
+  z-index: 99998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Saira', Arial, sans-serif;
+}
+.nipgl-cup-draw-login-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 32px 24px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.25);
+}
+.nipgl-cup-draw-login-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a2e5a;
+  margin-bottom: 8px;
+}
+.nipgl-cup-draw-login-hint {
+  font-size: 13px;
+  color: #555;
+  margin: 0 0 14px;
+}
+.nipgl-cup-draw-login-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #d0d5e8;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1a1a1a;
+  background: #fff;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+.nipgl-cup-draw-login-input:focus {
+  outline: none;
+  border-color: #1a2e5a;
+}
+.nipgl-cup-draw-login-actions {
+  display: flex;
+  gap: 8px;
+}
+.nipgl-cup-draw-login-submit {
+  flex: 1;
+  padding: 9px;
+  background: #1a2e5a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.nipgl-cup-draw-login-submit:disabled { opacity: .6; cursor: default; }
+.nipgl-cup-draw-login-cancel {
+  padding: 9px 14px;
+  background: none;
+  border: 1px solid #d0d5e8;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  color: #666;
+}
+.nipgl-cup-draw-login-msg {
+  font-size: 12px;
+  color: #c0202a;
+  margin-top: 8px;
+  min-height: 16px;
+}
+
 /* ── Draw animation ──────────────────────────────────────────────────────────── */
 .nipgl-cup-draw-overlay {
   position: fixed;
@@ -434,7 +519,7 @@
   color: rgba(255,255,255,.5);
   text-align: center;
 }
-.nipgl-cup-draw-btn {
+.nipgl-cup-draw-skip-btn {
   padding: 12px 32px;
   background: var(--nipgl-gold, #e8b400);
   color: #1a2e5a;
@@ -446,8 +531,8 @@
   cursor: pointer;
   transition: background .15s, transform .1s;
 }
-.nipgl-cup-draw-btn:hover { background: #f0c800; transform: scale(1.03); }
-.nipgl-cup-draw-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.nipgl-cup-draw-skip-btn:hover { background: #f0c800; transform: scale(1.03); }
+.nipgl-cup-draw-skip-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
 
 .nipgl-cup-draw-pairs {
   display: flex;

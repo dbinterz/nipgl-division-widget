@@ -108,6 +108,30 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
+### v6.1.4
+
+- Draw animation is fully automatic — home/away teams reveal on a timer; "Skip to End" button fast-forwards all remaining matches instantly
+- "No draw performed" empty state hidden after draw completes
+- Bracket columns flex to fill available width on wider screens
+- Header bar red; round name/date labels yellow background; Final round header navy with gold text
+
+### v6.1.3
+
+- Login/draw buttons hidden from public page once draw completes — covers all paths: direct trigger, poll animation, and bracket-only updates
+- Draw reset remains wp-admin only
+
+### v6.1.2
+
+- Draw passphrase setting moved from the main NIPGL settings page to the Cups admin page
+
+### v6.1.1
+
+- Draw passphrase gate now applies to all visitors on the public page including WP admins — everyone must enter the passphrase; only the wp-admin inline draw button retains direct admin access
+
+### v6.1.0
+
+- **Draw passphrase gate** — set a global draw passphrase in Settings → NIPGL Widget; the public cup page shows a "🔑 Login to Draw" button; on correct passphrase entry a session token is issued and the draw proceeds; WP admins bypass the gate; passphrase is stored as SHA-256 hash
+
 ### v6.0.10
 
 - Winner row: lighter green background with dark green text for better readability

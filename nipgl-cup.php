@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Cup Bracket Feature - v6.0.10
+ * NIPGL Cup Bracket Feature - v6.1.4
  * Single-elimination knockout bracket widget with live animated draw.
  */
 
@@ -27,12 +27,40 @@ function nipgl_cup_enqueue() {
     }
     // Always localise cup-specific data (score entry, admin flag)
     wp_localize_script('nipgl-cup', 'nipglCupData', array(
-        'isAdmin'    => current_user_can('manage_options') ? 1 : 0,
-        'scoreNonce' => wp_create_nonce('nipgl_cup_score'),
+        'isAdmin'            => current_user_can('manage_options') ? 1 : 0,
+        'scoreNonce'         => wp_create_nonce('nipgl_cup_score'),
+        'drawPassphraseSet'  => get_option('nipgl_draw_passphrase', '') !== '' ? 1 : 0,
+        'cupNonce'           => wp_create_nonce('nipgl_cup_nonce'),
     ));
 }
 
-// ── AJAX: Save cup match score ─────────────────────────────────────────────────
+// ── AJAX: Verify draw passphrase ───────────────────────────────────────────────
+add_action('wp_ajax_nopriv_nipgl_cup_draw_auth', 'nipgl_ajax_cup_draw_auth');
+add_action('wp_ajax_nipgl_cup_draw_auth',        'nipgl_ajax_cup_draw_auth');
+function nipgl_ajax_cup_draw_auth() {
+    check_ajax_referer('nipgl_cup_nonce', 'nonce');
+    $raw    = strtolower(trim(sanitize_text_field($_POST['passphrase'] ?? '')));
+    $stored = get_option('nipgl_draw_passphrase', '');
+    if ($stored === '') wp_send_json_error('No draw passphrase configured.');
+    if (!hash_equals($stored, hash('sha256', $raw))) wp_send_json_error('Incorrect passphrase.');
+    // Store auth in session (WP session via transient keyed to session cookie)
+    $token = wp_generate_password(32, false);
+    set_transient('nipgl_draw_auth_' . $token, 1, HOUR_IN_SECONDS);
+    wp_send_json_success(array('token' => $token));
+}
+
+// ── AJAX: Validate draw auth token before performing draw ─────────────────────
+// Called internally — nipgl_ajax_cup_perform_draw checks this
+function nipgl_cup_check_draw_auth() {
+    // Check token passed from JS (required for everyone on the public page)
+    $token = sanitize_text_field($_POST['draw_token'] ?? '');
+    if ($token && get_transient('nipgl_draw_auth_' . $token)) return true;
+    // WP admins triggering from wp-admin (inline draw button) don't pass a token
+    if (current_user_can('manage_options') && empty($_POST['draw_token'])) return true;
+    return false;
+}
+
+
 add_action('wp_ajax_nipgl_cup_save_score', 'nipgl_ajax_cup_save_score');
 function nipgl_ajax_cup_save_score() {
     check_ajax_referer('nipgl_cup_score', 'nonce');
@@ -102,11 +130,13 @@ function nipgl_cup_shortcode($atts) {
 
       <div class="nipgl-cup-header">
         <span class="nipgl-cup-title">🏆 <?php echo esc_html($title); ?></span>
-        <?php if ($is_admin && !$drawn): ?>
+        <?php
+        $draw_passphrase_set = get_option('nipgl_draw_passphrase', '') !== '';
+        $show_draw_btn = !$drawn && $draw_passphrase_set;
+        if ($show_draw_btn): ?>
         <div class="nipgl-cup-header-actions">
-          <button class="nipgl-cup-btn nipgl-cup-btn-ghost nipgl-cup-admin-draw-btn"
-                  data-nonce="<?php echo esc_attr($nonce); ?>">
-            🎲 Perform Draw
+          <button class="nipgl-cup-btn nipgl-cup-btn-ghost nipgl-cup-draw-login-btn">
+            🔑 Login to Draw
           </button>
         </div>
         <?php endif; ?>
@@ -168,11 +198,12 @@ function nipgl_ajax_cup_poll() {
     ));
 }
 
-// ── AJAX: Perform draw (admin only) ───────────────────────────────────────────
-add_action('wp_ajax_nipgl_cup_perform_draw', 'nipgl_ajax_cup_perform_draw');
+// ── AJAX: Perform draw (admin or passphrase-authenticated) ─────────────────────
+add_action('wp_ajax_nipgl_cup_perform_draw',        'nipgl_ajax_cup_perform_draw');
+add_action('wp_ajax_nopriv_nipgl_cup_perform_draw', 'nipgl_ajax_cup_perform_draw');
 function nipgl_ajax_cup_perform_draw() {
     check_ajax_referer('nipgl_cup_nonce', 'nonce');
-    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorised');
+    if (!nipgl_cup_check_draw_auth()) wp_send_json_error('Unauthorised — please authenticate first.');
 
     $cup_id = sanitize_key($_POST['cup_id'] ?? '');
     if (!$cup_id) wp_send_json_error('Missing cup_id');
@@ -613,6 +644,15 @@ function nipgl_cup_handle_admin_actions() {
             exit;
         }
     }
+
+    // ── Save draw passphrase ──────────────────────────────────────────────────
+    if (isset($_POST['nipgl_draw_passphrase_nonce']) &&
+        wp_verify_nonce($_POST['nipgl_draw_passphrase_nonce'], 'nipgl_draw_passphrase_save')) {
+        $raw = strtolower(trim(sanitize_text_field($_POST['nipgl_draw_passphrase'] ?? '')));
+        update_option('nipgl_draw_passphrase', $raw !== '' ? hash('sha256', $raw) : '');
+        wp_redirect(admin_url('admin.php?page=nipgl-cups&passphrase_saved=1'));
+        exit;
+    }
 }
 
 
@@ -658,9 +698,7 @@ function nipgl_cups_list_page() {
     }
     ?>
     <div class="wrap">
-    <h1 style="display:flex;align-items:center;gap:16px">Cup Management
-      <a href="<?php echo admin_url('admin.php?page=nipgl-cups&action=new'); ?>" class="button button-primary">+ New Cup</a>
-    </h1>
+    <h1>Cup Management</h1>
 
     <?php if (isset($_GET['saved'])): ?>
       <div class="notice notice-success is-dismissible"><p>Cup saved.</p></div>
@@ -668,6 +706,39 @@ function nipgl_cups_list_page() {
     <?php if (isset($_GET['deleted'])): ?>
       <div class="notice notice-success is-dismissible"><p>Cup deleted.</p></div>
     <?php endif; ?>
+    <?php if (isset($_GET['passphrase_saved'])): ?>
+      <div class="notice notice-success is-dismissible"><p>Draw passphrase updated.</p></div>
+    <?php endif; ?>
+
+    <h2>Draw Passphrase</h2>
+    <p>Required to trigger a cup draw from the public page. Leave blank to hide the draw button from the public entirely (wp-admin draw only).</p>
+    <form method="post">
+      <?php wp_nonce_field('nipgl_draw_passphrase_save', 'nipgl_draw_passphrase_nonce'); ?>
+      <table class="form-table" style="max-width:600px">
+        <tr>
+          <th scope="row"><label for="nipgl_draw_passphrase">Draw Passphrase</label></th>
+          <td>
+            <input type="text" id="nipgl_draw_passphrase" name="nipgl_draw_passphrase"
+                   value=""
+                   placeholder="<?php echo get_option('nipgl_draw_passphrase','') !== '' ? '(passphrase set — enter new value to change)' : 'e.g. word.word.word'; ?>"
+                   autocomplete="off" autocapitalize="none" spellcheck="false"
+                   style="width:300px">
+            <?php if (get_option('nipgl_draw_passphrase','') !== ''): ?>
+              <span style="color:#2a7a2a;margin-left:8px">✅ Passphrase is set</span>
+            <?php else: ?>
+              <span style="color:#999;margin-left:8px">Not set</span>
+            <?php endif; ?>
+            <p class="description">Three-word format recommended: <code>word.word.word</code>. Stored as a SHA-256 hash. Leave blank to clear.</p>
+          </td>
+        </tr>
+      </table>
+      <?php submit_button('Save Passphrase', 'secondary'); ?>
+    </form>
+
+    <hr>
+    <h2 style="display:flex;align-items:center;gap:16px">Cups
+      <a href="<?php echo admin_url('admin.php?page=nipgl-cups&action=new'); ?>" class="button button-primary">+ New Cup</a>
+    </h2>
 
     <?php if (empty($cups)): ?>
       <p>No cups configured yet. <a href="<?php echo admin_url('admin.php?page=nipgl-cups&action=new'); ?>">Create your first cup →</a></p>

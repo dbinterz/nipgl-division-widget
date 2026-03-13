@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Scorecard Feature - v6.0.10
+ * NIPGL Scorecard Feature - v6.1.4
  * Per-club passphrase auth, two-party submission, confirm/amend/dispute flow.
  */
 
