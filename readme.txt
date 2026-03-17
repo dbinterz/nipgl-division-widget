@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.4.20
+Stable tag: 6.4.22
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,10 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 6.4.22 =
+* Fixed championship section tabs not switching — clicking a section tab now correctly shows that section's pane (the DOM switching was dropped when the inline script was removed in v6.4.20; initSectionTabs was only saving to sessionStorage, not updating active classes)
+* Code quality: shared draw library extracted to nipgl-draw.php — bracket geometry, animation pairs, and skeleton-round assembly now live in one place (nipgl_draw_build_bracket, nipgl_draw_default_rounds, nipgl_draw_cup_club); cup and champ draw functions refactored to thin wrappers supplying their own club/home-limit callbacks
 
 = 6.4.20 =
 * Robustness: bracket size check added at draw time — rejects writes exceeding 800KB to prevent option corruption

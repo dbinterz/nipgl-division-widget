@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL National Championships - v6.4.20
+ * NIPGL National Championships - v6.4.22
  *
  * Single-elimination bracket competitions for singles, pairs, triples, fours.
  * Based on the cup draw system with two key differences:
@@ -383,200 +383,44 @@ function nipgl_champ_perform_draw($champ_id, $champ, $section = '0') {
 
     shuffle($raw_entries);
     $n           = count($raw_entries);
-    $multi_green = array_filter(array_map('trim', explode("
-", $champ['multi_green'] ?? '')));
+    $multi_green = array_filter(array_map('trim', explode("\n", $champ['multi_green'] ?? '')));
     // Per-section dates override global dates
     $dates = !empty($champ['section_' . $section_idx . '_dates'])
-        ? array_values(array_filter(array_map('trim', explode("
-", $champ['section_' . $section_idx . '_dates']))))
+        ? array_values(array_filter(array_map('trim', explode("\n", $champ['section_' . $section_idx . '_dates']))))
         : ($champ['dates'] ?? array());
-
-    // ── Same bracket geometry as cup ─────────────────────────────────────────
-    $bracket_size = 1;
-    while ($bracket_size < $n) $bracket_size *= 2;
-    $half         = $bracket_size / 2;
-    $prelim_count = $n - $half;
 
     $numbered = array();
     foreach ($raw_entries as $i => $entry) {
         $numbered[] = array('name' => $entry, 'draw_num' => $i + 1);
     }
 
-    $prelim_teams = array_slice($numbered, 0, $prelim_count * 2);
-    $bye_teams    = array_slice($numbered, $prelim_count * 2);
-
-    // Separate same-club players before pairing (best-effort)
-    nipgl_champ_separate_clubs($prelim_teams);
-
-    // ── Round 1: prelim matches with 6-per-club constraint ────────────────────
-    $round1_matches = array();
-    $pairs_for_anim = array();
-    $home_clubs_r1  = array(); // club => count of home matches this round
-
-    for ($i = 0; $i < count($prelim_teams); $i += 2) {
-        $a = $prelim_teams[$i];
-        $b = $prelim_teams[$i + 1];
-
-        $ca = nipgl_champ_entry_club($a['name']);
-        $cb = nipgl_champ_entry_club($b['name']);
-
-        // Swap home/away if $a's club is at 6 and $b's club isn't, and they differ
-        if (($home_clubs_r1[$ca] ?? 0) >= nipgl_champ_home_limit($ca, $multi_green) && ($home_clubs_r1[$cb] ?? 0) < nipgl_champ_home_limit($cb, $multi_green) && $ca !== $cb) {
-            list($a, $b) = array($b, $a);
-            list($ca, $cb) = array($cb, $ca);
-        }
-        $home_clubs_r1[$ca] = ($home_clubs_r1[$ca] ?? 0) + 1;
-
-        $r1_game_num = count($round1_matches) + 1;
-        $round1_matches[] = array(
-            'home'          => $a['name'],
-            'away'          => $b['name'],
-            'home_score'    => null,
-            'away_score'    => null,
-            'draw_num_home' => $a['draw_num'],
-            'draw_num_away' => $b['draw_num'],
-            'bye'           => false,
-            'game_num'      => $r1_game_num,
-        );
-        $pairs_for_anim[] = array('home' => $a['name'], 'away' => $b['name'], 'bye' => false);
-    }
-
-    // ── Round 2: interleave prelim winner slots with bye entries ──────────────
-    $r2_slots          = array_fill(0, $half, null);
-    $r2_slot_from_game = array_fill(0, $half, null); // which prelim game feeds each slot
-    $bye_cursor        = 0;
-    $prelim_game_start = 1; // prelim matches are game 1..prelim_count
-
-    if ($prelim_count > 0) {
-        $step = $half / $prelim_count;
-        $winner_positions = array();
-        for ($w = 0; $w < $prelim_count; $w++) {
-            $winner_positions[] = (int) round($w * $step);
-        }
-        // Map each winner_position slot back to its prelim game number
-        $prelim_game_idx = 0;
-        for ($s = 0; $s < $half; $s++) {
-            if (in_array($s, $winner_positions)) {
-                $r2_slot_from_game[$s] = $prelim_game_start + $prelim_game_idx;
-                $prelim_game_idx++;
-            } else {
-                $r2_slots[$s] = $bye_teams[$bye_cursor++];
-            }
-        }
-    } else {
-        for ($s = 0; $s < $half; $s++) {
-            $r2_slots[$s] = $bye_teams[$bye_cursor++];
-        }
-    }
-
-    // Assign game numbers: R1 prelims are 1..prelim_count, R2 starts after
-    $r2_game_start = $prelim_count + 1;
-
-    // Separate same-club bye entries in R2 slots before pairing (best-effort)
-    // Null slots (prelim winner placeholders) are left in place
-    nipgl_champ_separate_r2_slots($r2_slots, $r2_slot_from_game);
-
-    // ── Apply 6-per-club constraint to Round 2 bye-team pairings ─────────────
-    $round2_matches = array();
-    $home_clubs_r2  = array();
-
-    for ($i = 0; $i < $half; $i += 2) {
-        $a = $r2_slots[$i];
-        $b = $r2_slots[$i + 1];
-
-        if ($a && $b) {
-            $ca = nipgl_champ_entry_club($a['name']);
-            $cb = nipgl_champ_entry_club($b['name']);
-            if (($home_clubs_r2[$ca] ?? 0) >= nipgl_champ_home_limit($ca, $multi_green) && ($home_clubs_r2[$cb] ?? 0) < nipgl_champ_home_limit($cb, $multi_green) && $ca !== $cb) {
-                list($a, $b) = array($b, $a);
-                list($ca, $cb) = array($cb, $ca);
-                // Also swap the from_game annotations to keep them aligned
-                list($r2_slot_from_game[$i], $r2_slot_from_game[$i + 1]) =
-                    array($r2_slot_from_game[$i + 1], $r2_slot_from_game[$i]);
-            }
-            $home_clubs_r2[$ca] = ($home_clubs_r2[$ca] ?? 0) + 1;
-        }
-
-        $match_game_num = $r2_game_start + intval($i / 2);
-        $round2_matches[] = array(
-            'home'           => $a ? $a['name'] : null,
-            'away'           => $b ? $b['name'] : null,
-            'home_score'     => null,
-            'away_score'     => null,
-            'draw_num_home'  => $a ? $a['draw_num'] : null,
-            'draw_num_away'  => $b ? $b['draw_num'] : null,
-            'bye'            => false,
-            'game_num'       => $match_game_num,
-            // Null slots: which prelim game feeds this slot?
-            'prev_game_home' => ($a === null) ? $r2_slot_from_game[$i]     : null,
-            'prev_game_away' => ($b === null) ? $r2_slot_from_game[$i + 1] : null,
-        );
-    }
-
-    // ── Animation pairs for Round 2 ───────────────────────────────────────────
-    $r2_has_drawn = false;
-    foreach ($round2_matches as $rm) {
-        if ($rm['home'] || $rm['away']) { $r2_has_drawn = true; break; }
-    }
-    if ($r2_has_drawn) {
-        if ($prelim_count > 0) {
-            $r2_label = $champ['rounds'][1] ?? 'Round 1 Draw';
-            $pairs_for_anim[] = array('type' => 'header', 'label' => $r2_label);
-        }
-        foreach ($round2_matches as $rm) {
-            $pairs_for_anim[] = array('home' => $rm['home'] ?? 'Prelim Winner', 'away' => $rm['away'] ?? 'Prelim Winner', 'bye' => false);
-        }
-    }
-
-    // ── Round names ───────────────────────────────────────────────────────────
     $stored_rounds = $champ['rounds'] ?? array();
-    if ($prelim_count > 0) {
-        $main_rounds = nipgl_champ_default_rounds($half);
-        $total_r     = 1 + count($main_rounds);
-        $rounds = (!empty($stored_rounds) && count($stored_rounds) === $total_r)
-            ? $stored_rounds
-            : array_merge(array('Preliminary Round'), $main_rounds);
-    } else {
-        $total_r = intval(log($bracket_size, 2));
-        $rounds  = (!empty($stored_rounds) && count($stored_rounds) === $total_r)
-            ? $stored_rounds
-            : nipgl_champ_default_rounds($n);
-    }
+    $r2_label      = $stored_rounds[1] ?? 'Round 1 Draw';
 
-    // ── Assemble bracket with sequential game numbers ────────────────────────
-    $all_matches  = $prelim_count > 0 ? array($round1_matches, $round2_matches) : array($round2_matches);
-    $prev_count   = count($round2_matches);
-    $next_game    = $r2_game_start + $prev_count; // continues from after R2
-    $start_r      = $prelim_count > 0 ? 2 : 1;
-    $prev_matches = $round2_matches;
-    for ($r = $start_r; $r < count($rounds); $r++) {
-        $prev_count = intval(ceil($prev_count / 2));
-        $rm = array();
-        for ($m = 0; $m < $prev_count; $m++) {
-            $feed_home = $prev_matches[$m * 2]['game_num']                          ?? null;
-            $feed_away = isset($prev_matches[$m * 2 + 1]) ? ($prev_matches[$m * 2 + 1]['game_num'] ?? null) : null;
-            $rm[] = array(
-                'home' => null, 'away' => null,
-                'home_score' => null, 'away_score' => null,
-                'draw_num_home' => null, 'draw_num_away' => null,
-                'bye' => false,
-                'game_num'       => $next_game++,
-                'prev_game_home' => $feed_home,
-                'prev_game_away' => $feed_away,
-            );
-        }
-        $all_matches[]  = $rm;
-        $prev_matches   = $rm;
-    }
+    $result = nipgl_draw_build_bracket($numbered, array(
+        'get_club'      => 'nipgl_champ_entry_club',
+        // Champ rule: max 6 (or multi-green override) home matches per club per round
+        'home_at_limit' => function($club, $counts) use ($multi_green) {
+            return ($counts[$club] ?? 0) >= nipgl_champ_home_limit($club, $multi_green);
+        },
+        'separate_prelim' => 'nipgl_champ_separate_clubs',
+        'separate_r2'     => 'nipgl_champ_separate_r2_slots',
+        'stored_rounds'   => $stored_rounds,
+        'dates'           => $dates,
+        'r2_label'        => $r2_label,
+        'game_nums'       => true,
+    ));
+
+    if (!$result) return new WP_Error('too_few', 'At least 2 entries required.');
 
     $bracket_key = 'section_' . $section_idx . '_bracket';
     $champ[$bracket_key] = array(
         'title'   => ($champ['title'] ?? 'Championship') . ' — Section ' . ($sections[$section_idx]['label'] ?? ($section_idx + 1)),
-        'rounds'  => $rounds,
+        'rounds'  => $result['rounds'],
         'dates'   => $dates,
-        'matches' => $all_matches,
+        'matches' => $result['matches'],
     );
-    $champ['section_' . $section_idx . '_draw_pairs']       = $pairs_for_anim;
+    $champ['section_' . $section_idx . '_draw_pairs']       = $result['pairs'];
     $champ['section_' . $section_idx . '_draw_version']     = intval($champ['section_' . $section_idx . '_draw_version'] ?? 0) + 1;
     $champ['section_' . $section_idx . '_pairs_cursor']     = 0;
     $champ['section_' . $section_idx . '_draw_in_progress'] = true;
@@ -594,14 +438,13 @@ function nipgl_champ_perform_draw($champ_id, $champ, $section = '0') {
  * Draw the Final Stage once all section winners are known.
  */
 function nipgl_champ_perform_final_draw($champ_id, $champ) {
-    $sections = $champ['sections'] ?? array();
+    $sections    = $champ['sections'] ?? array();
+    $multi_green = array_filter(array_map('trim', explode("\n", $champ['multi_green'] ?? '')));
     $winners     = array();
-    $multi_green = array_filter(array_map('trim', explode("
-", $champ['multi_green'] ?? '')));
 
     foreach ($sections as $idx => $sec) {
         $bracket_key = 'section_' . $idx . '_bracket';
-        $bracket = $champ[$bracket_key] ?? null;
+        $bracket     = $champ[$bracket_key] ?? null;
         if (!$bracket) return new WP_Error('section_incomplete', 'Section ' . ($sec['label'] ?? $idx) . ' has not been drawn yet.');
         $last_round  = end($bracket['matches']);
         $final_match = reset($last_round);
@@ -613,89 +456,35 @@ function nipgl_champ_perform_final_draw($champ_id, $champ) {
 
     if (count($winners) < 2) return new WP_Error('too_few', 'Need at least 2 section winners for Final Stage.');
 
-    // Shuffle winners and build bracket using same geometry
     shuffle($winners);
-    $n             = count($winners);
-    $bracket_size  = 1;
-    while ($bracket_size < $n) $bracket_size *= 2;
-    $half          = $bracket_size / 2;
-    $prelim_count  = $n - $half;
 
     $numbered = array();
     foreach ($winners as $i => $name) {
         $numbered[] = array('name' => $name, 'draw_num' => $i + 1);
     }
 
-    $prelim_teams = array_slice($numbered, 0, $prelim_count * 2);
-    $bye_teams    = array_slice($numbered, $prelim_count * 2);
+    $result = nipgl_draw_build_bracket($numbered, array(
+        'get_club'      => 'nipgl_champ_entry_club',
+        'home_at_limit' => function($club, $counts) use ($multi_green) {
+            return ($counts[$club] ?? 0) >= nipgl_champ_home_limit($club, $multi_green);
+        },
+        'separate_prelim' => 'nipgl_champ_separate_clubs',
+        'separate_r2'     => 'nipgl_champ_separate_r2_slots',
+        'stored_rounds'   => array(),
+        'dates'           => array(),
+        'r2_label'        => 'Final Stage Draw',
+        'game_nums'       => true,
+    ));
 
-    nipgl_champ_separate_clubs($prelim_teams);
+    if (!$result) return new WP_Error('too_few', 'Need at least 2 section winners for Final Stage.');
 
-    $round1 = array();
-    $pairs  = array();
-    $home_clubs = array();
-
-    for ($i = 0; $i < count($prelim_teams); $i += 2) {
-        $a = $prelim_teams[$i]; $b = $prelim_teams[$i + 1];
-        $ca = nipgl_champ_entry_club($a['name']); $cb = nipgl_champ_entry_club($b['name']);
-        if (($home_clubs[$ca] ?? 0) >= nipgl_champ_home_limit($ca, $multi_green) && ($home_clubs[$cb] ?? 0) < nipgl_champ_home_limit($cb, $multi_green) && $ca !== $cb) {
-            list($a,$b) = array($b,$a); list($ca,$cb) = array($cb,$ca);
-        }
-        $home_clubs[$ca] = ($home_clubs[$ca] ?? 0) + 1;
-        $round1[] = array('home' => $a['name'], 'away' => $b['name'], 'home_score' => null, 'away_score' => null, 'draw_num_home' => $a['draw_num'], 'draw_num_away' => $b['draw_num'], 'bye' => false);
-        $pairs[]  = array('home' => $a['name'], 'away' => $b['name'], 'bye' => false);
-    }
-
-    $r2_slots    = array_fill(0, $half, null);
-    $r2_fg_final = array_fill(0, $half, null); // from_game placeholder for final
-    $bye_cursor  = 0;
-    if ($prelim_count > 0) {
-        $step = $half / $prelim_count;
-        $wpos = array();
-        for ($w = 0; $w < $prelim_count; $w++) $wpos[] = (int) round($w * $step);
-        for ($s = 0; $s < $half; $s++) {
-            if (!in_array($s, $wpos)) $r2_slots[$s] = $bye_teams[$bye_cursor++];
-        }
-    } else {
-        for ($s = 0; $s < $half; $s++) $r2_slots[$s] = $bye_teams[$bye_cursor++];
-    }
-
-    nipgl_champ_separate_r2_slots($r2_slots, $r2_fg_final);
-
-    $round2     = array();
-    $home_r2    = array();
-    for ($i = 0; $i < $half; $i += 2) {
-        $a = $r2_slots[$i]; $b = $r2_slots[$i + 1];
-        if ($a && $b) {
-            $ca = nipgl_champ_entry_club($a['name']); $cb = nipgl_champ_entry_club($b['name']);
-            if (($home_r2[$ca] ?? 0) >= nipgl_champ_home_limit($ca, $multi_green) && ($home_r2[$cb] ?? 0) < nipgl_champ_home_limit($cb, $multi_green) && $ca !== $cb) {
-                list($a,$b) = array($b,$a); list($ca,$cb) = array($cb,$ca);
-            }
-            $home_r2[$ca] = ($home_r2[$ca] ?? 0) + 1;
-        }
-        $round2[] = array('home' => $a ? $a['name'] : null, 'away' => $b ? $b['name'] : null, 'home_score' => null, 'away_score' => null, 'draw_num_home' => $a ? $a['draw_num'] : null, 'draw_num_away' => $b ? $b['draw_num'] : null, 'bye' => false);
-    }
-
-    if ($prelim_count > 0) { $pairs[] = array('type' => 'header', 'label' => 'Final Stage Draw'); }
-    foreach ($round2 as $rm) {
-        $pairs[] = array('home' => $rm['home'] ?? 'Prelim Winner', 'away' => $rm['away'] ?? 'Prelim Winner', 'bye' => false);
-    }
-
-    $rounds      = nipgl_champ_default_rounds($n);
-    $all_matches = $prelim_count > 0 ? array($round1, $round2) : array($round2);
-    $prev_count  = count($round2);
-    $start_r     = $prelim_count > 0 ? 2 : 1;
-    for ($r = $start_r; $r < count($rounds); $r++) {
-        $prev_count = intval(ceil($prev_count / 2));
-        $rm = array();
-        for ($m = 0; $m < $prev_count; $m++) {
-            $rm[] = array('home' => null, 'away' => null, 'home_score' => null, 'away_score' => null, 'draw_num_home' => null, 'draw_num_away' => null, 'bye' => false);
-        }
-        $all_matches[] = $rm;
-    }
-
-    $champ['final_bracket'] = array('title' => ($champ['title'] ?? 'Championship') . ' — Final Stage', 'rounds' => $rounds, 'dates' => array(), 'matches' => $all_matches);
-    $champ['final_draw_pairs']       = $pairs;
+    $champ['final_bracket'] = array(
+        'title'   => ($champ['title'] ?? 'Championship') . ' — Final Stage',
+        'rounds'  => $result['rounds'],
+        'dates'   => array(),
+        'matches' => $result['matches'],
+    );
+    $champ['final_draw_pairs']       = $result['pairs'];
     $champ['final_draw_version']     = 1;
     $champ['final_pairs_cursor']     = 0;
     $champ['final_draw_in_progress'] = true;
@@ -707,19 +496,6 @@ function nipgl_champ_perform_final_draw($champ_id, $champ) {
 
     update_option('nipgl_champ_' . $champ_id, $champ);
     return true;
-}
-
-function nipgl_champ_default_rounds($n) {
-    $bracket_size = 1;
-    while ($bracket_size < $n) $bracket_size *= 2;
-    $rounds_needed = intval(log($bracket_size, 2));
-    $named = array('Final', 'Semi-Final', 'Quarter Final', 'Round of 16', 'Round of 32', 'Round of 64');
-    $names = array();
-    for ($i = 0; $i < $rounds_needed; $i++) {
-        $from_end = $rounds_needed - 1 - $i;
-        $names[]  = $named[$from_end] ?? ('Round ' . ($i + 1));
-    }
-    return $names;
 }
 
 /**

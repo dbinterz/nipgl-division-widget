@@ -1018,9 +1018,14 @@
       }
     }
 
-    // Save on click
+    // Switch tab and save on click
     outer.querySelectorAll('.nipgl-champ-section-tab').forEach(function(btn) {
       btn.addEventListener('click', function() {
+        outer.querySelectorAll('.nipgl-champ-section-tab').forEach(function(b) { b.classList.remove('active'); });
+        outer.querySelectorAll('.nipgl-champ-section-pane').forEach(function(p) { p.classList.remove('active'); });
+        btn.classList.add('active');
+        var pane = outer.querySelector('.nipgl-champ-section-pane[data-section="' + btn.dataset.section + '"]');
+        if (pane) pane.classList.add('active');
         sessionStorage.setItem(storageKey, btn.dataset.section);
       });
     });

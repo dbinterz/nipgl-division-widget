@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Cup Bracket Feature - v6.4.20
+ * NIPGL Cup Bracket Feature - v6.4.22
  * Single-elimination knockout bracket widget with live animated draw.
  */
 
@@ -351,7 +351,8 @@ function nipgl_ajax_cup_perform_draw() {
 // ── Draw logic ─────────────────────────────────────────────────────────────────
 /**
  * Randomly seeds a single-elimination bracket from the entry list.
- * Handles odd numbers of entries by giving byes to top seeds (or randomly).
+ * Delegates geometry and assembly to nipgl_draw_build_bracket() in nipgl-draw.php.
+ * Cup home-conflict rule: max 1 home match per club per round.
  *
  * @param string $cup_id
  * @param array  $cup  Full cup option array
@@ -363,194 +364,33 @@ function nipgl_cup_perform_draw($cup_id, $cup) {
 
     shuffle($entries);
 
-    $n     = count($entries);
-    $dates = $cup['dates'] ?? array();
-
-    // ── Bracket geometry ──────────────────────────────────────────────────────
-    // bracket_size = next power of 2 >= n
-    // half         = the "main" round size (bracket_size / 2)
-    // prelim_count = n - half  →  teams that must play off before the main round
-    //
-    // 17 teams: bracket=32, half=16, prelims=1  →  1 prelim, 8 main-round matches
-    // 20 teams: bracket=32, half=16, prelims=4  →  4 prelims, 8 main-round matches
-    // 16 teams: bracket=16, half=8,  prelims=8  →  8 matches straight (no byes)
-    $bracket_size = 1;
-    while ($bracket_size < $n) $bracket_size *= 2;
-    $half         = $bracket_size / 2;
-    $prelim_count = $n - $half;   // number of prelim matches
-
-    // Assign draw numbers
     $numbered = array();
     foreach ($entries as $i => $name) {
         $numbered[] = array('name' => $name, 'draw_num' => $i + 1);
     }
 
-    // First (prelim_count * 2) teams play in Round 1; rest get a bye to Round 2
-    $prelim_teams = array_slice($numbered, 0, $prelim_count * 2);
-    $bye_teams    = array_slice($numbered, $prelim_count * 2);
-
-    // ── Round 1: prelim matches ───────────────────────────────────────────────
-    $round1_matches = array();
-    $pairs_for_anim = array();
-    $home_clubs_r1  = array();
-
-    for ($i = 0; $i < count($prelim_teams); $i += 2) {
-        $a = $prelim_teams[$i];
-        $b = $prelim_teams[$i + 1];
-
-        // Home-conflict: swap if club_a already has a home team this round
-        $ca = nipgl_cup_club_prefix($a['name']);
-        $cb = nipgl_cup_club_prefix($b['name']);
-        if (isset($home_clubs_r1[$ca]) && !isset($home_clubs_r1[$cb]) && $ca !== $cb) {
-            list($a, $b) = array($b, $a);
-            $ca = nipgl_cup_club_prefix($a['name']);
-        }
-        $home_clubs_r1[$ca] = true;
-
-        $round1_matches[] = array(
-            'home'          => $a['name'],
-            'away'          => $b['name'],
-            'home_score'    => null,
-            'away_score'    => null,
-            'draw_num_home' => $a['draw_num'],
-            'draw_num_away' => $b['draw_num'],
-            'bye'           => false,
-        );
-        $pairs_for_anim[] = array('home' => $a['name'], 'away' => $b['name'], 'bye' => false);
-    }
-
-    // ── Round 2: interleave prelim winner slots with bye teams ────────────────
-    // Spread prelim winner placeholders evenly so they're not all bunched together.
-    // e.g. 17 teams: 1 winner slot, 15 bye teams → winner goes at position 0.
-    // e.g. 20 teams: 4 winner slots, 12 bye teams → every 4th slot is a winner.
-    $r2_slots   = array_fill(0, $half, null); // null = prelim winner (TBD)
-    $bye_cursor = 0;
-
-    if ($prelim_count > 0) {
-        $step = $half / $prelim_count;
-        $winner_positions = array();
-        for ($w = 0; $w < $prelim_count; $w++) {
-            $winner_positions[] = (int) round($w * $step);
-        }
-        for ($s = 0; $s < $half; $s++) {
-            if (!in_array($s, $winner_positions)) {
-                $r2_slots[$s] = $bye_teams[$bye_cursor++];
-            }
-        }
-    } else {
-        // Perfect power of 2 — no prelims, all bye teams fill R2
-        for ($s = 0; $s < $half; $s++) {
-            $r2_slots[$s] = $bye_teams[$bye_cursor++];
-        }
-    }
-
-    // Pair R2 slots into matches; apply home-conflict for known bye-team pairs
-    $round2_matches = array();
-    $home_clubs_r2  = array();
-
-    for ($i = 0; $i < $half; $i += 2) {
-        $a = $r2_slots[$i];
-        $b = $r2_slots[$i + 1];
-
-        if ($a && $b) {
-            $ca = nipgl_cup_club_prefix($a['name']);
-            $cb = nipgl_cup_club_prefix($b['name']);
-            if (isset($home_clubs_r2[$ca]) && !isset($home_clubs_r2[$cb]) && $ca !== $cb) {
-                list($a, $b) = array($b, $a);
-                $ca = nipgl_cup_club_prefix($a['name']);
-            }
-            $home_clubs_r2[$ca] = true;
-        }
-
-        $round2_matches[] = array(
-            'home'          => $a ? $a['name'] : null,
-            'away'          => $b ? $b['name'] : null,
-            'home_score'    => null,
-            'away_score'    => null,
-            'draw_num_home' => $a ? $a['draw_num'] : null,
-            'draw_num_away' => $b ? $b['draw_num'] : null,
-            'bye'           => false,
-        );
-    }
-
-    // ── Build Round 2 animation pairs ─────────────────────────────────────────
-    // Include all R2 pairings in the draw animation so viewers see the full draw.
-    // Matches where one slot is still TBD (prelim winner) are included — the
-    // animation shows "Winner of prelim" as a placeholder.
-    // Only add the R2 section if there are actually R2 matches to show drawn
-    // (i.e. at least one match has both teams known, or it's the only round).
-    $r2_has_drawn = false;
-    foreach ($round2_matches as $rm) {
-        if ($rm['home'] || $rm['away']) { $r2_has_drawn = true; break; }
-    }
-
-    if ($r2_has_drawn) {
-        // Section header to separate prelim draw from main-round draw
-        if ($prelim_count > 0) {
-            $stored_rounds = $cup['rounds'] ?? array();
-            $r2_label = $stored_rounds[1] ?? 'Round 1 Draw';
-            $pairs_for_anim[] = array('type' => 'header', 'label' => $r2_label);
-        }
-        foreach ($round2_matches as $rm) {
-            $pairs_for_anim[] = array(
-                'home' => $rm['home'] ?? 'Prelim Winner',
-                'away' => $rm['away'] ?? 'Prelim Winner',
-                'bye'  => false,
-            );
-        }
-    }
-
-    // ── Round names ───────────────────────────────────────────────────────────
     $stored_rounds = $cup['rounds'] ?? array();
+    $r2_label      = $stored_rounds[1] ?? 'Round 1 Draw';
 
-    if ($prelim_count > 0) {
-        // Rounds: Prelim round + all rounds of the half-sized main bracket
-        $main_rounds = nipgl_cup_default_rounds($half);
-        $total       = 1 + count($main_rounds);
+    $result = nipgl_draw_build_bracket($numbered, array(
+        'get_club'      => 'nipgl_draw_cup_club',
+        // Cup rule: max 1 home match per club per round
+        'home_at_limit' => function($club, $counts) { return ($counts[$club] ?? 0) >= 1; },
+        'stored_rounds' => $stored_rounds,
+        'dates'         => $cup['dates'] ?? array(),
+        'r2_label'      => $r2_label,
+        'game_nums'     => false,
+    ));
 
-        if (!empty($stored_rounds) && count($stored_rounds) === $total) {
-            $rounds = $stored_rounds;
-        } else {
-            $rounds = array_merge(array('Preliminary Round'), $main_rounds);
-        }
-    } else {
-        $total = intval(log($bracket_size, 2));
-        if (!empty($stored_rounds) && count($stored_rounds) === $total) {
-            $rounds = $stored_rounds;
-        } else {
-            $rounds = nipgl_cup_default_rounds($n);
-        }
-    }
-
-    // ── Assemble all rounds ───────────────────────────────────────────────────
-    $all_matches = $prelim_count > 0
-        ? array($round1_matches, $round2_matches)
-        : array($round2_matches);
-
-    // Skeleton for QF, SF, Final, …
-    $prev_count = count($round2_matches);
-    $start_r    = $prelim_count > 0 ? 2 : 1;
-    for ($r = $start_r; $r < count($rounds); $r++) {
-        $prev_count = intval(ceil($prev_count / 2));
-        $rm = array();
-        for ($m = 0; $m < $prev_count; $m++) {
-            $rm[] = array(
-                'home' => null, 'away' => null,
-                'home_score' => null, 'away_score' => null,
-                'draw_num_home' => null, 'draw_num_away' => null,
-                'bye' => false,
-            );
-        }
-        $all_matches[] = $rm;
-    }
+    if (!$result) return new WP_Error('too_few', 'At least 2 entries required.');
 
     $cup['bracket'] = array(
         'title'   => $cup['title'] ?? 'Cup',
-        'rounds'  => $rounds,
-        'dates'   => $dates,
-        'matches' => $all_matches,
+        'rounds'  => $result['rounds'],
+        'dates'   => $cup['dates'] ?? array(),
+        'matches' => $result['matches'],
     );
-    $cup['draw_pairs']       = $pairs_for_anim;
+    $cup['draw_pairs']       = $result['pairs'];
     $cup['draw_version']     = intval($cup['draw_version'] ?? 0) + 1;
     $cup['pairs_cursor']     = 0;
     $cup['draw_in_progress'] = true;
@@ -561,42 +401,7 @@ function nipgl_cup_perform_draw($cup_id, $cup) {
     }
 
     update_option('nipgl_cup_' . $cup_id, $cup);
-
     return true;
-}
-
-/**
- * Guess sensible round names for N entries.
- */
-/**
- * Extract the club prefix from a team name for home-conflict detection.
- * "Belmont A" → "belmont", "Forth River B" → "forth river",
- * "Ards" → "ards" (single-team clubs treated as their own prefix).
- *
- * Strips a trailing single letter (or roman numeral up to III) team suffix.
- * Falls back to the full lowercased name if no suffix detected.
- */
-function nipgl_cup_club_prefix($team_name) {
-    $name = trim($team_name);
-    // Strip trailing team suffix: " A", " B", " C", " 1", " 2", " I", " II", " III"
-    $stripped = preg_replace('/\s+([A-C]|[1-3]|II?I?)$/i', '', $name);
-    return strtolower(trim($stripped ?: $name));
-}
-
-function nipgl_cup_default_rounds($n) {
-    $bracket_size = 1;
-    while ($bracket_size < $n) $bracket_size *= 2;
-    $rounds_needed = intval(log($bracket_size, 2));
-
-    // Named from the end backwards: Final, Semi-Final, QF, etc.
-    $named = array('Final', 'Semi-Final', 'Quarter Final', 'Round of 16', 'Round of 32', 'Round of 64');
-    $names = array();
-    for ($i = 0; $i < $rounds_needed; $i++) {
-        $from_end = $rounds_needed - 1 - $i;
-        $names[]  = $named[$from_end] ?? ('Round ' . ($i + 1));
-    }
-    // Names are already built in chronological order (R1 → Final) — do NOT reverse
-    return $names;
 }
 
 // ── AJAX: Update bracket results from Google Sheets CSV ───────────────────────

@@ -108,6 +108,10 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
+### v6.4.22
+- Fixed championship section tabs not switching — clicking a section tab now correctly shows that section's pane (`initSectionTabs` was only persisting to `sessionStorage` on click, not updating active classes; the DOM switching was lost when the inline script was removed in v6.4.20)
+- Code quality: shared draw library extracted to `nipgl-draw.php` — bracket geometry, animation pairs, and skeleton-round assembly now live in one place (`nipgl_draw_build_bracket`, `nipgl_draw_default_rounds`, `nipgl_draw_cup_club`); cup and champ draw functions refactored to thin wrappers supplying their own club/home-limit callbacks
+
 ### v6.4.20
 - Robustness: bracket size check at draw time — rejects writes exceeding 800KB
 - Code quality: inline admin JS moved to nipgl-admin.js (cup draw, sync, champ draw)
