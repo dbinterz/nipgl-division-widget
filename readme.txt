@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.4.19
+Stable tag: 6.4.20
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -71,12 +71,11 @@ Parameters:
 
 == Changelog ==
 
-= 6.4.19 =
-* Robustness: CSV proxy retries once on failure before giving up; serves stale cached data as fallback
-* Robustness: input length caps added to cup and champ admin save handlers (title 100, entries 50k, dates/rounds 5k, multi_green 2k chars)
-* Performance: home games report cached per champ/draw version; invalidated on save, score entry, and draw reset
-* Admin: new League Setup submenu and restructured Settings page (from v6.4.18)
-* Security: all fixes from v6.4.17 included
+= 6.4.20 =
+* Robustness: bracket size check added at draw time — rejects writes exceeding 800KB to prevent option corruption
+* Code quality: inline admin JS moved to nipgl-admin.js (cup draw, cup sync, champ draw buttons)
+* Code quality: redundant inline tab-switching script removed from champ shortcode (handled by nipgl-champ.js)
+* Build: GitHub Actions version check extended to validate NIPGL_VERSION constant and readme.txt stable tag
 
 = 6.3.0 =
 * Fixed empty print/PDF — replaced body > * visibility approach with visibility:hidden on all + visibility:visible on cup wrap, which works at any nesting depth; all rounds forced visible before print dialog opens

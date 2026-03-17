@@ -96,3 +96,90 @@ jQuery(function($){
     $(this).closest('tr').remove();
   });
 });
+
+// ── Cup admin: inline draw button ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    var drawBtn = document.querySelector('.nipgl-cup-admin-draw-btn-inline');
+    if (drawBtn) {
+        drawBtn.addEventListener('click', function() {
+            if (!confirm('Perform the draw now? This will randomise the bracket and publish it live.')) return;
+            var btn = this;
+            var msg = document.getElementById('nipgl-draw-inline-msg');
+            btn.disabled = true; btn.textContent = '⏳ Drawing…';
+            var fd = new FormData();
+            fd.append('action', 'nipgl_cup_perform_draw');
+            fd.append('cup_id', btn.dataset.cupId);
+            fd.append('nonce',  btn.dataset.nonce);
+            fetch(ajaxurl, {method:'POST', body:fd, credentials:'same-origin'})
+                .then(function(r){ return r.json(); })
+                .then(function(res){
+                    btn.disabled = false; btn.textContent = '🎲 Perform Draw Now';
+                    if (msg) {
+                        msg.style.display = '';
+                        if (res.success) {
+                            msg.style.color = '#0a3622';
+                            msg.textContent = '✅ Draw complete! ' + (res.data.pairs||[]).length + ' matches drawn. Reload the public page to see the bracket.';
+                            setTimeout(function(){ location.reload(); }, 2000);
+                        } else {
+                            msg.style.color = '#c0202a';
+                            msg.textContent = 'Error: ' + (res.data || 'Unknown');
+                        }
+                    }
+                });
+        });
+    }
+
+    // ── Cup admin: sync results button ────────────────────────────────────────
+    var syncBtn = document.getElementById('nipgl-cup-sync-btn');
+    if (syncBtn) {
+        syncBtn.addEventListener('click', function() {
+            var btn = this;
+            var msg = document.getElementById('nipgl-sync-msg');
+            btn.disabled = true; btn.textContent = '⏳ Syncing…';
+            var fd = new FormData();
+            fd.append('action', 'nipgl_cup_sync_results');
+            fd.append('cup_id', btn.dataset.cupId);
+            fd.append('nonce',  btn.dataset.nonce);
+            fetch(ajaxurl, {method:'POST', body:fd, credentials:'same-origin'})
+                .then(function(r){ return r.json(); })
+                .then(function(res){
+                    btn.disabled = false; btn.textContent = '🔄 Sync Results Now';
+                    if (msg) {
+                        msg.style.display = '';
+                        msg.textContent = res.success ? '✅ Results synced.' : '❌ ' + (res.data || 'Error');
+                        msg.style.color = res.success ? '#0a3622' : '#c0202a';
+                    }
+                });
+        });
+    }
+
+    // ── Champ admin: draw buttons ─────────────────────────────────────────────
+    document.querySelectorAll('.nipgl-champ-admin-draw-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!confirm('Perform the draw for this section now? This cannot be undone.')) return;
+            var msg = btn.nextElementSibling;
+            btn.disabled = true; btn.textContent = '⏳ Drawing…';
+            var fd = new FormData();
+            fd.append('action',   'nipgl_champ_perform_draw');
+            fd.append('champ_id', btn.dataset.champId);
+            fd.append('section',  btn.dataset.section);
+            fd.append('nonce',    btn.dataset.nonce);
+            fetch(ajaxurl, {method:'POST', body:fd, credentials:'same-origin'})
+                .then(function(r){ return r.json(); })
+                .then(function(res){
+                    btn.disabled = false; btn.textContent = '🎲 Draw Now';
+                    if (msg) {
+                        msg.style.display = '';
+                        if (res.success) {
+                            msg.style.color = '#0a3622';
+                            msg.textContent = '✅ Draw complete! ' + (res.data.pairs||[]).length + ' matches drawn.';
+                            setTimeout(function(){ location.reload(); }, 1500);
+                        } else {
+                            msg.style.color = '#c0202a';
+                            msg.textContent = 'Error: ' + (res.data || 'Unknown');
+                        }
+                    }
+                });
+        });
+    });
+});

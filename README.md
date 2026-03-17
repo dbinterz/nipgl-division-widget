@@ -108,12 +108,11 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
-### v6.4.19
-- Robustness: CSV proxy retries once on failure; serves stale cache as fallback
-- Robustness: input length caps on cup/champ admin save handlers
-- Performance: home games report cached per champ/draw version; invalidated on save, score entry, reset
-- Admin: League Setup submenu + restructured Settings page (v6.4.18)
-- Security: all fixes from v6.4.17
+### v6.4.20
+- Robustness: bracket size check at draw time — rejects writes exceeding 800KB
+- Code quality: inline admin JS moved to nipgl-admin.js (cup draw, sync, champ draw)
+- Code quality: redundant tab-switching script removed from champ shortcode
+- Build: GitHub Actions version check covers NIPGL_VERSION constant and readme.txt stable tag
 
 ### v6.3.0
 

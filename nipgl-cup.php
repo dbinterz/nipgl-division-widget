@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Cup Bracket Feature - v6.4.19
+ * NIPGL Cup Bracket Feature - v6.4.20
  * Single-elimination knockout bracket widget with live animated draw.
  */
 
@@ -550,10 +550,16 @@ function nipgl_cup_perform_draw($cup_id, $cup) {
         'dates'   => $dates,
         'matches' => $all_matches,
     );
-    $cup['draw_pairs']      = $pairs_for_anim;
-    $cup['draw_version']    = intval($cup['draw_version'] ?? 0) + 1;
-    $cup['pairs_cursor']    = 0;        // starts at 0 — draw master advances as animation plays
-    $cup['draw_in_progress'] = true;    // cleared when cursor reaches end
+    $cup['draw_pairs']       = $pairs_for_anim;
+    $cup['draw_version']     = intval($cup['draw_version'] ?? 0) + 1;
+    $cup['pairs_cursor']     = 0;
+    $cup['draw_in_progress'] = true;
+
+    // Integrity check — bail if the option would exceed safe WP option size (~800KB)
+    if (strlen(serialize($cup)) > 800000) {
+        return new WP_Error('too_large', 'Bracket data exceeds safe storage limit. Reduce the number of entries.');
+    }
+
     update_option('nipgl_cup_' . $cup_id, $cup);
 
     return true;
@@ -721,18 +727,18 @@ function nipgl_cup_handle_admin_actions() {
 
         $existing = get_option('nipgl_cup_' . ($cup_id ?: $new_id), array());
 
-        $entries_raw = mb_substr(sanitize_textarea_field($_POST['nipgl_cup_entries'] ?? ''), 0, 50000);
+        $entries_raw = sanitize_textarea_field($_POST['nipgl_cup_entries'] ?? '');
         $entries     = array_values(array_filter(array_map('trim', explode("\n", $entries_raw))));
 
-        $rounds_raw  = mb_substr(sanitize_textarea_field($_POST['nipgl_cup_rounds'] ?? ''), 0, 5000);
+        $rounds_raw  = sanitize_textarea_field($_POST['nipgl_cup_rounds'] ?? '');
         $rounds      = array_values(array_filter(array_map('trim', explode("\n", $rounds_raw))));
         if (empty($rounds)) $rounds = nipgl_cup_default_rounds(count($entries));
 
-        $dates_raw   = mb_substr(sanitize_textarea_field($_POST['nipgl_cup_dates'] ?? ''), 0, 5000);
+        $dates_raw   = sanitize_textarea_field($_POST['nipgl_cup_dates'] ?? '');
         $dates       = array_values(array_filter(array_map('trim', explode("\n", $dates_raw))));
 
         $cup_data = array_merge($existing, array(
-            'title'   => mb_substr(sanitize_text_field($_POST['nipgl_cup_title'] ?? ''), 0, 100),
+            'title'   => sanitize_text_field($_POST['nipgl_cup_title'] ?? ''),
             'entries' => $entries,
             'rounds'  => $rounds,
             'dates'   => $dates,
@@ -1028,31 +1034,6 @@ function nipgl_cup_edit_page($cup_id) {
         🎲 Perform Draw Now
       </button>
       <p id="nipgl-draw-inline-msg" style="margin-top:8px;color:#0a3622;display:none"></p>
-      <script>
-      document.querySelector('.nipgl-cup-admin-draw-btn-inline').addEventListener('click', function() {
-        var btn = this;
-        if (!confirm('Perform the draw now? This will randomise the bracket and publish it live.')) return;
-        btn.disabled = true; btn.textContent = '⏳ Drawing…';
-        var fd = new FormData();
-        fd.append('action','nipgl_cup_perform_draw');
-        fd.append('cup_id', btn.dataset.cupId);
-        fd.append('nonce',  btn.dataset.nonce);
-        fetch(ajaxurl, {method:'POST',body:fd,credentials:'same-origin'})
-          .then(function(r){return r.json();})
-          .then(function(res){
-            btn.disabled = false; btn.textContent = '🎲 Perform Draw Now';
-            var msg = document.getElementById('nipgl-draw-inline-msg');
-            if (res.success) {
-              msg.style.display = '';
-              msg.textContent   = '✅ Draw complete! ' + (res.data.pairs||[]).length + ' matches drawn. Reload the public page to see the bracket.';
-              setTimeout(function(){ location.reload(); }, 2000);
-            } else {
-              msg.style.display = ''; msg.style.color = '#c0202a';
-              msg.textContent = 'Error: ' + (res.data || 'Unknown');
-            }
-          });
-      });
-      </script>
     <?php endif; ?>
 
     <?php if (!empty($cup['csv_url'])): ?>
@@ -1065,25 +1046,6 @@ function nipgl_cup_edit_page($cup_id) {
       🔄 Sync Results Now
     </button>
     <span id="nipgl-sync-msg" style="margin-left:12px;font-size:13px;color:#0a3622;display:none"></span>
-    <script>
-    document.getElementById('nipgl-cup-sync-btn').addEventListener('click', function() {
-      var btn = this;
-      btn.disabled = true; btn.textContent = '⏳ Syncing…';
-      var fd = new FormData();
-      fd.append('action', 'nipgl_cup_sync_results');
-      fd.append('cup_id', btn.dataset.cupId);
-      fd.append('nonce',  btn.dataset.nonce);
-      fetch(ajaxurl, {method:'POST',body:fd,credentials:'same-origin'})
-        .then(function(r){return r.json();})
-        .then(function(res){
-          btn.disabled = false; btn.textContent = '🔄 Sync Results Now';
-          var msg = document.getElementById('nipgl-sync-msg');
-          msg.style.display = '';
-          msg.textContent = res.success ? '✅ Results synced.' : '❌ ' + (res.data||'Error');
-          msg.style.color = res.success ? '#0a3622' : '#c0202a';
-        });
-    });
-    </script>
     <?php endif; ?>
 
     <hr>
