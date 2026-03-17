@@ -108,9 +108,14 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
-### v6.4.25
+### 6.4.26
+- Added emoji icons to admin submenu items (Scorecards, Players, Cups, League Setup, Settings)
+
+### 6.4.25
 - Final stage always has 4 entries: 4 sections → 1 qualifier each (winner); 2 sections → 2 each (both finalists, seeded once SFs resolve); 1 section → 4 (all semi-finalists, seeded once QFs resolve)
 - Section bracket winner label changed from "Champion" (🏆) to "Qualifier" (✅); Final Stage winner retains "Champion" (🏆)
+
+
 
 ### v6.4.24
 - Fixed score of 0 not displaying on match cards — `escHtml` used `s || ''` treating 0 as falsy

@@ -603,7 +603,7 @@ function nipgl_cups_register_submenu() {
     add_submenu_page(
         'nipgl-scorecards',
         'Cups',
-        'Cups',
+        '🏆 Cups',
         'manage_options',
         'nipgl-cups',
         'nipgl_cups_admin_page'

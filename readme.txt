@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.4.25
+Stable tag: 6.4.26
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,9 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 6.4.26 =
+* Added emoji icons to admin submenu items (Scorecards, Players, Cups, League Setup, Settings)
 
 = 6.4.25 =
 * Final stage always has 4 entries: 4 sections contribute 1 qualifier each (section winner), 2 sections contribute 2 each (both finalists, seeded once SFs complete), 1 section contributes all 4 semi-finalists (seeded once QFs complete)
