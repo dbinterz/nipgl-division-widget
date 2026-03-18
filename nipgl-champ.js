@@ -759,6 +759,22 @@
   }
 
   // ── Status bar ────────────────────────────────────────────────────────────────
+  // ── Sponsor bar ───────────────────────────────────────────────────────────────
+  function renderSponsorBar(wrap) {
+    var sponsors = [];
+    try { sponsors = JSON.parse(wrap.dataset.sponsors || '[]'); } catch (e) {}
+    if (!sponsors.length) return;
+    var sp = sponsors[Math.floor(Math.random() * sponsors.length)];
+    if (!sp || !sp.image) return;
+    var img   = '<img src="' + sp.image + '" alt="' + (sp.name || 'Sponsor') + '" class="nipgl-sponsor-img">';
+    var inner = sp.url ? '<a href="' + sp.url + '" target="_blank" rel="noopener">' + img + '</a>' : img;
+    var bar   = document.createElement('div');
+    bar.className = 'nipgl-sponsor-bar nipgl-sponsor-secondary';
+    bar.innerHTML = inner;
+    var statusEl = qs('.nipgl-champ-status', wrap);
+    if (statusEl) statusEl.after(bar); else wrap.appendChild(bar);
+  }
+
   function updateStatus(wrap, msg) {
     var statusEl = qs('.nipgl-champ-status', wrap);
     if (!statusEl) return;
@@ -979,6 +995,7 @@
       var emptyEl = qs('.nipgl-champ-empty', wrap);
       if (emptyEl) emptyEl.style.display = '';
     }
+    renderSponsorBar(wrap);
 
     // Poll only if no complete bracket present on page load
     var shouldPoll = drawVersion === '0' || (drawInProgress && !bracketData);

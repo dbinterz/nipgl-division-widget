@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Cup Bracket Feature - v6.4.25
+ * NIPGL Cup Bracket Feature - v6.4.29
  * Single-elimination knockout bracket widget with live animated draw.
  */
 
@@ -143,8 +143,11 @@ function nipgl_ajax_cup_get_scorecard() {
 add_shortcode('nipgl_cup', 'nipgl_cup_shortcode');
 function nipgl_cup_shortcode($atts) {
     $atts = shortcode_atts(array(
-        'id'    => '',
-        'title' => '',
+        'id'           => '',
+        'title'        => '',
+        'sponsor_img'  => '',
+        'sponsor_url'  => '',
+        'sponsor_name' => '',
     ), $atts);
 
     $cup_id = sanitize_key($atts['id']);
@@ -157,16 +160,38 @@ function nipgl_cup_shortcode($atts) {
     $drawn    = $version > 0;
     $is_admin = current_user_can('manage_options');
 
-    $bracket_json = $bracket ? wp_json_encode($bracket) : '';
-    $nonce        = wp_create_nonce('nipgl_cup_nonce');
+    $bracket_json    = $bracket ? wp_json_encode($bracket) : '';
+    $nonce           = wp_create_nonce('nipgl_cup_nonce');
+    $global_sponsors = get_option('nipgl_sponsors', array());
+    if (!empty($atts['sponsor_img'])) {
+        $primary_sponsor = array(
+            'image' => esc_url($atts['sponsor_img']),
+            'url'   => esc_url($atts['sponsor_url']),
+            'name'  => esc_attr($atts['sponsor_name']),
+        );
+        $extra_sponsors = array_slice($global_sponsors, 1);
+    } else {
+        $primary_sponsor = !empty($global_sponsors[0]) ? $global_sponsors[0] : null;
+        $extra_sponsors  = array_slice($global_sponsors, 1);
+    }
+    $extra_json      = esc_attr(wp_json_encode($extra_sponsors));
+    $primary_html    = '';
+    if ($primary_sponsor && !empty($primary_sponsor['image'])) {
+        $img          = '<img src="' . esc_url($primary_sponsor['image']) . '" alt="' . esc_attr($primary_sponsor['name'] ?: 'Sponsor') . '" class="nipgl-sponsor-img">';
+        $primary_html = '<div class="nipgl-sponsor-bar nipgl-sponsor-primary">'
+            . (!empty($primary_sponsor['url']) ? '<a href="' . esc_url($primary_sponsor['url']) . '" target="_blank" rel="noopener">' . $img . '</a>' : $img)
+            . '</div>';
+    }
 
     ob_start();
     ?>
     <div class="nipgl-cup-wrap" data-cup-id="<?php echo esc_attr($cup_id); ?>"
          data-draw-version="<?php echo esc_attr($version); ?>"
          data-draw-in-progress="<?php echo (!empty($cup['draw_in_progress']) && empty($cup['bracket'])) ? '1' : '0'; ?>"
-         data-bracket="<?php echo esc_attr($bracket_json); ?>">
+         data-bracket="<?php echo esc_attr($bracket_json); ?>"
+         data-sponsors="<?php echo $extra_json; ?>">
 
+      <?php echo $primary_html; ?>
       <div class="nipgl-cup-header">
         <span class="nipgl-cup-title">🏆 <?php echo esc_html($title); ?></span>
         <?php
@@ -603,7 +628,7 @@ function nipgl_cups_register_submenu() {
     add_submenu_page(
         'nipgl-scorecards',
         'Cups',
-        '🏆 Cups',
+        'Cups',
         'manage_options',
         'nipgl-cups',
         'nipgl_cups_admin_page'

@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.4.26
+Stable tag: 6.4.29
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,15 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 6.4.29 =
+* Fixed sponsor bar dark background on Cup and Championship pages — moved primary bar inside scoped CSS variable context
+
+= 6.4.28 =
+* Fixed sponsor_img shortcode attribute not overriding global sponsor for Cup and Championship widgets
+
+= 6.4.27 =
+* Added sponsor branding to Cup and Championship widgets (primary bar above bracket, rotating secondary below status bar)
 
 = 6.4.26 =
 * Added emoji icons to admin submenu items (Scorecards, Players, Cups, League Setup, Settings)

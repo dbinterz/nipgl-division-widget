@@ -108,6 +108,15 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
+### 6.4.29
+- Fixed sponsor bar dark background on Cup and Championship pages — moved primary bar inside scoped CSS variable context
+
+### 6.4.28
+- Fixed sponsor_img shortcode attribute not overriding global sponsor for Cup and Championship widgets
+
+### 6.4.27
+- Added sponsor branding to Cup and Championship widgets (primary bar above bracket, rotating secondary below status bar)
+
 ### 6.4.26
 - Added emoji icons to admin submenu items (Scorecards, Players, Cups, League Setup, Settings)
 

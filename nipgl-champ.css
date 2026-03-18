@@ -3,7 +3,8 @@
 /* ── Default light-mode CSS variables ──────────────────────────────────────── */
 /* These mirror the division widget defaults so the cup widget looks correct    */
 /* whether or not the division widget is on the same page.                      */
-.nipgl-champ-wrap {
+.nipgl-champ-wrap,
+.nipgl-champ-tabs-outer {
   --nipgl-bg:          #ffffff;
   --nipgl-bg-alt:      #f0f2f8;
   --nipgl-bg-hover:    #e6e9f5;
