@@ -2,7 +2,7 @@
 /**
  * Plugin Name: NIPGL Division Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 6.4.33
+ * Version: 6.4.35
  * Author: NIPGL
  * Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('NIPGL_PLUGIN_FILE', __FILE__);
-define('NIPGL_VERSION', '6.4.33');
+define('NIPGL_VERSION', '6.4.35');
 
 // Include scorecard feature
 require_once plugin_dir_path(__FILE__) . 'nipgl-draw.php';
@@ -53,12 +53,15 @@ function nipgl_check_for_update($transient) {
     $latest_version = ltrim($release->tag_name, 'v');
 
     if (version_compare($latest_version, $current_version, '>')) {
+        // Construct the deterministic release asset URL from the tag name
+        $tag     = $release->tag_name; // e.g. v6.4.34
+        $package = "https://github.com/{$github_user}/{$github_repo}/releases/download/{$tag}/{$github_repo}-{$tag}.zip";
         $transient->response[$plugin_slug] = (object) array(
             'slug'        => 'nipgl-division-widget',
             'plugin'      => $plugin_slug,
             'new_version' => $latest_version,
             'url'         => "https://github.com/{$github_user}/{$github_repo}",
-            'package'     => $release->zipball_url,
+            'package'     => $package,
         );
     }
 
@@ -82,6 +85,9 @@ function nipgl_plugin_info($result, $action, $args) {
     $release = json_decode(wp_remote_retrieve_body($response));
     if (empty($release->tag_name)) return $result;
 
+    $tag     = $release->tag_name;
+    $package = "https://github.com/{$github_user}/{$github_repo}/releases/download/{$tag}/{$github_repo}-{$tag}.zip";
+
     return (object) array(
         'name'          => 'NIPGL Division Widget',
         'slug'          => 'nipgl-division-widget',
@@ -92,7 +98,7 @@ function nipgl_plugin_info($result, $action, $args) {
             'description' => 'Scorecard records submitted via the NIPGL scorecard submission form.',
             'changelog'   => nl2br(isset($release->body) ? esc_html($release->body) : 'See GitHub releases for changelog.'),
         ),
-        'download_link' => $release->zipball_url,
+        'download_link' => $package,
     );
 }
 
@@ -103,8 +109,10 @@ function nipgl_check_updates_now() {
     check_admin_referer('nipgl_check_updates_nonce');
     // Clear the cached GitHub release so next check hits the API fresh
     delete_transient('nipgl_github_update');
-    // Also clear WordPress's own plugin update transient so it re-checks immediately
+    // Clear WordPress's own plugin update transient so it re-checks immediately
     delete_site_transient('update_plugins');
+    // Force WP to re-check right now
+    wp_update_plugins();
     wp_redirect(admin_url('admin.php?page=nipgl-settings&updated=1'));
     exit;
 }

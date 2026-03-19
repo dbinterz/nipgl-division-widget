@@ -108,6 +108,13 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
+### 6.4.35
+- Simplified auto-updater to construct release asset URL directly from tag name
+
+### 6.4.34
+- Fixed auto-updater to use GitHub release asset zip instead of raw source zipball
+- Check for Updates button now forces an immediate WP update re-check
+
 ### 6.4.33
 - Fixed sponsor_img shortcode override on Cup pages (lost in v6.4.32 merge)
 - Restored pre-draw entry list on Cup pages (lost in v6.4.32 merge)

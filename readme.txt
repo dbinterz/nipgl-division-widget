@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.4.33
+Stable tag: 6.4.35
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,13 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 6.4.35 =
+* Simplified auto-updater to construct release asset URL directly from tag name rather than parsing API assets array — more reliable
+
+= 6.4.34 =
+* Fixed auto-updater to use GitHub release asset zip (correct folder structure) instead of raw source zipball
+* Check for Updates button now forces an immediate WP update check rather than waiting for next scheduled check
 
 = 6.4.33 =
 * Fixed sponsor_img shortcode override on Cup pages (lost in v6.4.32 merge)
