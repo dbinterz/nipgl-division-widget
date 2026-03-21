@@ -93,7 +93,7 @@ function nipgl_drive_oauth_auth_url($client_id) {
         'client_id'     => $client_id,
         'redirect_uri'  => nipgl_drive_oauth_redirect_uri(),
         'response_type' => 'code',
-        'scope'         => 'https://www.googleapis.com/auth/drive',
+        'scope'         => 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets',
         'access_type'   => 'offline',
         'prompt'        => 'consent',  // force refresh_token to be issued every time
     ));
@@ -406,7 +406,7 @@ function nipgl_drive_build_jwt($client_email, $private_key) {
     $header  = nipgl_drive_b64url(json_encode(array('alg' => 'RS256', 'typ' => 'JWT')));
     $payload = nipgl_drive_b64url(json_encode(array(
         'iss'   => $client_email,
-        'scope' => 'https://www.googleapis.com/auth/drive',
+        'scope' => 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets',
         'aud'   => 'https://oauth2.googleapis.com/token',
         'iat'   => $now,
         'exp'   => $now + 3600,

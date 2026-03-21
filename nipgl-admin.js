@@ -129,30 +129,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ── Cup admin: sync results button ────────────────────────────────────────
-    var syncBtn = document.getElementById('nipgl-cup-sync-btn');
-    if (syncBtn) {
-        syncBtn.addEventListener('click', function() {
-            var btn = this;
-            var msg = document.getElementById('nipgl-sync-msg');
-            btn.disabled = true; btn.textContent = '⏳ Syncing…';
-            var fd = new FormData();
-            fd.append('action', 'nipgl_cup_sync_results');
-            fd.append('cup_id', btn.dataset.cupId);
-            fd.append('nonce',  btn.dataset.nonce);
-            fetch(ajaxurl, {method:'POST', body:fd, credentials:'same-origin'})
-                .then(function(r){ return r.json(); })
-                .then(function(res){
-                    btn.disabled = false; btn.textContent = '🔄 Sync Results Now';
-                    if (msg) {
-                        msg.style.display = '';
-                        msg.textContent = res.success ? '✅ Results synced.' : '❌ ' + (res.data || 'Error');
-                        msg.style.color = res.success ? '#0a3622' : '#c0202a';
-                    }
-                });
-        });
-    }
-
     // ── Champ admin: draw buttons ─────────────────────────────────────────────
     document.querySelectorAll('.nipgl-champ-admin-draw-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {

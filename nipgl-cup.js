@@ -1,4 +1,4 @@
-/* NIPGL Cup Bracket JS - v6.1.6 */
+/* NIPGL Cup Bracket JS - v6.4.39 */
 (function () {
   'use strict';
 
@@ -1021,6 +1021,30 @@
         setTimeout(function () {
           rounds.forEach(function (r) { r.style.display = ''; });
         }, 1000);
+      });
+    }
+
+    // Wire up Push to Sheet button (admin only, present when sheets_url configured)
+    var pushBtn = qs('.nipgl-cup-push-sheet-btn', wrap);
+    if (pushBtn) {
+      pushBtn.addEventListener('click', function () {
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = '⏳ Pushing…';
+        post('nipgl_cup_push_to_sheet', {
+          cup_id: btn.dataset.cupId,
+          nonce:  btn.dataset.nonce,
+        }, function (res) {
+          btn.disabled = false;
+          if (res.success) {
+            btn.textContent = '✅ Pushed';
+            setTimeout(function () { btn.textContent = '📤 Push to Sheet'; }, 3000);
+          } else {
+            btn.textContent = '❌ Failed';
+            setTimeout(function () { btn.textContent = '📤 Push to Sheet'; }, 3000);
+            if (typeof console !== 'undefined') console.error('Push to sheet failed:', res.data);
+          }
+        });
       });
     }
   }

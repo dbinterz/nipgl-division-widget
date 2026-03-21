@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL National Championships - v6.4.30
+ * NIPGL National Championships - v6.4.43
  *
  * Single-elimination bracket competitions for singles, pairs, triples, fours.
  * Based on the cup draw system with two key differences:
@@ -133,6 +133,28 @@ function nipgl_ajax_champ_save_score() {
     }
 
     update_option('nipgl_champ_' . $champ_id, $champ);
+
+    // Update score in Google Sheet if configured
+    nipgl_champ_update_sheet_score($champ_id, $champ, $section, $round_idx, $match_idx);
+
+    // If winner propagated, update the team name in the next-round sheet row
+    if ($home_score !== null && $away_score !== null && $home_score !== $away_score) {
+        $winner     = $home_score > $away_score ? $match['home'] : $match['away'];
+        $this_game  = $match['game_num'] ?? null;
+        if ($this_game && isset($bracket['matches'][$round_idx + 1])) {
+            foreach ($bracket['matches'][$round_idx + 1] as $nm => $next_m) {
+                if (($next_m['prev_game_home'] ?? null) == $this_game) {
+                    nipgl_champ_update_sheet_team($champ_id, $champ, $section, $round_idx + 1, $nm, 'home', $winner);
+                    break;
+                }
+                if (($next_m['prev_game_away'] ?? null) == $this_game) {
+                    nipgl_champ_update_sheet_team($champ_id, $champ, $section, $round_idx + 1, $nm, 'away', $winner);
+                    break;
+                }
+            }
+        }
+    }
+
     wp_send_json_success(array('bracket' => $bracket));
 }
 
@@ -469,6 +491,10 @@ function nipgl_champ_perform_draw($champ_id, $champ, $section = '0') {
     }
 
     update_option('nipgl_champ_' . $champ_id, $champ);
+
+    // Write bracket to Google Sheet if configured
+    nipgl_champ_write_bracket_to_sheet($champ_id, $champ);
+
     return true;
 }
 
@@ -538,6 +564,10 @@ function nipgl_champ_perform_final_draw($champ_id, &$champ, $qualifiers = null) 
     }
 
     update_option('nipgl_champ_' . $champ_id, $champ);
+
+    // Write bracket to Google Sheet if configured
+    nipgl_champ_write_bracket_to_sheet($champ_id, $champ);
+
     return true;
 }
 
@@ -560,10 +590,60 @@ function nipgl_champ_build_sections($entries) {
     return $sections;
 }
 
-// ── Admin: handle saves and resets ─────────────────────────────────────────────
+// ── Admin: handle saves, resets, export, and import ───────────────────────────
 add_action('admin_init', 'nipgl_champ_handle_admin_actions');
 function nipgl_champ_handle_admin_actions() {
     if (!current_user_can('manage_options')) return;
+
+    // ── Export all championships as JSON download ─────────────────────────────
+    if (isset($_GET['nipgl_champ_export']) && isset($_GET['page']) && $_GET['page'] === 'nipgl-champs') {
+        if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', 'nipgl_champ_export')) wp_die('Invalid nonce.');
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'nipgl_champ_%' ORDER BY option_name"
+        );
+        $export = array();
+        foreach ($rows as $row) {
+            $id  = substr($row->option_name, strlen('nipgl_champ_'));
+            $val = maybe_unserialize($row->option_value);
+            if (is_array($val) && isset($val['title'])) $export[$id] = $val;
+        }
+        $filename = 'nipgl-champs-backup-' . date('Y-m-d') . '.json';
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        echo wp_json_encode($export, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // ── Import championships from JSON backup ─────────────────────────────────
+    if (isset($_POST['nipgl_champ_import_nonce']) &&
+        wp_verify_nonce($_POST['nipgl_champ_import_nonce'], 'nipgl_champ_import')) {
+        $file = $_FILES['nipgl_champ_import_file'] ?? null;
+        if (empty($file['tmp_name'])) {
+            wp_redirect(admin_url('admin.php?page=nipgl-champs&import_error=' . urlencode('No file uploaded.')));
+            exit;
+        }
+        $json = file_get_contents($file['tmp_name']);
+        if ($json === false) {
+            wp_redirect(admin_url('admin.php?page=nipgl-champs&import_error=' . urlencode('Could not read uploaded file.')));
+            exit;
+        }
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            wp_redirect(admin_url('admin.php?page=nipgl-champs&import_error=' . urlencode('Invalid JSON — file may be corrupt.')));
+            exit;
+        }
+        $count = 0;
+        foreach ($data as $champ_id => $champ_data) {
+            $champ_id = sanitize_key($champ_id);
+            if (!$champ_id || !is_array($champ_data) || empty($champ_data['title'])) continue;
+            update_option('nipgl_champ_' . $champ_id, $champ_data);
+            $count++;
+        }
+        wp_redirect(admin_url('admin.php?page=nipgl-champs&imported=' . $count));
+        exit;
+    }
 
     // Save championship
     if (isset($_POST['nipgl_champ_save_nonce']) && wp_verify_nonce($_POST['nipgl_champ_save_nonce'], 'nipgl_champ_save')) {
@@ -598,6 +678,7 @@ function nipgl_champ_handle_admin_actions() {
             'sections'    => $sections,
             'dates'       => $dates,
             'multi_green' => $multi_green,
+            'sheets_url'  => esc_url_raw($_POST['nipgl_champ_sheets_url'] ?? ''),
         ));
         // Save per-section dates
         $sec_dates_post = $_POST['nipgl_champ_section_dates'] ?? array();
@@ -643,6 +724,165 @@ function nipgl_champ_handle_admin_actions() {
             exit;
         }
     }
+}
+
+// ── Google Sheets write-back (championships) ───────────────────────────────────
+
+/**
+ * Write the full championship bracket to the target sheet.
+ * One row per match across all sections and the final stage:
+ *   Section | Round | Home | Away | Date | Home Score | Away Score
+ * Existing scores are read from the bracket data.
+ * Stores row map in $champ['sheets_rows'][section][round_idx][match_idx].
+ */
+function nipgl_champ_write_bracket_to_sheet($champ_id, &$champ) {
+    $url = $champ['sheets_url'] ?? '';
+    if (!$url) return;
+
+    $sheet_id = nipgl_cup_sheets_id_from_url($url);
+    if (!$sheet_id) {
+        error_log('NIPGL Champ Sheets: could not extract spreadsheet ID from ' . $url);
+        return;
+    }
+
+    $sections = $champ['sections'] ?? array();
+    $values   = array(array('Section', 'Round', 'Home', 'Away', 'Date', 'Home Score', 'Away Score'));
+    $row_map  = array();
+    $row_num  = 1; // header = row 1
+
+    // Section brackets
+    foreach ($sections as $sec_idx => $sec) {
+        $bracket_key = 'section_' . $sec_idx . '_bracket';
+        $bracket     = $champ[$bracket_key] ?? null;
+        if (!$bracket) continue;
+
+        $sec_label    = 'Section ' . ($sec['label'] ?? ($sec_idx + 1));
+        $rounds       = $bracket['rounds'] ?? array();
+        $sec_dates    = !empty($champ['section_' . $sec_idx . '_dates'])
+            ? array_values(array_filter(array_map('trim', explode("\n", $champ['section_' . $sec_idx . '_dates']))))
+            : ($champ['dates'] ?? array());
+
+        foreach ($bracket['matches'] as $round_idx => $round_matches) {
+            $round_label = $rounds[$round_idx] ?? ('Round ' . ($round_idx + 1));
+            $date        = $sec_dates[$round_idx] ?? '';
+            foreach ($round_matches as $match_idx => $match) {
+                $hs = isset($match['home_score']) && $match['home_score'] !== null ? (string) intval($match['home_score']) : '';
+                $as = isset($match['away_score']) && $match['away_score'] !== null ? (string) intval($match['away_score']) : '';
+                $values[] = array($sec_label, $round_label, $match['home'] ?? '', $match['away'] ?? '', $date, $hs, $as);
+                $row_num++;
+                $row_map[$sec_idx][$round_idx][$match_idx] = $row_num;
+            }
+        }
+    }
+
+    // Final stage bracket
+    if (!empty($champ['final_bracket'])) {
+        $fb     = $champ['final_bracket'];
+        $rounds = $fb['rounds'] ?? array();
+        foreach ($fb['matches'] as $round_idx => $round_matches) {
+            $round_label = $rounds[$round_idx] ?? ('Round ' . ($round_idx + 1));
+            foreach ($round_matches as $match_idx => $match) {
+                $hs = isset($match['home_score']) && $match['home_score'] !== null ? (string) intval($match['home_score']) : '';
+                $as = isset($match['away_score']) && $match['away_score'] !== null ? (string) intval($match['away_score']) : '';
+                $values[] = array('Final Stage', $round_label, $match['home'] ?? '', $match['away'] ?? '', '', $hs, $as);
+                $row_num++;
+                $row_map['final'][$round_idx][$match_idx] = $row_num;
+            }
+        }
+    }
+
+    // Clear and write
+    $clear_url = 'https://sheets.googleapis.com/v4/spreadsheets/' . $sheet_id . '/values/A1:G1000/clear';
+    nipgl_cup_sheets_request('POST', $clear_url);
+
+    $write_url = 'https://sheets.googleapis.com/v4/spreadsheets/' . $sheet_id . '/values/A1?valueInputOption=USER_ENTERED';
+    $result    = nipgl_cup_sheets_request('PUT', $write_url, array(
+        'range'          => 'A1',
+        'majorDimension' => 'ROWS',
+        'values'         => $values,
+    ));
+
+    if ($result !== false) {
+        $champ['sheets_rows'] = $row_map;
+        update_option('nipgl_champ_' . $champ_id, $champ);
+        error_log('NIPGL Champ Sheets: bracket written to sheet ' . $sheet_id . ' (' . ($row_num - 1) . ' matches)');
+    }
+}
+
+/**
+ * Update the score columns (F/G) for a single match row.
+ * Falls back to full re-write if row map is missing.
+ */
+function nipgl_champ_update_sheet_score($champ_id, $champ, $section, $round_idx, $match_idx) {
+    $url = $champ['sheets_url'] ?? '';
+    if (!$url) return;
+
+    $sheet_id = nipgl_cup_sheets_id_from_url($url);
+    if (!$sheet_id) return;
+
+    $row_num = $champ['sheets_rows'][$section][$round_idx][$match_idx] ?? 0;
+    if (!$row_num) {
+        error_log('NIPGL Champ Sheets: no row map for ' . $champ_id . ' — rebuilding sheet');
+        nipgl_champ_write_bracket_to_sheet($champ_id, $champ);
+        return;
+    }
+
+    $bracket_key = ($section === 'final') ? 'final_bracket' : 'section_' . $section . '_bracket';
+    $match       = $champ[$bracket_key]['matches'][$round_idx][$match_idx] ?? array();
+    $hs          = isset($match['home_score']) && $match['home_score'] !== null ? (string) intval($match['home_score']) : '';
+    $as          = isset($match['away_score']) && $match['away_score'] !== null ? (string) intval($match['away_score']) : '';
+
+    // Champ sheet has 7 cols (A–G); scores are F and G
+    $range     = 'F' . $row_num . ':G' . $row_num;
+    $write_url = 'https://sheets.googleapis.com/v4/spreadsheets/' . $sheet_id
+               . '/values/' . urlencode($range) . '?valueInputOption=USER_ENTERED';
+    nipgl_cup_sheets_request('PUT', $write_url, array(
+        'range'          => $range,
+        'majorDimension' => 'ROWS',
+        'values'         => array(array($hs, $as)),
+    ));
+}
+
+/**
+ * Update a single team name cell (C=home, D=away) after winner propagation.
+ */
+function nipgl_champ_update_sheet_team($champ_id, $champ, $section, $round_idx, $match_idx, $slot, $team_name) {
+    $url = $champ['sheets_url'] ?? '';
+    if (!$url) return;
+
+    $sheet_id = nipgl_cup_sheets_id_from_url($url);
+    if (!$sheet_id) return;
+
+    $row_num = $champ['sheets_rows'][$section][$round_idx][$match_idx] ?? 0;
+    if (!$row_num) return;
+
+    // C = home (col 3), D = away (col 4)
+    $col       = $slot === 'home' ? 'C' : 'D';
+    $range     = $col . $row_num;
+    $write_url = 'https://sheets.googleapis.com/v4/spreadsheets/' . $sheet_id
+               . '/values/' . urlencode($range) . '?valueInputOption=USER_ENTERED';
+    nipgl_cup_sheets_request('PUT', $write_url, array(
+        'range'          => $range,
+        'majorDimension' => 'ROWS',
+        'values'         => array(array($team_name)),
+    ));
+}
+
+// ── AJAX: Push current champ bracket state to Google Sheet (admin) ────────────
+add_action('wp_ajax_nipgl_champ_push_to_sheet', 'nipgl_ajax_champ_push_to_sheet');
+function nipgl_ajax_champ_push_to_sheet() {
+    check_ajax_referer('nipgl_champ_nonce', 'nonce');
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorised');
+
+    $champ_id = sanitize_key($_POST['champ_id'] ?? '');
+    if (!$champ_id) wp_send_json_error('Missing champ_id');
+
+    $champ = get_option('nipgl_champ_' . $champ_id, array());
+    if (empty($champ)) wp_send_json_error('Championship not found');
+    if (empty($champ['sheets_url'])) wp_send_json_error('No Sheets URL configured for this championship.');
+
+    nipgl_champ_write_bracket_to_sheet($champ_id, $champ);
+    wp_send_json_success(array('message' => 'Bracket pushed to sheet.'));
 }
 
 // ── Admin menu ─────────────────────────────────────────────────────────────────
@@ -705,6 +945,33 @@ function nipgl_champs_list_page() {
       <?php endforeach; ?>
       </tbody>
     </table>
+    <?php endif; ?>
+
+    <hr>
+    <h2>Backup &amp; Restore</h2>
+    <p>Export all championship data (entries, draws, scores) to a JSON file. Use the same file to restore if a championship is accidentally deleted.</p>
+    <p>
+      <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=nipgl-champs&nipgl_champ_export=1'), 'nipgl_champ_export'); ?>"
+         class="button button-secondary">
+        💾 Export All Championships
+      </a>
+    </p>
+    <form method="post" enctype="multipart/form-data" style="margin-top:16px">
+      <?php wp_nonce_field('nipgl_champ_import', 'nipgl_champ_import_nonce'); ?>
+      <label for="nipgl_champ_import_file" style="font-weight:600;display:block;margin-bottom:6px">Restore from backup:</label>
+      <input type="file" id="nipgl_champ_import_file" name="nipgl_champ_import_file" accept=".json,application/json">
+      <p class="description" style="margin-bottom:8px">Importing will overwrite any existing championship with the same ID. Championships not present in the file are left untouched.</p>
+      <?php submit_button('📂 Import Backup', 'secondary', 'nipgl_champ_import_submit', false); ?>
+    </form>
+    <?php if (isset($_GET['imported'])): ?>
+      <div class="notice notice-success is-dismissible" style="margin-top:12px">
+        <p>✅ <?php echo intval($_GET['imported']); ?> championship(s) restored from backup.</p>
+      </div>
+    <?php endif; ?>
+    <?php if (isset($_GET['import_error'])): ?>
+      <div class="notice notice-error is-dismissible" style="margin-top:12px">
+        <p>❌ Import failed: <?php echo esc_html(urldecode($_GET['import_error'])); ?></p>
+      </div>
     <?php endif; ?>
     </div>
     <?php
@@ -795,6 +1062,16 @@ function nipgl_champ_edit_page($champ_id) {
                       placeholder="Club: greens&#10;Ballymena: 2&#10;Salisbury: 2"><?php echo esc_textarea($champ['multi_green'] ?? ''); ?></textarea>
             <p class="description">Clubs with more than one green can host more than 6 home games per round.<br>
             Format: <code>Club Name: number_of_greens</code> — one per line. The draw limit becomes 6 × greens.</p>
+          </td>
+        </tr>
+        <tr>
+          <th><label for="nipgl_champ_sheets_url">Write-back Sheets URL</label></th>
+          <td>
+            <input type="text" id="nipgl_champ_sheets_url" name="nipgl_champ_sheets_url"
+                   value="<?php echo esc_attr($champ['sheets_url'] ?? ''); ?>"
+                   placeholder="https://docs.google.com/spreadsheets/d/…/edit"
+                   class="regular-text" style="width:480px">
+            <p class="description">Optional. Target Google Sheet for bracket write-back. After each section draw and score save, results are written automatically. Columns: Section, Round, Home, Away, Date, Home Score, Away Score. Requires Drive/Sheets OAuth.</p>
           </td>
         </tr>
       </table>
@@ -1203,6 +1480,13 @@ function nipgl_champ_shortcode($atts) {
             <?php elseif ($bracket): ?>
             <div class="nipgl-champ-header-actions nipgl-champ-post-draw-actions">
               <button class="nipgl-champ-btn nipgl-champ-btn-ghost nipgl-champ-print-btn">🖨 Print Draw</button>
+              <?php if ($is_admin && !empty($champ['sheets_url'])): ?>
+              <button class="nipgl-champ-btn nipgl-champ-btn-ghost nipgl-champ-push-sheet-btn"
+                      data-champ-id="<?php echo esc_attr($champ_id); ?>"
+                      data-nonce="<?php echo esc_attr($nonce); ?>">
+                📤 Push to Sheet
+              </button>
+              <?php endif; ?>
             </div>
             <?php endif; ?>
           </div>
@@ -1260,6 +1544,13 @@ function nipgl_champ_shortcode($atts) {
             <?php elseif ($fb): ?>
             <div class="nipgl-champ-header-actions nipgl-champ-post-draw-actions">
               <button class="nipgl-champ-btn nipgl-champ-btn-ghost nipgl-champ-print-btn">🖨 Print Draw</button>
+              <?php if (current_user_can('manage_options') && !empty($champ['sheets_url'])): ?>
+              <button class="nipgl-champ-btn nipgl-champ-btn-ghost nipgl-champ-push-sheet-btn"
+                      data-champ-id="<?php echo esc_attr($champ_id); ?>"
+                      data-nonce="<?php echo esc_attr($nonce); ?>">
+                📤 Push to Sheet
+              </button>
+              <?php endif; ?>
             </div>
             <?php endif; ?>
           </div>

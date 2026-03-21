@@ -1,4 +1,4 @@
-/* NIPGL Championships JS - v6.4.0 */
+/* NIPGL Championships JS - v6.4.43 */
 (function () {
   'use strict';
 
@@ -1015,6 +1015,35 @@
         setTimeout(function () {
           rounds.forEach(function (r) { r.style.display = ''; });
         }, 1000);
+      });
+    }
+
+    // Wire up Push to Sheet button (admin only, present when sheets_url configured)
+    var pushBtn = qs('.nipgl-champ-push-sheet-btn', wrap);
+    if (pushBtn) {
+      pushBtn.addEventListener('click', function () {
+        var btn = this;
+        btn.disabled = true;
+        btn.textContent = '⏳ Pushing…';
+        var nonce   = nipglChampData.champNonce;
+        var champId = btn.dataset.champId;
+        var fd = new FormData();
+        fd.append('action',   'nipgl_champ_push_to_sheet');
+        fd.append('champ_id', champId);
+        fd.append('nonce',    nonce);
+        fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            btn.disabled = false;
+            if (res.success) {
+              btn.textContent = '✅ Pushed';
+              setTimeout(function () { btn.textContent = '📤 Push to Sheet'; }, 3000);
+            } else {
+              btn.textContent = '❌ Failed';
+              setTimeout(function () { btn.textContent = '📤 Push to Sheet'; }, 3000);
+              if (typeof console !== 'undefined') console.error('Champ push to sheet failed:', res.data);
+            }
+          });
       });
     }
   }

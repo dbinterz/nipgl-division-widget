@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.4.35
+Stable tag: 6.4.43
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,39 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 6.4.43 =
+* Championships: added Write-back Sheets URL field in edit page — after each section/final draw and score save, bracket is written to the sheet (Section, Round, Home, Away, Date, Home Score, Away Score)
+* Championships: winner propagation updates the team name cell in the next-round sheet row
+* Championships: Push to Sheet button on live page for admins (when sheets_url configured)
+* Championships: Backup & Restore section on Championships admin page — JSON export and import
+
+= 6.4.42 =
+* Added cup backup/restore to Cups admin — Export All Cups downloads a dated JSON of every cup option (entries, draw, scores, bracket); Import Backup restores from that file, overwriting matching IDs and leaving others untouched
+
+= 6.4.41 =
+* Removed Results CSV URL field and pull-from-sheet sync — superseded by write-back and Push to Sheet; removed nipgl_cup_sync_results AJAX action, nipgl_cup_merge_csv_results, nipgl_cup_mark_winner, nipgl_cup_normalise
+
+= 6.4.40 =
+* Fixed Push to Sheet erasing scores — nipgl_cup_write_bracket_to_sheet now reads existing home_score/away_score from the bracket data when building rows, so a manual push always reflects current results
+
+= 6.4.39 =
+* Fixed winner not written to next-round row in sheet — after a score save advances a team, their name is now written to the correct Home or Away cell in the next round's row
+* Added "📤 Push to Sheet" button on live cup page for admins — rewrites the full bracket (all teams and current scores) to the sheet in one go; useful after bulk score entry or to force a re-sync
+* New AJAX action nipgl_cup_push_to_sheet (admin-only)
+
+= 6.4.38 =
+* Fixed Sheets write-back not writing — clear URL had malformed path (:clear instead of /clear)
+* Score update now falls back to a full sheet re-write when the row map is missing (draws performed before v6.4.36 gain the row map on first score save)
+
+= 6.4.37 =
+* Fixed 403 on Sheets write-back — added spreadsheets scope to OAuth consent URL and service account JWT alongside the existing Drive scope; re-authorise via League Setup to pick up the new scope
+
+= 6.4.36 =
+* Added Sheets write-back URL field per cup in Cup admin
+* After draw, bracket is written to the target sheet — one row per match: Round, Home, Away, Date, Home Score, Away Score
+* After each score save, the relevant row's score columns are updated automatically
+* Reuses nipgl_drive_get_access_token() / nipgl_drive_get_oauth_token() — no new auth configuration required
 
 = 6.4.35 =
 * Simplified auto-updater to construct release asset URL directly from tag name rather than parsing API assets array — more reliable
