@@ -1,10 +1,31 @@
-/* NIPGL Division Widget JS - v6.4.47 */
+/* NIPGL Division Widget JS - v5.2 */
 (function(){
   'use strict';
 
-  var badges     = (typeof nipglData !== 'undefined' && nipglData.badges)     ? nipglData.badges     : {};
-  var clubBadges = (typeof nipglData !== 'undefined' && nipglData.clubBadges) ? nipglData.clubBadges : {};
-  var ajaxUrl    = (typeof nipglData !== 'undefined') ? nipglData.ajaxUrl : '/wp-admin/admin-ajax.php';
+  var badges         = (typeof nipglData !== 'undefined' && nipglData.badges)         ? nipglData.badges         : {};
+  var clubBadges     = (typeof nipglData !== 'undefined' && nipglData.clubBadges)     ? nipglData.clubBadges     : {};
+  var ajaxUrl        = (typeof nipglData !== 'undefined') ? nipglData.ajaxUrl : '/wp-admin/admin-ajax.php';
+  var scoreOverrides = (typeof nipglData !== 'undefined' && nipglData.scoreOverrides) ? nipglData.scoreOverrides : {};
+
+  // ── Apply admin score overrides to parsed fixture groups ─────────────────────
+  function applyScoreOverrides(groups, csvUrl){
+    if(!csvUrl || !Object.keys(scoreOverrides).length) return groups;
+    groups.forEach(function(g){
+      g.matches.forEach(function(m){
+        var key = csvUrl+'||'+g.date+'||'+m.homeTeam+'||'+m.awayTeam;
+        var ov  = scoreOverrides[key];
+        if(ov){
+          if(ov.sh!=='') m.shotsHome = ov.sh;
+          if(ov.sa!=='') m.shotsAway = ov.sa;
+          if(ov.ph!=='') m.ptsHome   = ov.ph;
+          if(ov.pa!=='') m.ptsAway   = ov.pa;
+          if(ov.sh!==''||ov.sa!=='') m.played = true;
+          m.overridden = true;
+        }
+      });
+    });
+    return groups;
+  }
 
   var PRINT_ICON = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>';
 
@@ -119,15 +140,8 @@
         var awayTeam =(r[colATeam] ||'').trim();
         var ptsAway  =(r[colPtsA]  ||'').trim();
         var timeNote='';
-        for(var x=0;x<r.length;x++){
-          var cell=(r[x]||'').trim();
-          // Skip all data columns — only look for time in non-data columns
-          if(x===colHScore||x===colAScore||x===colPtsH||x===colPtsA||x===colHTeam||x===colATeam) continue;
-          // Match HH:MM or HH:MM:SS — strip seconds if present
-          if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(cell)){
-            timeNote=cell.slice(0,5); // take HH:MM only
-            break;
-          }
+        for(var x=colATeam+1;x<Math.min(colPtsA,r.length);x++){
+          if(/^\d{1,2}:\d{2}$/.test((r[x]||'').trim())) timeNote=r[x].trim();
         }
         if(homeTeam && awayTeam){
           var played=(shotsHome!=='0'||shotsAway!=='0'||ptsHome!=='0'||ptsAway!=='0');
@@ -235,10 +249,9 @@
       g.matches.forEach(function(m){
         var scoreStr = m.played ? m.shotsHome+' – '+m.shotsAway : 'v';
         var ptsStr   = m.played ? '<span class="fx-pts">('+m.ptsHome+' – '+m.ptsAway+')</span>' : '';
-        var timeStr  = m.timeNote ? '<span class="fx-pts" style="margin-left:6px">&#9200; '+m.timeNote+'</span>' : '';
         html+='<tr>'
           +'<td class="fx-home">'+badgeImg(m.homeTeam)+m.homeTeam+'</td>'
-          +'<td class="fx-score">'+scoreStr+' '+ptsStr+timeStr+'</td>'
+          +'<td class="fx-score">'+scoreStr+' '+ptsStr+'</td>'
           +'<td class="fx-away">'+badgeImg(m.awayTeam)+m.awayTeam+'</td>'
           +'</tr>';
       });
@@ -247,17 +260,28 @@
     return html;
   }
 
-  function openPrintWindow(title, bodyHtml){
-    var win=window.open('','_blank','width=900,height=700');
-    win.document.write(
+  function openPrintWindow(title, bodyHtml, extraCss){
+    // iframe-based print — works on mobile where window.open() is blocked
+    var existing=document.getElementById('nipgl-print-frame');
+    if(existing) existing.parentNode.removeChild(existing);
+    var iframe=document.createElement('iframe');
+    iframe.id='nipgl-print-frame';
+    iframe.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;visibility:hidden';
+    document.body.appendChild(iframe);
+    var doc=iframe.contentDocument||iframe.contentWindow.document;
+    doc.open();
+    doc.write(
       '<!DOCTYPE html><html><head><title>'+(title||'NIPGL')+'</title>'
-      // No Google Fonts link — removes 5-10s delay waiting for font load before print dialog
-      +'<style>'+PRINT_CSS+'</style></head><body>'
+      +'<style>'+PRINT_CSS+(extraCss||'')+'</style></head><body>'
       +bodyHtml
-      +'<script>window.print();window.onafterprint=function(){window.close();};<\/script>'
       +'</body></html>'
     );
-    win.document.close();
+    doc.close();
+    iframe.onload=function(){
+      try{iframe.contentWindow.focus();iframe.contentWindow.print();}catch(e){window.print();}
+    };
+    // Fallback: trigger if onload already fired
+    try{iframe.contentWindow.focus();iframe.contentWindow.print();}catch(e){}
   }
 
   // ── Modal ─────────────────────────────────────────────────────────────────────
@@ -303,16 +327,11 @@
         +'.lost .modal-result-lbl{background:#c0202a;color:#fff}'
         +'img{max-width:40px !important;max-height:40px !important}'  // safety net for any other images
         +'.modal-fix-table img{max-width:18px !important;max-height:18px !important}';
-      var win=window.open('','_blank','width=900,height=700');
-      win.document.write(
-        '<!DOCTYPE html><html><head><title>'+teamName+'</title>'
-        +'<style>'+modalPrintCss+'</style></head><body>'
-        +'<div class="nipgl-modal-title">'+titleEl.innerHTML+'</div>'
-        +bodyEl.innerHTML
-        +'<script>window.print();window.onafterprint=function(){window.close();};<\/script>'
-        +'</body></html>'
+      openPrintWindow(teamName,
+        '<div class="nipgl-modal-title">'+titleEl.innerHTML+'</div>'
+        +bodyEl.innerHTML,
+        modalPrintCss
       );
-      win.document.close();
     });
   }
 
@@ -343,9 +362,10 @@
     return '<div class="modal-stat"><div class="modal-stat-val">'+val+'</div><div class="modal-stat-lbl">'+lbl+'</div></div>';
   }
 
-  function showTeamModal(teamName, allRows, sourceWidget){
+  function showTeamModal(teamName, allRows, sourceWidget, parseFn){
+    parseFn = parseFn || parseFixtureGroups;
     var teams =parseTableRows(allRows);
-    var groups=parseFixtureGroups(allRows);
+    var groups=parseFn(allRows);
     var teamData=null;
     for(var t=0;t<teams.length;t++){
       if(teams[t].team.toUpperCase()===teamName.toUpperCase()){teamData=teams[t];break;}
@@ -392,7 +412,7 @@
           ? ' data-home="'+m.homeTeam.replace(/"/g,'&quot;')+'" data-away="'+m.awayTeam.replace(/"/g,'&quot;')+'" data-scrowid="'+scRowId+'" title="Click to view scorecard"'
           : '';
         fixtureRows+='<tr class="modal-fx-row'+(rowCls?' '+rowCls:'')+'"'+scAttrs+'>'
-          +'<td>'+g.date+(m.timeNote?' <span style="color:#888;font-size:11px;white-space:nowrap">&#9200; '+m.timeNote+'</span>':'')+'</td>'
+          +'<td>'+g.date+'</td>'
           +'<td style="text-align:center;font-weight:700;color:'+(isHome?'#1a2e5a':'#c0202a')+'">'+ha+'</td>'
           +'<td>'+badgeImg(opponent)+opponent+'</td>'
           +'<td style="text-align:center">'+scoreStr+'</td>'
@@ -441,15 +461,24 @@
   }
 
   // ── Render table ──────────────────────────────────────────────────────────────
-  function renderTable(rows, promote, relegate){
+  function renderTable(rows, promote, relegate, parseFn){
+    parseFn = parseFn || parseFixtureGroups;
     promote=promote||0; relegate=relegate||0;
     var teams=parseTableRows(rows);
     if(!teams.length) return '<div class="nipgl-status">Could not find league table in data.</div>';
 
+    // Sort by pts descending, then +/- descending (on-the-fly in case sheet ordering differs)
+    teams.sort(function(a,b){
+      var pd=parseFloat(b.pts)-parseFloat(a.pts); if(pd!==0) return pd;
+      return parseFloat(b.diff)-parseFloat(a.diff);
+    });
+    // Re-assign positions after sort
+    teams.forEach(function(t,i){t.pos=i+1;});
+
     var total=teams.length, MAX_PTS=7;
     var gamesLeft={};
     teams.forEach(function(t){gamesLeft[t.team.toUpperCase()]=0;});
-    parseFixtureGroups(rows).forEach(function(g){
+    parseFn(rows).forEach(function(g){
       g.matches.forEach(function(m){
         if(!m.played){
           if(m.homeTeam.toUpperCase() in gamesLeft) gamesLeft[m.homeTeam.toUpperCase()]++;
@@ -511,8 +540,9 @@
     try{var p=str.split(' ')[1].split('-');return new Date(p[1]+' '+p[0]+' '+p[2]);}catch(e){return null;}
   }
 
-  function renderFixtures(rows, filter){
-    var groups=parseFixtureGroups(rows);
+  function renderFixtures(rows, filter, parseFn){
+    parseFn = parseFn || parseFixtureGroups;
+    var groups=parseFn(rows);
     var now=new Date(), filtered=groups;
     if(filter==='results'){
       filtered=groups.map(function(g){
@@ -589,6 +619,7 @@
     }
 
     var activeFilter='all', allRows=null;
+    var parseFxGroups=parseFixtureGroups; // overridden after CSV loads to apply score overrides
     var panels=widget.querySelectorAll('.nipgl-panel');
     var tabs=widget.querySelectorAll('.nipgl-tab');
 
@@ -624,7 +655,7 @@
           );
         } else {
           // Fixtures: use dedicated renderer for reliable mobile print
-          var groups=parseFixtureGroups(allRows);
+          var groups=parseFxGroups(allRows);
           var now=new Date();
           if(activeFilter==='results'){
             groups=groups.map(function(g){
@@ -647,7 +678,7 @@
         el.addEventListener('click',function(e){
           e.stopPropagation();
           var team=el.getAttribute('data-team')||el.closest('[data-team]').getAttribute('data-team');
-          if(team&&allRows) showTeamModal(team,allRows,widget);
+          if(team&&allRows) showTeamModal(team,allRows,widget,parseFxGroups);
         });
       });
       // Played fixture rows — click to show scorecard
@@ -688,7 +719,7 @@
             x.classList.toggle('active',x.getAttribute('data-f')===activeFilter);
           });
           var fp=getPanel('fixtures');
-          if(fp) fp.innerHTML=filterBar(activeFilter)+renderFixtures(allRows,activeFilter);
+          if(fp) fp.innerHTML=filterBar(activeFilter)+renderFixtures(allRows,activeFilter,parseFxGroups);
           bindFilterBtns(); bindTeamLinks();
         });
       });
@@ -706,13 +737,15 @@
     xhr.onload=function(){
       if(xhr.status===200&&xhr.responseText&&xhr.responseText.trim().length>10){
         allRows=parseCSV(xhr.responseText);
+        // Assign to hoisted var — applies admin score overrides for this widget's CSV URL
+        parseFxGroups=function(rows){ return applyScoreOverrides(parseFixtureGroups(rows), csvUrl); };
         var tp=getPanel('table'), fp=getPanel('fixtures');
         if(tp){
-          tp.innerHTML=renderTable(allRows,promote,relegate)+sponsorBar();
+          tp.innerHTML=renderTable(allRows,promote,relegate,parseFxGroups)+sponsorBar();
           tp.insertBefore(makePrintBtn('table'),tp.firstChild);
         }
         if(fp){
-          fp.innerHTML=filterBar(activeFilter)+renderFixtures(allRows,activeFilter);
+          fp.innerHTML=filterBar(activeFilter)+renderFixtures(allRows,activeFilter,parseFxGroups);
           fp.insertBefore(makePrintBtn('fixtures'),fp.firstChild);
         }
         bindFilterBtns(); bindTeamLinks();

@@ -1,6 +1,6 @@
 <?php
 /**
- * NIPGL Cup Bracket Feature - v6.4.42
+ * NIPGL Cup Bracket Feature - v6.4.25
  * Single-elimination knockout bracket widget with live animated draw.
  */
 
@@ -136,31 +136,18 @@ function nipgl_ajax_cup_save_score() {
     update_option('nipgl_cup_score_log', $log);
 
     // Advance winner to next round if both scores set
-    $winner      = null;
-    $next_round  = null;
-    $next_match  = null;
-    $next_slot   = null;
     if ($home_score !== null && $away_score !== null && $home_score !== $away_score) {
-        $winner     = $home_score > $away_score ? $match['home'] : $match['away'];
+        $winner = $home_score > $away_score ? $match['home'] : $match['away'];
         $next_round = $round_idx + 1;
         $next_match = intval(floor($match_idx / 2));
         $next_slot  = $match_idx % 2 === 0 ? 'home' : 'away';
         if (isset($bracket['matches'][$next_round][$next_match])) {
-            $bracket['matches'][$next_round][$next_match][$next_slot]            = $winner;
+            $bracket['matches'][$next_round][$next_match][$next_slot]           = $winner;
             $bracket['matches'][$next_round][$next_match][$next_slot . '_score'] = null;
         }
     }
 
     update_option('nipgl_cup_' . $cup_id, $cup);
-
-    // Update score row in Google Sheet if configured
-    nipgl_cup_update_sheet_score($cup_id, $cup, $round_idx, $match_idx);
-
-    // If a winner progressed, also update the team name in the next-round row
-    if ($winner !== null && $next_round !== null && isset($bracket['matches'][$next_round][$next_match])) {
-        nipgl_cup_update_sheet_team($cup_id, $cup, $next_round, $next_match, $next_slot, $winner);
-    }
-
     wp_send_json_success(array('bracket' => $bracket));
 }
 
@@ -266,13 +253,6 @@ function nipgl_cup_shortcode($atts) {
           <button class="nipgl-cup-btn nipgl-cup-btn-ghost nipgl-cup-print-btn">
             🖨 Print Draw
           </button>
-          <?php if ($is_admin && !empty($cup['sheets_url'])): ?>
-          <button class="nipgl-cup-btn nipgl-cup-btn-ghost nipgl-cup-push-sheet-btn"
-                  data-cup-id="<?php echo esc_attr($cup_id); ?>"
-                  data-nonce="<?php echo esc_attr($nonce); ?>">
-            📤 Push to Sheet
-          </button>
-          <?php endif; ?>
         </div>
         <?php endif; ?>
       </div>
@@ -497,276 +477,122 @@ function nipgl_cup_perform_draw($cup_id, $cup) {
     }
 
     update_option('nipgl_cup_' . $cup_id, $cup);
-
-    // Write bracket to Google Sheet if configured
-    nipgl_cup_write_bracket_to_sheet($cup_id, $cup);
-
     return true;
 }
 
-// ── Google Sheets write-back ───────────────────────────────────────────────────
-
-/**
- * Extract the spreadsheet ID from a Google Sheets URL.
- * Handles /d/{id}/edit, /d/{id}/pub, etc.
- */
-function nipgl_cup_sheets_id_from_url($url) {
-    if (preg_match('#/spreadsheets/d/([a-zA-Z0-9_-]+)#', $url, $m)) {
-        return $m[1];
-    }
-    return false;
-}
-
-/**
- * Make an authenticated Google Sheets API request.
- * Reuses nipgl_drive_get_access_token() — no new auth needed.
- *
- * @param string $method  GET | PUT | POST
- * @param string $url     Full API URL
- * @param array  $body    Body to JSON-encode (optional)
- * @return array|false    Decoded JSON response or false on failure
- */
-function nipgl_cup_sheets_request($method, $url, $body = null) {
-    if (!function_exists('nipgl_drive_get_access_token')) return false;
-    $token = nipgl_drive_get_access_token();
-    if (!$token) {
-        error_log('NIPGL Sheets: could not obtain access token');
-        return false;
-    }
-
-    $args = array(
-        'method'  => $method,
-        'timeout' => 20,
-        'headers' => array(
-            'Authorization' => 'Bearer ' . $token,
-            'Content-Type'  => 'application/json',
-        ),
-    );
-    if ($body !== null) $args['body'] = json_encode($body);
-
-    $response = wp_remote_request($url, $args);
-    if (is_wp_error($response)) {
-        error_log('NIPGL Sheets WP error: ' . $response->get_error_message());
-        return false;
-    }
-    $code = wp_remote_retrieve_response_code($response);
-    $raw  = wp_remote_retrieve_body($response);
-    $data = json_decode($raw, true);
-    if ($code >= 400) {
-        error_log('NIPGL Sheets API ' . $code . ': ' . $raw);
-        return false;
-    }
-    return $data ?: array();
-}
-
-/**
- * Write the full bracket to the target sheet (used after draw and on manual push).
- * Clears the sheet first, then writes a header row + one row per match:
- *   Round | Home | Away | Date | Home Score | Away Score
- * Existing scores are read from the bracket data, so a manual push never erases results.
- *
- * Stores the row index for each match in $cup['sheets_rows'][round_idx][match_idx]
- * so scores can be updated later without re-scanning the sheet.
- */
-function nipgl_cup_write_bracket_to_sheet($cup_id, &$cup) {
-    $url = $cup['sheets_url'] ?? '';
-    if (!$url) return;
-
-    $sheet_id = nipgl_cup_sheets_id_from_url($url);
-    if (!$sheet_id) {
-        error_log('NIPGL Sheets: could not extract spreadsheet ID from ' . $url);
-        return;
-    }
-
-    $bracket  = $cup['bracket']  ?? array();
-    $matches  = $bracket['matches'] ?? array();
-    $rounds   = $bracket['rounds']  ?? array();
-    $dates    = $cup['dates']        ?? array();
-
-    // Build rows: header + one row per match
-    $values = array(array('Round', 'Home', 'Away', 'Date', 'Home Score', 'Away Score'));
-    $row_map = array(); // [round_idx][match_idx] => 1-based row index (1 = header)
-    $row_num = 1;       // header is row 1 (index 0 in $values)
-
-    foreach ($matches as $round_idx => $round_matches) {
-        $round_label = $rounds[$round_idx] ?? ('Round ' . ($round_idx + 1));
-        $date        = $dates[$round_idx]  ?? '';
-        foreach ($round_matches as $match_idx => $match) {
-            $home_score = isset($match['home_score']) && $match['home_score'] !== null ? (string) intval($match['home_score']) : '';
-            $away_score = isset($match['away_score']) && $match['away_score'] !== null ? (string) intval($match['away_score']) : '';
-            $values[] = array(
-                $round_label,
-                $match['home'] ?? '',
-                $match['away'] ?? '',
-                $date,
-                $home_score,
-                $away_score,
-            );
-            $row_num++;
-            $row_map[$round_idx][$match_idx] = $row_num; // 1-based (header=1, first match=2)
-        }
-    }
-
-    // Clear the sheet then write all rows in one call
-    $clear_url = 'https://sheets.googleapis.com/v4/spreadsheets/' . $sheet_id
-               . '/values/A1:F1000/clear';
-    nipgl_cup_sheets_request('POST', $clear_url);
-
-    $write_url = 'https://sheets.googleapis.com/v4/spreadsheets/' . $sheet_id
-               . '/values/A1?valueInputOption=USER_ENTERED';
-    $result = nipgl_cup_sheets_request('PUT', $write_url, array(
-        'range'          => 'A1',
-        'majorDimension' => 'ROWS',
-        'values'         => $values,
-    ));
-
-    if ($result !== false) {
-        // Persist the row map so score updates can find the right row
-        $cup['sheets_rows'] = $row_map;
-        update_option('nipgl_cup_' . $cup_id, $cup);
-        error_log('NIPGL Sheets: bracket written to sheet ' . $sheet_id . ' (' . ($row_num - 1) . ' matches)');
-    }
-}
-
-/**
- * After a score is saved, update the corresponding row in the target sheet.
- */
-function nipgl_cup_update_sheet_score($cup_id, $cup, $round_idx, $match_idx) {
-    $url = $cup['sheets_url'] ?? '';
-    if (!$url) return;
-
-    $sheet_id = nipgl_cup_sheets_id_from_url($url);
-    if (!$sheet_id) return;
-
-    // Look up the pre-stored row number
-    $row_num = $cup['sheets_rows'][$round_idx][$match_idx] ?? 0;
-    if (!$row_num) {
-        // Row map missing — draw predates v6.4.36. Re-write the full sheet
-        // (this builds the map and stores it, so subsequent saves use the fast path)
-        error_log('NIPGL Sheets: no row map for cup ' . $cup_id . ' — rebuilding sheet');
-        nipgl_cup_write_bracket_to_sheet($cup_id, $cup);
-        return;
-    }
-
-    $match      = $cup['bracket']['matches'][$round_idx][$match_idx] ?? array();
-    $home_score = $match['home_score'] !== null ? (string) intval($match['home_score']) : '';
-    $away_score = $match['away_score'] !== null ? (string) intval($match['away_score']) : '';
-
-    // Columns E and F = Home Score, Away Score
-    $range     = 'E' . $row_num . ':F' . $row_num;
-    $write_url = 'https://sheets.googleapis.com/v4/spreadsheets/' . $sheet_id
-               . '/values/' . urlencode($range) . '?valueInputOption=USER_ENTERED';
-
-    nipgl_cup_sheets_request('PUT', $write_url, array(
-        'range'          => $range,
-        'majorDimension' => 'ROWS',
-        'values'         => array(array($home_score, $away_score)),
-    ));
-}
-
-/**
- * Update a single team name cell (B or C) in a next-round row after winner propagation.
- * $slot = 'home' → column B, 'away' → column C.
- */
-function nipgl_cup_update_sheet_team($cup_id, $cup, $round_idx, $match_idx, $slot, $team_name) {
-    $url = $cup['sheets_url'] ?? '';
-    if (!$url) return;
-
-    $sheet_id = nipgl_cup_sheets_id_from_url($url);
-    if (!$sheet_id) return;
-
-    $row_num = $cup['sheets_rows'][$round_idx][$match_idx] ?? 0;
-    if (!$row_num) return; // row map missing — full re-write handles it via score path
-
-    // B = home (col 2), C = away (col 3)
-    $col       = $slot === 'home' ? 'B' : 'C';
-    $range     = $col . $row_num;
-    $write_url = 'https://sheets.googleapis.com/v4/spreadsheets/' . $sheet_id
-               . '/values/' . urlencode($range) . '?valueInputOption=USER_ENTERED';
-
-    nipgl_cup_sheets_request('PUT', $write_url, array(
-        'range'          => $range,
-        'majorDimension' => 'ROWS',
-        'values'         => array(array($team_name)),
-    ));
-}
-
-// ── AJAX: Push current bracket state to Google Sheet (admin) ──────────────────
-add_action('wp_ajax_nipgl_cup_push_to_sheet', 'nipgl_ajax_cup_push_to_sheet');
-function nipgl_ajax_cup_push_to_sheet() {
+// ── AJAX: Update bracket results from Google Sheets CSV ───────────────────────
+// (Optional: admin can paste a CSV URL in cup settings and results are merged in)
+add_action('wp_ajax_nipgl_cup_sync_results', 'nipgl_ajax_cup_sync_results');
+function nipgl_ajax_cup_sync_results() {
     check_ajax_referer('nipgl_cup_nonce', 'nonce');
     if (!current_user_can('manage_options')) wp_send_json_error('Unauthorised');
 
     $cup_id = sanitize_key($_POST['cup_id'] ?? '');
-    if (!$cup_id) wp_send_json_error('Missing cup_id');
+    $cup    = get_option('nipgl_cup_' . $cup_id, array());
+    $csv    = $cup['csv_url'] ?? '';
 
-    $cup = get_option('nipgl_cup_' . $cup_id, array());
-    if (empty($cup)) wp_send_json_error('Cup not found');
-    if (empty($cup['sheets_url'])) wp_send_json_error('No Sheets URL configured for this cup.');
+    if (!$csv) wp_send_json_error('No CSV URL configured for this cup.');
 
-    nipgl_cup_write_bracket_to_sheet($cup_id, $cup);
-    wp_send_json_success(array('message' => 'Bracket pushed to sheet.'));
+    $result = nipgl_cup_merge_csv_results($cup_id, $cup, $csv);
+    if (is_wp_error($result)) wp_send_json_error($result->get_error_message());
+
+    wp_send_json_success(array('bracket' => get_option('nipgl_cup_' . $cup_id)['bracket']));
 }
 
-// ── Handle cup save, draw-reset, export, and import on admin_init ─────────────
+/**
+ * Parse NIPGL cup bracket CSV (same column layout as the spreadsheet):
+ * Col A = draw number, Col B = R1, Col C = R2, Col D = QF, Col E = SF, Col F = Final
+ * Each team name in a column = that team reached that round.
+ * We map this back onto the stored bracket.
+ */
+function nipgl_cup_merge_csv_results($cup_id, &$cup, $csv_url) {
+    $response = wp_remote_get(
+        admin_url('admin-ajax.php') . '?action=nipgl_csv&url=' . urlencode($csv_url),
+        array('timeout' => 15)
+    );
+    // Actually: use the proxy for consistency
+    $response = wp_remote_get($csv_url, array('timeout' => 15, 'user-agent' => 'Mozilla/5.0'));
+    if (is_wp_error($response)) return $response;
+    $body = wp_remote_retrieve_body($response);
+    if (!$body) return new WP_Error('empty', 'Empty CSV response.');
+
+    $rows = array_map('str_getcsv', explode("\n", trim($body)));
+    // Find round headers row (contains ROUND 1, ROUND 2 etc)
+    $round_row = -1;
+    foreach ($rows as $ri => $row) {
+        foreach ($row as $cell) {
+            if (stripos(trim($cell), 'ROUND') !== false || stripos(trim($cell), 'FINAL') !== false || stripos(trim($cell), 'SEMI') !== false) {
+                $round_row = $ri;
+                break 2;
+            }
+        }
+    }
+
+    if (!isset($cup['bracket'])) return new WP_Error('no_bracket', 'No bracket drawn yet.');
+
+    // Build a map: draw_num => team_name (from stored bracket)
+    $draw_map = array();
+    foreach (($cup['bracket']['matches'][0] ?? array()) as $match) {
+        if ($match['draw_num_home'] && $match['home']) $draw_map[$match['draw_num_home']] = $match['home'];
+        if ($match['draw_num_away'] && $match['away']) $draw_map[$match['draw_num_away']] = $match['away'];
+    }
+
+    // Map each data row: col A = draw num, subsequent cols = teams at each round
+    // Advancing team in col X = winner of that round
+    // We infer scores: if team A is in R2 col, they won R1 match. Score stored as 'W'/'L' markers
+    // For now we mark round advancement and let future score entry flesh out scores
+    $num_rounds = count($cup['bracket']['rounds'] ?? array());
+    foreach ($rows as $ri => $row) {
+        if ($ri <= $round_row) continue;
+        $draw_num = isset($row[0]) ? intval($row[0]) : 0;
+        if (!$draw_num) continue;
+        // For each round col (B=1, C=2, D=3, E=4, F=5 = indices 1..5)
+        for ($col = 1; $col <= $num_rounds && $col < count($row); $col++) {
+            $team = isset($row[$col]) ? trim($row[$col]) : '';
+            if (!$team) continue;
+            $round_idx = $col - 1;
+            if (!isset($cup['bracket']['matches'][$round_idx])) continue;
+            // Find the match in this round that this team belongs to
+            nipgl_cup_mark_winner($cup['bracket']['matches'], $round_idx, $draw_num, $team);
+        }
+    }
+
+    update_option('nipgl_cup_' . $cup_id, $cup);
+    return true;
+}
+
+/**
+ * Mark the winner of a match in round $round_idx for team identified by draw number.
+ * The draw number traces back to round 1 to find which match slot this team is in.
+ */
+function nipgl_cup_mark_winner(&$all_matches, $round_idx, $draw_num, $team) {
+    if ($round_idx === 0) {
+        foreach ($all_matches[0] as &$m) {
+            if ($m['draw_num_home'] == $draw_num) { $m['home'] = $team; return; }
+            if ($m['draw_num_away'] == $draw_num) { $m['away'] = $team; return; }
+        }
+        return;
+    }
+    // For later rounds: find the match where home or away = this team
+    foreach ($all_matches[$round_idx] as &$m) {
+        if (nipgl_cup_normalise($m['home']) === nipgl_cup_normalise($team) ||
+            nipgl_cup_normalise($m['away']) === nipgl_cup_normalise($team)) {
+            return; // already set
+        }
+        // Fill in the next available slot
+        if (!$m['home']) { $m['home'] = $team; return; }
+        if (!$m['away']) { $m['away'] = $team; return; }
+    }
+}
+
+function nipgl_cup_normalise($name) {
+    return strtolower(trim(preg_replace('/\s+/', ' ', $name ?? '')));
+}
+
+// ── Handle cup save and draw-reset on admin_init (before any output) ──────────
 add_action('admin_init', 'nipgl_cup_handle_admin_actions');
 function nipgl_cup_handle_admin_actions() {
     if (!current_user_can('manage_options')) return;
-
-    // ── Export all cups as JSON download ──────────────────────────────────────
-    if (isset($_GET['nipgl_cup_export']) && isset($_GET['page']) && $_GET['page'] === 'nipgl-cups') {
-        if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', 'nipgl_cup_export')) {
-            wp_die('Invalid nonce.');
-        }
-        global $wpdb;
-        $rows = $wpdb->get_results(
-            "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'nipgl_cup_%' ORDER BY option_name"
-        );
-        $export = array();
-        foreach ($rows as $row) {
-            $id  = substr($row->option_name, strlen('nipgl_cup_'));
-            $val = maybe_unserialize($row->option_value);
-            if (is_array($val) && isset($val['title'])) {
-                $export[$id] = $val;
-            }
-        }
-        $filename = 'nipgl-cups-backup-' . date('Y-m-d') . '.json';
-        header('Content-Type: application/json; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Cache-Control: no-cache, no-store, must-revalidate');
-        echo wp_json_encode($export, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    // ── Import cups from JSON backup ──────────────────────────────────────────
-    if (isset($_POST['nipgl_cup_import_nonce']) &&
-        wp_verify_nonce($_POST['nipgl_cup_import_nonce'], 'nipgl_cup_import')) {
-
-        $file = $_FILES['nipgl_cup_import_file'] ?? null;
-        if (empty($file['tmp_name'])) {
-            wp_redirect(admin_url('admin.php?page=nipgl-cups&import_error=' . urlencode('No file uploaded.')));
-            exit;
-        }
-        $json = file_get_contents($file['tmp_name']);
-        if ($json === false) {
-            wp_redirect(admin_url('admin.php?page=nipgl-cups&import_error=' . urlencode('Could not read uploaded file.')));
-            exit;
-        }
-        $data = json_decode($json, true);
-        if (!is_array($data)) {
-            wp_redirect(admin_url('admin.php?page=nipgl-cups&import_error=' . urlencode('Invalid JSON — file may be corrupt.')));
-            exit;
-        }
-        $count = 0;
-        foreach ($data as $cup_id => $cup_data) {
-            $cup_id = sanitize_key($cup_id);
-            if (!$cup_id || !is_array($cup_data) || empty($cup_data['title'])) continue;
-            update_option('nipgl_cup_' . $cup_id, $cup_data);
-            $count++;
-        }
-        wp_redirect(admin_url('admin.php?page=nipgl-cups&imported=' . $count));
-        exit;
-    }
 
     // ── Save cup form ─────────────────────────────────────────────────────────
     if (isset($_POST['nipgl_cup_save_nonce']) &&
@@ -793,11 +619,11 @@ function nipgl_cup_handle_admin_actions() {
         $dates       = array_values(array_filter(array_map('trim', explode("\n", $dates_raw))));
 
         $cup_data = array_merge($existing, array(
-            'title'      => sanitize_text_field($_POST['nipgl_cup_title'] ?? ''),
-            'entries'    => $entries,
-            'rounds'     => $rounds,
-            'dates'      => $dates,
-            'sheets_url' => esc_url_raw($_POST['nipgl_cup_sheets_url'] ?? ''),
+            'title'   => sanitize_text_field($_POST['nipgl_cup_title'] ?? ''),
+            'entries' => $entries,
+            'rounds'  => $rounds,
+            'dates'   => $dates,
+            'csv_url' => esc_url_raw($_POST['nipgl_cup_csv'] ?? ''),
         ));
 
         // If ID changed, delete old key
@@ -979,34 +805,6 @@ function nipgl_cups_list_page() {
     <?php endif; ?>
 
     <hr>
-    <h2>Backup &amp; Restore</h2>
-    <p>Export all cup data (entries, draws, scores) to a JSON file. Use the same file to restore if a cup is accidentally deleted.</p>
-    <p>
-      <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=nipgl-cups&nipgl_cup_export=1'), 'nipgl_cup_export'); ?>"
-         class="button button-secondary">
-        💾 Export All Cups
-      </a>
-    </p>
-
-    <form method="post" enctype="multipart/form-data" style="margin-top:16px">
-      <?php wp_nonce_field('nipgl_cup_import', 'nipgl_cup_import_nonce'); ?>
-      <label for="nipgl_cup_import_file" style="font-weight:600;display:block;margin-bottom:6px">Restore from backup:</label>
-      <input type="file" id="nipgl_cup_import_file" name="nipgl_cup_import_file" accept=".json,application/json">
-      <p class="description" style="margin-bottom:8px">Importing will overwrite any existing cup with the same ID. Cups not present in the file are left untouched.</p>
-      <?php submit_button('📂 Import Backup', 'secondary', 'nipgl_cup_import_submit', false); ?>
-    </form>
-    <?php if (isset($_GET['imported'])): ?>
-      <div class="notice notice-success is-dismissible" style="margin-top:12px">
-        <p>✅ <?php echo intval($_GET['imported']); ?> cup(s) restored from backup.</p>
-      </div>
-    <?php endif; ?>
-    <?php if (isset($_GET['import_error'])): ?>
-      <div class="notice notice-error is-dismissible" style="margin-top:12px">
-        <p>❌ Import failed: <?php echo esc_html(urldecode($_GET['import_error'])); ?></p>
-      </div>
-    <?php endif; ?>
-
-    <hr>
     <h2>Score Update Log</h2>
     <?php
     $log = get_option('nipgl_cup_score_log', array());
@@ -1113,13 +911,13 @@ function nipgl_cup_edit_page($cup_id) {
           </td>
         </tr>
         <tr>
-          <th><label for="nipgl_cup_sheets_url">Write-back Sheets URL</label></th>
+          <th><label for="nipgl_cup_csv">Results CSV URL</label></th>
           <td>
-            <input type="text" id="nipgl_cup_sheets_url" name="nipgl_cup_sheets_url"
-                   value="<?php echo esc_attr($cup['sheets_url'] ?? ''); ?>"
-                   placeholder="https://docs.google.com/spreadsheets/d/…/edit"
+            <input type="text" id="nipgl_cup_csv" name="nipgl_cup_csv"
+                   value="<?php echo esc_attr($cup['csv_url'] ?? ''); ?>"
+                   placeholder="https://docs.google.com/spreadsheets/…/pub?output=csv"
                    class="regular-text" style="width:480px">
-            <p class="description">Optional. The target Google Sheet to write the bracket back to after draw, and update with scores. Requires Google Drive/Sheets OAuth to be configured. The draw will write one row per match (Round, Home, Away, Date); scores are updated automatically when saved.</p>
+            <p class="description">Optional. Published Google Sheets CSV of the bracket. If provided, results can be synced from the sheet.</p>
           </td>
         </tr>
       </table>
@@ -1147,6 +945,18 @@ function nipgl_cup_edit_page($cup_id) {
         🎲 Perform Draw Now
       </button>
       <p id="nipgl-draw-inline-msg" style="margin-top:8px;color:#0a3622;display:none"></p>
+    <?php endif; ?>
+
+    <?php if (!empty($cup['csv_url'])): ?>
+    <hr>
+    <h2>Sync Results from Sheet</h2>
+    <p>Pull team advancement data from the Google Sheet to update the bracket display.</p>
+    <button class="button button-secondary" id="nipgl-cup-sync-btn"
+            data-cup-id="<?php echo esc_attr($cup_id); ?>"
+            data-nonce="<?php echo esc_attr($nonce); ?>">
+      🔄 Sync Results Now
+    </button>
+    <span id="nipgl-sync-msg" style="margin-left:12px;font-size:13px;color:#0a3622;display:none"></span>
     <?php endif; ?>
 
     <hr>

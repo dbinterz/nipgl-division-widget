@@ -2,7 +2,7 @@
 /**
  * Plugin Name: NIPGL Division Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 6.4.47
+ * Version: 6.4.48
  * Author: NIPGL
  * Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('NIPGL_PLUGIN_FILE', __FILE__);
-define('NIPGL_VERSION', '6.4.47');
+define('NIPGL_VERSION', '6.4.48');
 
 // Include scorecard feature
 require_once plugin_dir_path(__FILE__) . 'nipgl-draw.php';
@@ -235,11 +235,12 @@ function nipgl_enqueue() {
     $club_badges  = get_option('nipgl_club_badges',  array());
     $sponsors     = get_option('nipgl_sponsors',     array());
     wp_localize_script('nipgl-widget', 'nipglData', array(
-        'ajaxUrl'     => admin_url('admin-ajax.php'),
-        'scNonce'     => wp_create_nonce('nipgl_submit_nonce'),
-        'badges'      => $badges,
-        'clubBadges'  => $club_badges,
-        'sponsors'    => $sponsors,
+        'ajaxUrl'        => admin_url('admin-ajax.php'),
+        'scNonce'        => wp_create_nonce('nipgl_submit_nonce'),
+        'badges'         => $badges,
+        'clubBadges'     => $club_badges,
+        'sponsors'       => $sponsors,
+        'scoreOverrides' => get_option('nipgl_score_overrides', array()),
     ));
 }
 
@@ -389,6 +390,15 @@ function nipgl_admin_menu() {
         'manage_options',
         'nipgl-league-setup',
         'nipgl_league_setup_page'
+    );
+    // Quick Score Entry
+    add_submenu_page(
+        'nipgl-scorecards',
+        'Quick Score Entry',
+        '📝 Scores',
+        'manage_options',
+        'nipgl-scores',
+        'nipgl_scores_admin_page'
     );
     // Settings — theme, sponsors, club badges, clubs/passphrases
     add_submenu_page(
@@ -675,6 +685,7 @@ function nipgl_admin_enqueue($hook) {
         'nipgl_page_nipgl-league-setup',    // League Setup submenu
         'nipgl_page_nipgl-cups',            // Cups submenu
         'nipgl_page_nipgl-champs',          // Championships submenu
+        'nipgl_page_nipgl-scores',          // Quick Score Entry submenu
         'toplevel_page_nipgl-scorecards',   // Top-level itself
     );
     if (!in_array($hook, $nipgl_hooks, true)) return;
@@ -1317,4 +1328,404 @@ function nipgl_import_passphrases_page() {
         </form>
     </div>
     <?php
+}
+
+// ── Quick Score Entry — AJAX: save a single fixture override ─────────────────
+add_action('wp_ajax_nipgl_save_score_override', 'nipgl_ajax_save_score_override');
+function nipgl_ajax_save_score_override() {
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    check_ajax_referer('nipgl_scores_nonce', 'nonce');
+
+    $csv_url = esc_url_raw($_POST['csv_url'] ?? '');
+    $date    = sanitize_text_field($_POST['date'] ?? '');
+    $home    = sanitize_text_field($_POST['home'] ?? '');
+    $away    = sanitize_text_field($_POST['away'] ?? '');
+    $sh      = sanitize_text_field($_POST['sh']   ?? '');
+    $sa      = sanitize_text_field($_POST['sa']   ?? '');
+    $ph      = sanitize_text_field($_POST['ph']   ?? '');
+    $pa      = sanitize_text_field($_POST['pa']   ?? '');
+
+    if (!$csv_url || !$date || !$home || !$away) wp_send_json_error('Missing fields');
+
+    $clearing = ($sh === '' && $sa === '' && $ph === '' && $pa === '');
+
+    // 1. Update WP option immediately (front end sees this until CSV cache refreshes)
+    $key       = $csv_url . '||' . $date . '||' . $home . '||' . $away;
+    $overrides = get_option('nipgl_score_overrides', array());
+    if ($clearing) {
+        unset($overrides[$key]);
+    } else {
+        $overrides[$key] = compact('csv_url','date','home','away','sh','sa','ph','pa');
+    }
+    update_option('nipgl_score_overrides', $overrides);
+
+    // 2. Write through to Google Sheet if Sheets writeback is configured
+    $sheet_msg = 'sheets_disabled';
+    $opts = get_option('nipgl_drive', []);
+    if (!empty($opts['sheets_enabled']) && !empty($opts['sheets_id'])) {
+        $spreadsheet = trim($opts['sheets_id']);
+        $tab = '';
+        foreach (($opts['sheets_tabs'] ?? []) as $entry) {
+            if (esc_url_raw($entry['csv_url'] ?? '') === $csv_url) {
+                $tab = trim($entry['tab'] ?? '');
+                break;
+            }
+        }
+        if ($tab) {
+            $token = nipgl_drive_get_access_token();
+            if ($token) {
+                $sheet_data = nipgl_sheets_fetch($token, $spreadsheet, $tab);
+                if ($sheet_data !== false) {
+                    $cols  = nipgl_sheets_detect_cols($sheet_data);
+                    $match = nipgl_sheets_find_row($sheet_data, $cols, $home, $away, $date);
+                    if ($match !== false) {
+                        list($row_index) = $match;
+                        $values = $clearing
+                            ? ['home_score'=>'','away_score'=>'','home_pts'=>'','away_pts'=>'']
+                            : ['home_score'=>$sh,'away_score'=>$sa,'home_pts'=>$ph,'away_pts'=>$pa];
+                        $requests = nipgl_sheets_build_update($spreadsheet, $tab, $row_index, $cols, $values);
+                        $ok = nipgl_sheets_batch_update($token, $spreadsheet, $requests);
+                        if ($ok) {
+                            delete_transient('nipgl_csv_' . md5($csv_url));
+                            $sheet_msg = 'sheet_ok';
+                        } else {
+                            $sheet_msg = 'sheet_error';
+                        }
+                    } else {
+                        $sheet_msg = 'row_not_found';
+                    }
+                } else {
+                    $sheet_msg = 'fetch_failed';
+                }
+            } else {
+                $sheet_msg = 'auth_failed';
+            }
+        } else {
+            $sheet_msg = 'no_tab';
+        }
+    }
+
+    wp_send_json_success(array('sheet' => $sheet_msg));
+}
+
+// ── Quick Score Entry — AJAX: clear all overrides for a CSV URL ──────────────
+add_action('wp_ajax_nipgl_clear_score_overrides', 'nipgl_ajax_clear_score_overrides');
+function nipgl_ajax_clear_score_overrides() {
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    check_ajax_referer('nipgl_scores_nonce', 'nonce');
+    $csv_url = esc_url_raw($_POST['csv_url'] ?? '');
+    if (!$csv_url) { update_option('nipgl_score_overrides', array()); }
+    else {
+        $overrides = get_option('nipgl_score_overrides', array());
+        foreach ($overrides as $k => $v) {
+            if (($v['csv_url'] ?? '') === $csv_url) unset($overrides[$k]);
+        }
+        update_option('nipgl_score_overrides', $overrides);
+    }
+    wp_send_json_success('Cleared');
+}
+
+// ── Quick Score Entry — admin page ───────────────────────────────────────────
+function nipgl_scores_admin_page() {
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+
+    $drive_opts = get_option('nipgl_drive', array());
+    $tabs       = $drive_opts['sheets_tabs'] ?? array();
+    // Filter to entries that have a CSV URL configured
+    $divisions  = array_values(array_filter($tabs, function($t) {
+        return !empty($t['csv_url']) && !empty($t['division']);
+    }));
+
+    $overrides  = get_option('nipgl_score_overrides', array());
+    $nonce      = wp_create_nonce('nipgl_scores_nonce');
+
+    // Which division is selected
+    $sel_div = isset($_GET['div']) ? intval($_GET['div']) : 0;
+    $sel     = $divisions[$sel_div] ?? null;
+
+    // Fetch CSV for selected division
+    $fixtures = array();
+    $fetch_err = '';
+    if ($sel) {
+        $csv_url = $sel['csv_url'];
+        $resp    = wp_remote_get($csv_url, array('timeout' => 15));
+        if (is_wp_error($resp)) {
+            $fetch_err = $resp->get_error_message();
+        } else {
+            $body = wp_remote_retrieve_body($resp);
+            $fixtures = nipgl_scores_parse_fixtures($body, $csv_url, $overrides);
+        }
+    }
+    ?>
+    <div class="wrap nipgl-admin-wrap">
+    <h1>📝 Quick Score Entry</h1>
+    <p>Enter or correct fixture scores before full scorecards are submitted. Overrides appear immediately on the live site and are superseded once a confirmed scorecard exists.</p>
+
+    <?php if (empty($divisions)): ?>
+        <div class="notice notice-warning"><p>No divisions with CSV URLs configured. Go to <a href="<?php echo admin_url('admin.php?page=nipgl-league-setup'); ?>">League Setup</a> and scroll down to <strong>Google Sheets Writeback</strong> — add a row for each division with its published CSV URL.</p></div>
+    <?php else: ?>
+
+    <div style="margin-bottom:16px">
+        <strong>Division:</strong>
+        <?php foreach ($divisions as $i => $d): ?>
+            <a href="<?php echo admin_url('admin.php?page=nipgl-scores&div=' . $i); ?>"
+               class="button<?php echo $i === $sel_div ? ' button-primary' : ''; ?>"
+               style="margin-left:6px"><?php echo esc_html($d['division']); ?></a>
+        <?php endforeach; ?>
+    </div>
+
+    <?php if ($fetch_err): ?>
+        <div class="notice notice-error"><p>Could not fetch CSV: <?php echo esc_html($fetch_err); ?></p></div>
+    <?php elseif ($sel && empty($fixtures)): ?>
+        <div class="notice notice-warning"><p>No fixtures found in the CSV for this division.</p></div>
+    <?php elseif ($sel): ?>
+
+    <p style="color:#666;font-size:13px">
+        Scores in <strong style="color:#1a2e5a">blue</strong> are from the sheet.
+        <span style="color:#8f1520;font-weight:700">Red</span> = overridden by you.
+        Leave a row blank to remove your override.
+        Changes save automatically when you move to the next field.
+    </p>
+
+    <table class="widefat striped" id="nipgl-scores-table" style="font-size:13px;max-width:900px">
+        <thead>
+            <tr>
+                <th style="width:120px">Date</th>
+                <th style="text-align:right">Home</th>
+                <th style="text-align:center;width:120px">Score</th>
+                <th>Away</th>
+                <th style="text-align:center;width:80px">Pts</th>
+                <th style="width:60px">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($fixtures as $fx): ?>
+        <?php
+            $has_override = $fx['overridden'];
+        ?>
+        <tr class="nipgl-score-row<?php echo $has_override ? ' nipgl-overridden' : ''; ?>"
+            data-csv="<?php echo esc_attr($sel['csv_url']); ?>"
+            data-date="<?php echo esc_attr($fx['date']); ?>"
+            data-home="<?php echo esc_attr($fx['home']); ?>"
+            data-away="<?php echo esc_attr($fx['away']); ?>">
+            <td style="font-size:12px;color:#666"><?php echo esc_html($fx['date']); ?></td>
+            <td style="text-align:right;font-weight:600"><?php echo esc_html($fx['home']); ?></td>
+            <td style="text-align:center">
+                <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+                    <input type="number" class="nipgl-sh small-text" value="<?php echo esc_attr($fx['sh']); ?>"
+                           placeholder="<?php echo esc_attr($fx['sh_orig']); ?>"
+                           min="0" style="width:48px;text-align:center<?php echo $has_override?' color:#8f1520;font-weight:700':''; ?>">
+                    <span>–</span>
+                    <input type="number" class="nipgl-sa small-text" value="<?php echo esc_attr($fx['sa']); ?>"
+                           placeholder="<?php echo esc_attr($fx['sa_orig']); ?>"
+                           min="0" style="width:48px;text-align:center<?php echo $has_override?' color:#8f1520;font-weight:700':''; ?>">
+                </div>
+            </td>
+            <td style="font-weight:600"><?php echo esc_html($fx['away']); ?></td>
+            <td style="text-align:center">
+                <div style="display:flex;align-items:center;justify-content:center;gap:2px">
+                    <input type="number" class="nipgl-ph small-text" value="<?php echo esc_attr($fx['ph']); ?>"
+                           placeholder="<?php echo esc_attr($fx['ph_orig']); ?>"
+                           min="0" max="7" style="width:38px;text-align:center<?php echo $has_override?' color:#8f1520;font-weight:700':''; ?>">
+                    <span>–</span>
+                    <input type="number" class="nipgl-pa small-text" value="<?php echo esc_attr($fx['pa']); ?>"
+                           placeholder="<?php echo esc_attr($fx['pa_orig']); ?>"
+                           min="0" max="7" style="width:38px;text-align:center<?php echo $has_override?' color:#8f1520;font-weight:700':''; ?>">
+                </div>
+            </td>
+            <td style="text-align:center">
+                <span class="nipgl-save-status" style="font-size:11px"></span>
+                <?php if ($has_override): ?>
+                    <button type="button" class="nipgl-clear-override button-link" title="Remove override" style="color:#c0202a;font-size:11px;text-decoration:none">✕ clear</button>
+                <?php endif; ?>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+
+    <p style="margin-top:16px">
+        <button type="button" id="nipgl-clear-all" class="button button-secondary" style="color:#c0202a"
+                data-csv="<?php echo esc_attr($sel['csv_url']); ?>">
+            Clear all overrides for this division
+        </button>
+    </p>
+
+    <script>
+    (function(){
+        var nonce = <?php echo json_encode($nonce); ?>;
+        var ajaxUrl = <?php echo json_encode(admin_url('admin-ajax.php')); ?>;
+
+        function saveRow(row, sh, sa, ph, pa) {
+            var status = row.querySelector('.nipgl-save-status');
+            status.textContent = 'Saving…';
+            status.style.color = '#888';
+            var data = new FormData();
+            data.append('action',  'nipgl_save_score_override');
+            data.append('nonce',   nonce);
+            data.append('csv_url', row.dataset.csv);
+            data.append('date',    row.dataset.date);
+            data.append('home',    row.dataset.home);
+            data.append('away',    row.dataset.away);
+            data.append('sh', sh); data.append('sa', sa);
+            data.append('ph', ph); data.append('pa', pa);
+            fetch(ajaxUrl, {method:'POST', body:data})
+                .then(function(r){return r.json();})
+                .then(function(r){
+                    if (r.success) {
+                        var clearing = (sh===''&&sa===''&&ph===''&&pa==='');
+                        var sheet = r.data && r.data.sheet ? r.data.sheet : '';
+                        var sheetLabel = '';
+                        if (sheet === 'sheet_ok')      sheetLabel = ' + sheet ✓';
+                        else if (sheet === 'sheet_error')   sheetLabel = ' (sheet error)';
+                        else if (sheet === 'row_not_found') sheetLabel = ' (row not found in sheet)';
+                        else if (sheet === 'auth_failed')   sheetLabel = ' (auth failed)';
+                        else if (sheet === 'fetch_failed')  sheetLabel = ' (sheet fetch failed)';
+                        else if (sheet === 'no_tab')        sheetLabel = ' (no tab mapped)';
+                        status.textContent = clearing ? 'Cleared' : ('✓ Saved' + sheetLabel);
+                        status.style.color = clearing ? '#888'
+                            : (sheet === 'sheet_ok' || sheet === 'sheets_disabled') ? '#2a7a2a' : '#c07000';
+                        var isOverride = !clearing;
+                        row.classList.toggle('nipgl-overridden', isOverride);
+                        // Update clear button
+                        var cb = row.querySelector('.nipgl-clear-override');
+                        if (isOverride && !cb) {
+                            var td = row.querySelector('.nipgl-save-status').parentNode;
+                            cb = document.createElement('button');
+                            cb.type='button'; cb.className='nipgl-clear-override button-link';
+                            cb.title='Remove override'; cb.style.cssText='color:#c0202a;font-size:11px;text-decoration:none;display:block';
+                            cb.textContent='✕ clear';
+                            td.appendChild(cb);
+                            bindClearBtn(row, cb);
+                        } else if (!isOverride && cb) { cb.remove(); }
+                        setTimeout(function(){ status.textContent=''; }, 4000);
+                    } else {
+                        status.textContent = '✗ Error'; status.style.color='#c0202a';
+                    }
+                }).catch(function(){
+                    status.textContent = '✗ Error'; status.style.color='#c0202a';
+                });
+        }
+
+        function bindClearBtn(row, btn) {
+            btn.addEventListener('click', function(){
+                row.querySelectorAll('input').forEach(function(i){i.value='';});
+                saveRow(row,'','','','');
+            });
+        }
+
+        document.querySelectorAll('.nipgl-score-row').forEach(function(row){
+            var inputs = row.querySelectorAll('input');
+            // Save on blur of any input in the row
+            inputs.forEach(function(inp){
+                inp.addEventListener('blur', function(){
+                    var sh = row.querySelector('.nipgl-sh').value.trim();
+                    var sa = row.querySelector('.nipgl-sa').value.trim();
+                    var ph = row.querySelector('.nipgl-ph').value.trim();
+                    var pa = row.querySelector('.nipgl-pa').value.trim();
+                    saveRow(row, sh, sa, ph, pa);
+                });
+            });
+            var cb = row.querySelector('.nipgl-clear-override');
+            if (cb) bindClearBtn(row, cb);
+        });
+
+        var clearAll = document.getElementById('nipgl-clear-all');
+        if (clearAll) {
+            clearAll.addEventListener('click', function(){
+                if (!confirm('Remove all score overrides for this division?')) return;
+                var data = new FormData();
+                data.append('action',  'nipgl_clear_score_overrides');
+                data.append('nonce',   nonce);
+                data.append('csv_url', clearAll.dataset.csv);
+                fetch(ajaxUrl, {method:'POST', body:data})
+                    .then(function(r){return r.json();})
+                    .then(function(r){
+                        if(r.success) location.reload();
+                    });
+            });
+        }
+    })();
+    </script>
+
+    <style>
+    .nipgl-overridden td { background:#fff8f8 !important; }
+    #nipgl-scores-table input[type=number] { padding:3px 4px; }
+    #nipgl-scores-table input:focus { border-color:#2271b1; box-shadow:0 0 0 1px #2271b1; outline:0; }
+    .nipgl-overridden input { color:#8f1520 !important; font-weight:700; }
+    </style>
+
+    <?php endif; ?>
+    <?php endif; ?>
+    </div>
+    <?php
+}
+
+// ── Quick Score Entry — parse fixtures from CSV ──────────────────────────────
+function nipgl_scores_parse_fixtures($csv_body, $csv_url, $overrides) {
+    $lines   = explode("\n", str_replace("\r", '', $csv_body));
+    $rows    = array_map('str_getcsv', $lines);
+
+    // Find FIXTURES section and header row
+    $start = -1;
+    foreach ($rows as $i => $r) {
+        if (stripos(implode('', $r), 'FIXTURES') !== false) { $start = $i + 1; break; }
+    }
+    if ($start < 0) return array();
+
+    // Detect column positions
+    $colPtsH=0; $colHTeam=2; $colHScore=7; $colAScore=9; $colATeam=10; $colPtsA=15;
+    for ($h = $start; $h < min($start + 5, count($rows)); $h++) {
+        if (stripos(implode('', $rows[$h]), 'HPts') !== false) {
+            foreach ($rows[$h] as $c => $v) {
+                $v = trim($v);
+                if ($v === 'HPts')                    $colPtsH   = $c;
+                if ($v === 'HTeam')                   $colHTeam  = $c;
+                if ($v === 'HScore')                  $colHScore = $c;
+                if (in_array($v, ['AScore','Ascore'])) $colAScore = $c;
+                if ($v === 'ATeam')                   $colATeam  = $c;
+                if ($v === 'APts')                    $colPtsA   = $c;
+            }
+            $start = $h + 1; break;
+        }
+    }
+
+    $dateRe   = '/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}-[A-Za-z]+-\d{4}$/';
+    $fixtures = array();
+    $curDate  = '';
+
+    for ($i = $start; $i < count($rows); $i++) {
+        $r     = $rows[$i];
+        $first = trim($r[0] ?? $r[1] ?? '');
+        if (preg_match($dateRe, $first)) { $curDate = $first; continue; }
+        if (!$curDate) continue;
+
+        $homeTeam  = trim($r[$colHTeam]  ?? '');
+        $awayTeam  = trim($r[$colATeam]  ?? '');
+        if (!$homeTeam || !$awayTeam) continue;
+
+        $sh_orig = trim($r[$colHScore] ?? '');
+        $sa_orig = trim($r[$colAScore] ?? '');
+        $ph_orig = trim($r[$colPtsH]   ?? '');
+        $pa_orig = trim($r[$colPtsA]   ?? '');
+
+        $key = $csv_url . '||' . $curDate . '||' . $homeTeam . '||' . $awayTeam;
+        $ov  = $overrides[$key] ?? null;
+
+        $fixtures[] = array(
+            'date'       => $curDate,
+            'home'       => $homeTeam,
+            'away'       => $awayTeam,
+            'sh'         => $ov ? $ov['sh'] : '',
+            'sa'         => $ov ? $ov['sa'] : '',
+            'ph'         => $ov ? $ov['ph'] : '',
+            'pa'         => $ov ? $ov['pa'] : '',
+            'sh_orig'    => $sh_orig,
+            'sa_orig'    => $sa_orig,
+            'ph_orig'    => $ph_orig,
+            'pa_orig'    => $pa_orig,
+            'overridden' => $ov !== null,
+        );
+    }
+    return $fixtures;
 }

@@ -108,48 +108,6 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ## Changelog
 
-### 6.4.46
-- Fixed fixture time still truncated — Google Sheets published CSV exports time cells as decimal fractions (e.g. `0.729...`); parser now converts these to `HH:MM` correctly
-
-### 6.4.45
-- Fixed fixture time not displaying — regex now matches `HH:MM:SS`; handles full row scan; time centred below shots score
-
-### 6.4.44
-- Fixture time notes now shown in print view (inline in score column) and team modal (inline in date cell)
-
-### 6.4.43
-- Championships: added Write-back Sheets URL field — bracket written to sheet after each draw and score save (Section, Round, Home, Away, Date, Home Score, Away Score)
-- Championships: winner propagation updates team name cell in next-round sheet row
-- Championships: Push to Sheet button on live page for admins
-- Championships: Backup & Restore (JSON export/import) on Championships admin page
-
-### 6.4.42
-- Added cup backup/restore — Export All Cups downloads a dated JSON; Import Backup restores from file, overwriting matching IDs and leaving others untouched
-
-### 6.4.41
-- Removed Results CSV URL field and pull-from-sheet sync — superseded by Sheets write-back and Push to Sheet button
-
-### 6.4.40
-- Fixed Push to Sheet erasing scores — full sheet write now reads existing scores from bracket data rather than writing blanks
-
-### 6.4.39
-- Fixed winner not written to next-round row in sheet — advancing team name now written to correct Home/Away cell
-- Added "📤 Push to Sheet" button on live cup page (admin only) — rewrites full bracket state to the sheet in one go
-- New `nipgl_cup_push_to_sheet` AJAX action
-
-### 6.4.38
-- Fixed Sheets write-back not writing — clear URL had malformed path (`:clear` instead of `/clear`)
-- Score update falls back to full sheet re-write when row map is missing (draws before v6.4.36 self-heal on first score save)
-
-### 6.4.37
-- Fixed 403 on Sheets write-back — added `auth/spreadsheets` scope to OAuth consent URL and service account JWT; re-authorise via League Setup to pick up the new scope
-
-### 6.4.36
-- Added Sheets write-back URL field per cup in Cup admin
-- After draw, bracket is written to the target sheet (Round, Home, Away, Date, Home Score, Away Score)
-- After each score save, the relevant row's score columns are updated automatically
-- Reuses existing Drive/OAuth token — no new auth configuration required
-
 ### 6.4.35
 - Simplified auto-updater to construct release asset URL directly from tag name
 
@@ -179,6 +137,12 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### 6.4.27
 - Added sponsor branding to Cup and Championship widgets (primary bar above bracket, rotating secondary below status bar)
+
+### 6.4.48
+- Fixed print on mobile — replaced `window.open()` (blocked on iOS/Android) with hidden iframe print; applies to table, fixtures, and team modal print buttons
+- Fixture points pills — HPts/APts now show as bold dark-red pill badges on played rows instead of muted grey
+- League table auto-sorts by pts desc then +/- desc on the fly; positions re-assigned after sort
+- New admin page **📝 Scores** — enter or correct fixture scores per division; autosaves on blur; overrides appear immediately on the live site; keyed by CSV URL + date + teams and stored in WP options
 
 ### 6.4.26
 - Added emoji icons to admin submenu items (Scorecards, Players, Cups, League Setup, Settings)

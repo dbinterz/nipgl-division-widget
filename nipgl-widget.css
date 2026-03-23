@@ -1,4 +1,4 @@
-/* NIPGL Division Widget CSS - v4.7 */
+/* NIPGL Division Widget CSS - v4.8 */
 
 /* ── CSS Variables on :root for global elements (modal) ─────────────────────── */
 :root{
@@ -188,15 +188,15 @@ table.lg tr.row-relegated td.cp::before{content:'▼ ';font-size:9px;color:var(-
 .fx-row{display:grid;grid-template-columns:36px 1fr auto 1fr 36px;align-items:center;gap:4px;padding:8px 10px;border-bottom:1px solid var(--nipgl-border);font-size:13px;color:var(--nipgl-text);background:var(--nipgl-bg)}
 .fx-row:last-child{border-bottom:none}
 .fx-row:hover{background:var(--nipgl-bg-alt)}
-.fx-ph,.fx-pa{font-size:12px;font-weight:700;color:var(--nipgl-pos);text-align:center}
+.fx-ph,.fx-pa{font-size:13px;font-weight:800;color:var(--nipgl-text-muted);text-align:center;line-height:1.2}
+.fx-row.played .fx-ph,.fx-row.played .fx-pa{background:var(--nipgl-pts);color:#fff;border-radius:4px;min-width:22px;padding:2px 4px;font-size:13px}
 .fx-h{text-align:right;font-weight:600}
 .fx-a{text-align:left;font-weight:600}
 .fx-sc{display:flex;align-items:center;justify-content:center;white-space:nowrap}
 .fx-sb{background:var(--nipgl-bg-alt);border:1px solid var(--nipgl-border);border-radius:3px;min-width:26px;padding:2px 5px;text-align:center;font-weight:700;font-size:14px;color:var(--nipgl-navy)}
 .fx-sep{padding:0 4px;color:var(--nipgl-text-muted);font-size:12px}
-.fx-time{grid-column:1/-1;text-align:center;font-size:11px;color:var(--nipgl-gold);font-weight:700;padding:0 2px 4px;margin-top:-4px}
+.fx-time{grid-column:1/-1;text-align:right;font-size:11px;color:var(--nipgl-gold);font-weight:700;padding:0 2px 4px;margin-top:-4px}
 .fx-row.played .fx-sb{background:var(--nipgl-navy);color:#fff;border-color:var(--nipgl-navy-mid)}
-.fx-row.played .fx-ph,.fx-row.played .fx-pa{color:var(--nipgl-pts)}
 
 /* ── Badges ──────────────────────────────────────────────────────────────────── */
 .nipgl-badge{width:24px;height:24px;object-fit:contain;vertical-align:middle;margin-right:5px;border-radius:2px}

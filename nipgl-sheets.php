@@ -247,11 +247,15 @@ function nipgl_sheets_build_update($spreadsheet, $tab, $row_index, $cols, $value
     }
 
     foreach ($write as $col_idx => $val) {
+        // Skip fields with no value — don't overwrite existing sheet data with blanks
+        if ($val === '' || $val === null) continue;
         $a1 = "'" . addslashes($tab) . "'!" . $col_letter($col_idx) . $sheet_row;
+        // Cast numeric strings to numbers so Sheets stores them as numbers, not text
+        $cell_val = is_numeric($val) ? $val + 0 : $val;
         $data[] = [
             'range'          => $a1,
             'majorDimension' => 'ROWS',
-            'values'         => [[(string)$val]],
+            'values'         => [[$cell_val]],
         ];
     }
 
@@ -264,7 +268,7 @@ function nipgl_sheets_batch_update($token, $spreadsheet, $data) {
 
     $url  = "https://sheets.googleapis.com/v4/spreadsheets/{$spreadsheet}/values:batchUpdate";
     $body = json_encode([
-        'valueInputOption' => 'RAW',
+        'valueInputOption' => 'USER_ENTERED',
         'data'             => $data,
     ]);
 
