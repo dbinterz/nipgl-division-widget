@@ -138,7 +138,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 ### 6.4.27
 - Added sponsor branding to Cup and Championship widgets (primary bar above bracket, rotating secondary below status bar)
 
-### 6.4.48
+### 6.4.49
 - Fixed print on mobile — replaced `window.open()` (blocked on iOS/Android) with hidden iframe print; applies to table, fixtures, and team modal print buttons
 - Fixture points pills — HPts/APts now show as bold dark-red pill badges on played rows instead of muted grey
 - League table auto-sorts by pts desc then +/- desc on the fly; positions re-assigned after sort

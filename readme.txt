@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.4.48
+Stable tag: 6.4.49
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -71,7 +71,11 @@ Parameters:
 
 == Changelog ==
 
-= 6.4.48 =
+= 6.4.49 =
+* Added 🏆 trophy icon to Cups admin submenu item
+
+
+= 6.4.49 =
 * Fixed print on mobile — replaced window.open() (blocked by iOS/Android) with hidden iframe approach; works on all mobile browsers
 * Fixture points totals (HPts/APts) now display as bold pill badges in played rows, making them clearly visible rather than muted grey
 * League table now auto-sorts by points descending then +/- descending on the fly — positions stay correct even if sheet ordering drifts

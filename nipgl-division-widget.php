@@ -2,7 +2,7 @@
 /**
  * Plugin Name: NIPGL Division Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 6.4.35
+ * Version: 6.4.49
  * Author: NIPGL
  * Plugin URI: https://github.com/dbinterz/nipgl-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/nipgl-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('NIPGL_PLUGIN_FILE', __FILE__);
-define('NIPGL_VERSION', '6.4.35');
+define('NIPGL_VERSION', '6.4.49');
 
 // Include scorecard feature
 require_once plugin_dir_path(__FILE__) . 'nipgl-draw.php';
@@ -24,6 +24,17 @@ require_once plugin_dir_path(__FILE__) . 'nipgl-drive.php';
 require_once plugin_dir_path(__FILE__) . 'nipgl-sheets.php';
 
 // ── Auto-updater (checks GitHub releases) ────────────────────────────────────
+// ── GitHub API helper — adds auth header if a PAT is configured ──────────────
+function nipgl_github_request_args() {
+    $token = get_option('nipgl_github_token', '');
+    $headers = array(
+        'Accept'     => 'application/vnd.github.v3+json',
+        'User-Agent' => 'WordPress/' . get_bloginfo('version'),
+    );
+    if ($token) $headers['Authorization'] = 'token ' . $token;
+    return array('headers' => $headers, 'timeout' => 10);
+}
+
 add_filter('pre_set_site_transient_update_plugins', 'nipgl_check_for_update');
 function nipgl_check_for_update($transient) {
     if (empty($transient->checked)) return $transient;
@@ -39,7 +50,7 @@ function nipgl_check_for_update($transient) {
     if ($release === false) {
         $response = wp_remote_get(
             "https://api.github.com/repos/{$github_user}/{$github_repo}/releases/latest",
-            array('headers' => array('Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'WordPress/' . get_bloginfo('version')))
+            nipgl_github_request_args()
         );
         if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
             return $transient;
@@ -78,7 +89,7 @@ function nipgl_plugin_info($result, $action, $args) {
 
     $response = wp_remote_get(
         "https://api.github.com/repos/{$github_user}/{$github_repo}/releases/latest",
-        array('headers' => array('Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'WordPress/' . get_bloginfo('version')))
+        nipgl_github_request_args()
     );
     if (is_wp_error($response)) return $result;
 
@@ -767,6 +778,11 @@ function nipgl_save_league_setup() {
     $cache_mins = isset($_POST['nipgl_cache_mins']) ? max(1, intval($_POST['nipgl_cache_mins'])) : 5;
     update_option('nipgl_cache_mins', $cache_mins);
 
+    // GitHub Personal Access Token (for private repo auto-updates)
+    if (isset($_POST['nipgl_github_token'])) {
+        update_option('nipgl_github_token', sanitize_text_field($_POST['nipgl_github_token']));
+    }
+
     // Anthropic API key
     if (isset($_POST['nipgl_anthropic_key'])) {
         update_option('nipgl_anthropic_key', sanitize_text_field($_POST['nipgl_anthropic_key']));
@@ -1051,7 +1067,7 @@ function nipgl_settings_page() {
         // Hit GitHub API fresh (bypass transient) for the diagnostic
         $api_response = wp_remote_get(
             "https://api.github.com/repos/{$github_user}/{$github_repo}/releases/latest",
-            array('headers' => array('Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'WordPress/' . get_bloginfo('version')))
+            nipgl_github_request_args()
         );
         $api_ok      = !is_wp_error($api_response) && wp_remote_retrieve_response_code($api_response) === 200;
         $release     = $api_ok ? json_decode(wp_remote_retrieve_body($api_response)) : null;
@@ -1074,16 +1090,25 @@ function nipgl_settings_page() {
             <tr>
                 <th>GitHub API</th>
                 <td>
-                <?php if (!$api_ok): ?>
-                    <span style="color:#c0202a">&#10007; Could not reach GitHub API
+                <?php
+                $diag_code = !is_wp_error($api_response) ? wp_remote_retrieve_response_code($api_response) : 0;
+                $has_token = (bool) get_option('nipgl_github_token', '');
+                if (!$api_ok): ?>
+                    <span style="color:#c0202a">&#10007; Could not reach GitHub API —
                     <?php if (is_wp_error($api_response)): ?>
-                        — <?php echo esc_html($api_response->get_error_message()); ?>
+                        <?php echo esc_html($api_response->get_error_message()); ?>
                     <?php else: ?>
-                        — HTTP <?php echo wp_remote_retrieve_response_code($api_response); ?>
+                        HTTP <?php echo $diag_code; ?>
+                        <?php if ($diag_code === 404 && !$has_token): ?>
+                            <strong>— repo is likely private. Add a GitHub Personal Access Token above.</strong>
+                        <?php elseif ($diag_code === 401): ?>
+                            — token rejected (check it has <code>repo</code> scope and hasn't expired)
+                        <?php endif; ?>
                     <?php endif; ?>
                     </span>
                 <?php else: ?>
                     <span style="color:#2a7a2a">&#10003; Reachable</span>
+                    <?php if ($has_token): ?><span style="color:#666;font-size:12px"> (authenticated)</span><?php endif; ?>
                 <?php endif; ?>
                 </td>
             </tr>
@@ -1190,6 +1215,20 @@ function nipgl_league_setup_page() {
             </table>
 
             <hr>
+            <h2>GitHub Access</h2>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="nipgl_github_token">Personal Access Token</label></th>
+                    <td>
+                        <?php $gh_token = get_option('nipgl_github_token', ''); ?>
+                        <input type="password" id="nipgl_github_token" name="nipgl_github_token" value="<?php echo esc_attr($gh_token); ?>" placeholder="ghp_…" style="width:380px">
+                        <p class="description">Required if the GitHub repo is <strong>private</strong>. Generate a classic token at
+                        <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a>
+                        with the <code>repo</code> scope. Leave blank if the repo is public.</p>
+                    </td>
+                </tr>
+            </table>
+
             <h2>Anthropic API Key</h2>
             <table class="form-table">
                 <tr>
