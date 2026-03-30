@@ -1,0 +1,160 @@
+/* NIPGL Scorecard CSS - v5.1 */
+
+/* ── Shared notices ──────────────────────────────────────────────────────────── */
+.lgw-notice{font-size:13px;padding:8px 12px;border-radius:4px;margin:8px 0}
+.lgw-notice-ok   {background:#e8f5e9;color:#2a7a2a;border:1px solid #b2dfb2}
+.lgw-notice-error{background:#fff0f0;color:#c0202a;border:1px solid #f5b2b2}
+.lgw-notice-info {background:#e8edf8;color:#1a2e5a;border:1px solid #b2c0e0}
+.lgw-notice-warn {background:#fff8e0;color:#7a5a00;border:1px solid #e8d080}
+
+/* ── Submit page wrapper ─────────────────────────────────────────────────────── */
+.lgw-submit-wrap{font-family:'Saira',Arial,sans-serif;max-width:680px;margin:0 auto;padding:0 8px}
+.lgw-submit-wrap *{box-sizing:border-box}
+
+/* ── Cards ───────────────────────────────────────────────────────────────────── */
+.lgw-submit-card{background:#fff;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.10);padding:24px;margin-bottom:20px}
+.lgw-submit-card h2{font-size:20px;font-weight:700;color:#1a2e5a;margin:0 0 16px}
+.lgw-submit-card h3{font-size:16px;font-weight:700;color:#1a2e5a;margin:0 0 14px}
+
+/* ── PIN gate ────────────────────────────────────────────────────────────────── */
+.lgw-pin-row{display:flex;gap:10px;margin:12px 0}
+.lgw-pin-row input{flex:1;padding:10px 12px;border:1px solid #d0d5e8;border-radius:6px;font-size:15px;font-family:inherit}
+.lgw-pin-row input:focus{outline:none;border-color:#1a2e5a}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+.lgw-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:6px;border:none;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;transition:background .15s}
+.lgw-btn:disabled{opacity:.6;cursor:not-allowed}
+.lgw-btn-primary{background:#1a2e5a;color:#fff}
+.lgw-btn-primary:hover:not(:disabled){background:#243d78}
+.lgw-btn-secondary{background:#e8edf8;color:#1a2e5a}
+.lgw-btn-secondary:hover:not(:disabled){background:#d0d8f0}
+.lgw-btn-lg{padding:12px 28px;font-size:15px}
+
+/* ── Submission method tabs ──────────────────────────────────────────────────── */
+.lgw-submit-tabs{display:flex;gap:4px;margin-bottom:16px}
+.lgw-stab{flex:1;padding:9px 6px;font-size:12px;font-weight:700;background:#e8edf8;color:#1a2e5a;border:1px solid #d0d5e8;border-radius:6px;cursor:pointer;font-family:inherit;transition:background .15s}
+.lgw-stab.active{background:#1a2e5a;color:#fff;border-color:#1a2e5a}
+.lgw-stab-panel{display:none}
+.lgw-stab-panel.active{display:block}
+.lgw-hint{font-size:13px;color:#666;margin:0 0 12px}
+
+/* ── Upload areas ────────────────────────────────────────────────────────────── */
+.lgw-upload-area{border:2px dashed #d0d5e8;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color .15s;background:#fafbff}
+.lgw-upload-area:hover,.lgw-upload-area.drag-over{border-color:#1a2e5a;background:#f0f2f8}
+.lgw-upload-inner{display:flex;flex-direction:column;align-items:center;gap:6px;color:#666;font-size:13px;cursor:pointer}
+.lgw-upload-icon{font-size:28px}
+
+/* ── Form fields ─────────────────────────────────────────────────────────────── */
+.lgw-form-row{margin-bottom:14px}
+.lgw-form-row label{display:block;font-size:12px;font-weight:700;color:#1a2e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.lgw-form-row input{width:100%;padding:9px 12px;border:1px solid #d0d5e8;border-radius:6px;font-size:14px;font-family:inherit;color:#1a1a1a}
+.lgw-form-row input:focus{outline:none;border-color:#1a2e5a}
+.lgw-form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+/* ── Rink blocks ─────────────────────────────────────────────────────────────── */
+.lgw-rink-block{border:1px solid #d0d5e8;border-radius:8px;margin-bottom:14px;overflow:hidden}
+.lgw-rink-header{background:#1a2e5a;color:#fff;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:7px 14px}
+.lgw-rink-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.lgw-rink-col{padding:12px}
+.lgw-rink-col + .lgw-rink-col{border-left:1px solid #d0d5e8}
+.lgw-rink-col-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:6px}
+.lgw-rink-home .lgw-rink-col-lbl{color:#1a2e5a}
+.lgw-rink-away .lgw-rink-col-lbl{color:#c0202a}
+.lgw-rink-col input[type=text]{width:100%;padding:6px 8px;border:1px solid #d0d5e8;border-radius:4px;font-size:13px;font-family:inherit;margin-bottom:5px}
+.lgw-rink-col input[type=text]:focus{outline:none;border-color:#1a2e5a}
+.lgw-score-row{display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid #e8edf8}
+.lgw-score-row label{font-size:11px;font-weight:700;color:#666;white-space:nowrap}
+.lgw-score-row input[type=number]{width:70px;padding:6px 8px;border:1px solid #d0d5e8;border-radius:4px;font-size:15px;font-weight:700;font-family:inherit;text-align:center;color:#1a2e5a}
+.lgw-score-row input[type=number]:focus{outline:none;border-color:#1a2e5a}
+
+/* ── Totals ──────────────────────────────────────────────────────────────────── */
+.lgw-totals-block{background:#f0f2f8;border-radius:8px;padding:14px 16px;margin:16px 0}
+.lgw-totals-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.lgw-totals-row:last-child{margin-bottom:0}
+.lgw-totals-row > span:first-child{font-size:12px;font-weight:700;text-transform:uppercase;color:#666;min-width:100px}
+.lgw-totals-row input{width:70px;padding:7px 8px;border:1px solid #d0d5e8;border-radius:4px;font-size:15px;font-weight:700;font-family:inherit;text-align:center;color:#1a2e5a;background:#fff}
+.lgw-totals-v{font-size:14px;color:#999;font-weight:700}
+
+/* ── Submit actions ──────────────────────────────────────────────────────────── */
+.lgw-submit-actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+
+/* ── Scorecard display (in modal) ────────────────────────────────────────────── */
+.lgw-sc-full{font-family:'Saira',Arial,sans-serif}
+.lgw-sc-divider{border:none;border-top:2px solid var(--lgw-border, #d0d5e8);margin:16px 0 10px}
+.lgw-sc-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--lgw-navy,#1a2e5a);margin:0 0 10px}
+.lgw-sc-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;color:#666}
+.lgw-sc-meta span{background:#f0f2f8;border-radius:3px;padding:2px 7px}
+.lgw-sc-rink{border:1px solid var(--lgw-border,#d0d5e8);border-radius:6px;margin-bottom:8px;overflow:hidden}
+.lgw-sc-rink-hdr{background:var(--lgw-navy,#1a2e5a);color:#fff;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:5px 12px}
+.lgw-sc-rink-body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:10px 12px}
+.lgw-sc-players{font-size:12px;line-height:1.7;color:var(--lgw-text,#1a1a1a)}
+.lgw-sc-players-home{text-align:right}
+.lgw-sc-players-away{text-align:left}
+.lgw-sc-scores{display:flex;align-items:center;justify-content:center;gap:6px;min-width:70px}
+.lgw-sc-score{font-size:18px;font-weight:700;color:var(--lgw-navy,#1a2e5a);min-width:28px;text-align:center}
+.lgw-sc-score.lgw-sc-win{color:var(--lgw-promote,#2a7a2a)}
+.lgw-sc-sep{color:#999;font-size:14px}
+.lgw-sc-totals{background:var(--lgw-bg-alt,#f0f2f8);border-radius:6px;padding:10px 14px;margin-top:8px}
+.lgw-sc-total-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.lgw-sc-total-row:last-child{margin-bottom:0}
+.lgw-sc-total-lbl{font-size:11px;font-weight:700;text-transform:uppercase;color:#666;min-width:90px}
+.lgw-sc-total-val{font-size:16px;font-weight:700;color:var(--lgw-navy,#1a2e5a);min-width:28px;text-align:center}
+.lgw-sc-total-val.lgw-sc-win{color:var(--lgw-promote,#2a7a2a)}
+.lgw-sc-pts{font-size:18px}
+.lgw-sc-points-row .lgw-sc-total-lbl{color:#1a2e5a}
+.lgw-sc-loading,.lgw-sc-none{font-size:13px;color:#999;text-align:center;padding:10px 0}
+
+/* ── Dark mode overrides ─────────────────────────────────────────────────────── */
+@media(prefers-color-scheme:dark){
+  :root:not([data-lgw-theme]):not([data-lgw-theme="light"]) .lgw-submit-card{background:#1e1e2e;color:#e8e8f0}
+  :root:not([data-lgw-theme]):not([data-lgw-theme="light"]) .lgw-rink-col input,
+  :root:not([data-lgw-theme]):not([data-lgw-theme="light"]) .lgw-form-row input,
+  :root:not([data-lgw-theme]):not([data-lgw-theme="light"]) .lgw-totals-row input{background:#2a2a3e;border-color:#3a3a55;color:#e8e8f0}
+}
+:root[data-lgw-theme="dark"] .lgw-submit-card{background:#1e1e2e;color:#e8e8f0}
+:root[data-lgw-theme="dark"] .lgw-rink-col input,
+:root[data-lgw-theme="dark"] .lgw-form-row input,
+:root[data-lgw-theme="dark"] .lgw-totals-row input{background:#2a2a3e;border-color:#3a3a55;color:#e8e8f0}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────────── */
+@media(max-width:480px){
+  .lgw-submit-card{padding:16px}
+  .lgw-form-row-2{grid-template-columns:1fr}
+  .lgw-rink-col{padding:10px 8px}
+  .lgw-submit-tabs .lgw-stab{font-size:11px;padding:8px 4px}
+  .lgw-sc-rink-body{grid-template-columns:1fr auto 1fr;gap:4px;padding:8px}
+  .lgw-sc-players{font-size:11px}
+}
+
+/* ── Club login bar ──────────────────────────────────────────────────────────── */
+.lgw-club-bar{display:flex;align-items:center;justify-content:space-between;background:var(--lgw-navy,#1a2e5a);color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;font-family:'Saira',Arial,sans-serif}
+.lgw-btn-sm{padding:5px 12px;font-size:12px}
+
+/* ── Pending card ────────────────────────────────────────────────────────────── */
+.lgw-pending-card{border-left:4px solid #e8b400}
+.lgw-pending-card h3{color:#7a5a00}
+.lgw-pending-item{border:1px solid #d0d5e8;border-radius:6px;padding:12px 14px;margin-bottom:10px;background:#fafbff}
+.lgw-pending-item:last-child{margin-bottom:0}
+.lgw-pending-match{font-size:14px;font-weight:600;color:#1a2e5a;margin-bottom:4px}
+.lgw-pending-date{font-size:12px;font-weight:400;color:#999;margin-left:8px}
+.lgw-pending-by{font-size:12px;color:#666;margin-bottom:8px}
+.lgw-pending-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.lgw-pending-detail{margin-top:12px;padding-top:12px;border-top:1px solid #e8edf8}
+.lgw-btn-view{background:#e8edf8;color:#1a2e5a;border:1px solid #d0d5e8}
+.lgw-btn-view:hover{background:#d0d8f0}
+
+/* ── Review actions ──────────────────────────────────────────────────────────── */
+.lgw-sc-review{padding:10px 0 0}
+.lgw-review-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #e8edf8}
+.lgw-review-status{margin-top:10px}
+
+/* ── Status badges ───────────────────────────────────────────────────────────── */
+.lgw-sc-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;margin-bottom:10px;letter-spacing:.02em}
+.lgw-sc-badge-pending  {background:#fff8e0;color:#7a5a00;border:1px solid #e8d080}
+.lgw-sc-badge-confirmed{background:#e8f5e9;color:#2a7a2a;border:1px solid #b2dfb2}
+.lgw-sc-badge-disputed {background:#fff0f0;color:#c0202a;border:1px solid #f5b2b2}
+
+/* ── Team name validation hints ──────────────────────────────────────────────── */
+.lgw-form-row input.team-valid   { border-color: #b2dfb2; }
+.lgw-form-row input.team-warn    { border-color: #e8d080; }
+.lgw-form-row input.team-invalid { border-color: #f5b2b2; }

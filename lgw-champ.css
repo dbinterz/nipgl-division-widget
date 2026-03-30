@@ -1,0 +1,1023 @@
+/* NIPGL Championships CSS - v6.4.0 */
+
+/* ── Default light-mode CSS variables ──────────────────────────────────────── */
+/* These mirror the division widget defaults so the cup widget looks correct    */
+/* whether or not the division widget is on the same page.                      */
+.lgw-champ-wrap,
+.lgw-champ-tabs-outer {
+  --lgw-bg:          #ffffff;
+  --lgw-bg-alt:      #f0f2f8;
+  --lgw-bg-hover:    #e6e9f5;
+  --lgw-border:      #d0d5e8;
+  --lgw-navy:        #1a2e5a;
+  --lgw-navy-mid:    #243d78;
+  --lgw-gold:        #e8b400;
+  --lgw-text:        #1a1a1a;
+  --lgw-text-muted:  #666666;
+  --lgw-tab-bg:      #dde1ef;
+  --lgw-promote:     #2a7a2a;
+  --lgw-shadow:      rgba(0,0,0,.10);
+  --lgw-accent:      #e8b400;
+}
+
+/* ── Wrapper ──────────────────────────────────────────────────────────────────── */
+.lgw-champ-wrap {
+  font-family: 'Saira', Arial, sans-serif;
+  color: var(--lgw-text, #1a1a1a);
+  background: var(--lgw-bg, #fff);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px var(--lgw-shadow, rgba(0,0,0,.10));
+  margin-bottom: 24px;
+}
+.lgw-champ-wrap * { box-sizing: border-box; }
+
+/* ── Header ──────────────────────────────────────────────────────────────────── */
+.lgw-champ-header {
+  background: #1a4e6e;
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lgw-champ-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: .03em;
+}
+.lgw-champ-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.lgw-champ-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 5px;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s;
+}
+.lgw-champ-btn-ghost {
+  background: rgba(255,255,255,.15);
+  color: #fff;
+}
+.lgw-champ-btn-ghost:hover { background: rgba(255,255,255,.25); }
+
+/* ── Round tabs (mobile) ─────────────────────────────────────────────────────── */
+.lgw-champ-tabs {
+  display: none;
+  background: var(--lgw-tab-bg, #dde1ef);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lgw-champ-tabs::-webkit-scrollbar { display: none; }
+.lgw-champ-tabs-inner {
+  display: flex;
+  min-width: max-content;
+}
+.lgw-champ-tab {
+  padding: 10px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--lgw-navy, #1a2e5a);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  white-space: nowrap;
+  transition: border-color .15s, color .15s;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.lgw-champ-tab.active {
+  border-bottom-color: var(--lgw-gold, #e8b400);
+  color: var(--lgw-navy, #1a2e5a);
+}
+
+/* ── Bracket scroll container ────────────────────────────────────────────────── */
+.lgw-champ-bracket-outer {
+  overflow-x: auto;
+  padding: 20px;
+  background: var(--lgw-bg-alt, #f0f2f8);
+  min-height: 200px;
+}
+
+/* ── Bracket grid ────────────────────────────────────────────────────────────── */
+.lgw-champ-bracket {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+/* ── Round column ────────────────────────────────────────────────────────────── */
+.lgw-champ-round {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  flex: 1 1 180px;
+  /* Each round grows equally to fill available bracket width */
+}
+.lgw-champ-round-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #1a2e5a;
+  padding: 6px 8px 6px;
+  text-align: center;
+  background: #e8b400;
+  border-radius: 4px 4px 0 0;
+  margin: 0 8px 6px;
+}
+.lgw-champ-round-date {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1a2e5a;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-top: 2px;
+  opacity: .8;
+}
+.lgw-champ-round-slots {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  position: relative;
+}
+
+/* ── Connector column ────────────────────────────────────────────────────────── */
+.lgw-champ-connector-col {
+  width: 24px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ── Match slot ──────────────────────────────────────────────────────────────── */
+.lgw-champ-match {
+  display: flex;
+  flex-direction: column;
+  background: var(--lgw-bg, #fff);
+  border: 1px solid var(--lgw-border, #d0d5e8);
+  border-radius: 7px;
+  overflow: hidden;
+  margin: 6px 8px;
+  transition: box-shadow .15s;
+  position: relative;
+}
+.lgw-champ-match:hover {
+  box-shadow: 0 2px 8px var(--lgw-shadow, rgba(0,0,0,.12));
+}
+.lgw-champ-match.lgw-champ-bye {
+  opacity: .55;
+  border-style: dashed;
+}
+.lgw-champ-match.lgw-champ-tbd {
+  opacity: .7;
+}
+
+/* ── Match team row ──────────────────────────────────────────────────────────── */
+.lgw-champ-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  min-height: 32px;
+}
+.lgw-champ-team + .lgw-champ-team {
+  border-top: 1px solid var(--lgw-border, #d0d5e8);
+}
+.lgw-champ-team-badge {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+.lgw-champ-team-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
+  color: var(--lgw-text, #1a1a1a);
+}
+.lgw-champ-team-name.tbd {
+  color: var(--lgw-text-muted, #666);
+  font-weight: 400;
+  font-style: italic;
+}
+.lgw-champ-score {
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 22px;
+  text-align: right;
+  color: var(--lgw-navy, #1a2e5a);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* Hide draw number when a score is shown — they occupy the same right-side space */
+.lgw-champ-team:has(.lgw-champ-score) .lgw-champ-draw-num {
+  display: none;
+}
+
+/* ── Winner highlight ────────────────────────────────────────────────────────── */
+.lgw-champ-team.lgw-champ-winner {
+  background: #e6f4e6;
+}
+.lgw-champ-team.lgw-champ-winner .lgw-champ-team-name {
+  color: #1a5c1a;
+  font-weight: 700;
+}
+.lgw-champ-team.lgw-champ-winner .lgw-champ-score {
+  color: #1a5c1a;
+}
+.lgw-champ-team.lgw-champ-loser {
+  background: #fdf0f0;
+}
+.lgw-champ-team.lgw-champ-loser .lgw-champ-team-name {
+  color: #8b1a1a;
+}
+.lgw-champ-team.lgw-champ-loser .lgw-champ-score {
+  color: #8b1a1a;
+}
+
+/* ── Game number label (top of each match card) ──────────────────────────────── */
+.lgw-champ-game-num {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--lgw-text-muted, #999);
+  padding: 2px 8px;
+  background: var(--lgw-bg-alt, #f0f2f8);
+  border-bottom: 1px solid var(--lgw-border, #d0d5e8);
+  text-align: right;
+}
+
+/* ── Draw number badge ───────────────────────────────────────────────────────── */
+.lgw-champ-draw-num {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--lgw-text-muted, #999);
+  background: var(--lgw-bg-alt, #f0f2f8);
+  border-radius: 3px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 1px 4px;
+  letter-spacing: .03em;
+}
+
+/* ── Final match styling ──────────────────────────────────────────────────────── */
+.lgw-champ-round-final .lgw-champ-match {
+  border-color: var(--lgw-gold, #e8b400);
+  border-width: 2px;
+  box-shadow: 0 2px 12px rgba(232,180,0,.2);
+}
+.lgw-champ-round-final .lgw-champ-round-header {
+  background: #1a2e5a;
+  color: #e8b400;
+}
+
+/* ── Trophy / winner card ────────────────────────────────────────────────────── */
+.lgw-champ-champion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 120px;
+  padding: 0 8px;
+  text-align: center;
+}
+.lgw-champ-trophy {
+  font-size: 36px;
+  line-height: 1;
+}
+.lgw-champ-champion-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--lgw-gold, #e8b400);
+  text-align: center;
+  word-break: break-word;
+  max-width: 110px;
+}
+.lgw-champ-champion-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--lgw-text-muted, #999);
+}
+
+/* ── SVG connector lines ─────────────────────────────────────────────────────── */
+.lgw-champ-connectors {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.lgw-champ-connector-line {
+  fill: none;
+  stroke: var(--lgw-border, #d0d5e8);
+  stroke-width: 1.5;
+}
+
+/* ── Status bar ──────────────────────────────────────────────────────────────── */
+.lgw-champ-status {
+  padding: 10px 20px;
+  font-size: 12px;
+  color: var(--lgw-text-muted, #666);
+  border-top: 1px solid var(--lgw-border, #d0d5e8);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--lgw-bg, #fff);
+}
+.lgw-champ-status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--lgw-text-muted, #ccc);
+  flex-shrink: 0;
+}
+.lgw-champ-status-dot.live {
+  background: #2a7a2a;
+  animation: lgw-pulse 1.4s infinite;
+}
+@keyframes lgw-pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .3; }
+}
+
+/* ── Empty / loading state ───────────────────────────────────────────────────── */
+.lgw-champ-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--lgw-text-muted, #999);
+  font-size: 14px;
+}
+.lgw-champ-empty-icon { font-size: 36px; margin-bottom: 10px; }
+
+/* ── Draw login modal ────────────────────────────────────────────────────────── */
+.lgw-champ-draw-login-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,15,30,.75);
+  z-index: 99998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Saira', Arial, sans-serif;
+}
+.lgw-champ-draw-login-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 32px 24px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.25);
+}
+.lgw-champ-draw-login-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a2e5a;
+  margin-bottom: 8px;
+}
+.lgw-champ-draw-login-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #d0d5e8;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1a1a1a;
+  background: #fff;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+.lgw-champ-draw-login-input:focus {
+  outline: none;
+  border-color: #1a2e5a;
+}
+.lgw-champ-draw-login-actions {
+  display: flex;
+  gap: 8px;
+}
+.lgw-champ-draw-login-submit {
+  flex: 1;
+  padding: 9px;
+  background: #1a2e5a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.lgw-champ-draw-login-submit:disabled { opacity: .6; cursor: default; }
+.lgw-champ-draw-login-cancel {
+  padding: 9px 14px;
+  background: none;
+  border: 1px solid #d0d5e8;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  color: #666;
+}
+.lgw-champ-draw-login-msg {
+  font-size: 12px;
+  color: #c0202a;
+  margin-top: 8px;
+  min-height: 16px;
+}
+
+/* ── Draw animation ──────────────────────────────────────────────────────────── */
+.lgw-champ-draw-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,15,30,.85);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 24px;
+  font-family: 'Saira', Arial, sans-serif;
+}
+.lgw-champ-draw-pot {
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+.lgw-champ-draw-pot-icon {
+  font-size: 90px;
+  line-height: 1;
+  text-align: center;
+  display: block;
+  filter: drop-shadow(0 4px 20px rgba(232,180,0,.5));
+}
+.lgw-champ-draw-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: .04em;
+  text-align: center;
+}
+.lgw-champ-draw-subtitle {
+  font-size: 14px;
+  color: rgba(255,255,255,.6);
+  text-align: center;
+}
+.lgw-champ-draw-reveal {
+  background: var(--lgw-navy, #1a2e5a);
+  border: 2px solid var(--lgw-gold, #e8b400);
+  border-radius: 12px;
+  padding: 20px 36px;
+  text-align: center;
+  min-width: 260px;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.lgw-champ-draw-slot-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--lgw-gold, #e8b400);
+}
+.lgw-champ-draw-team {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity .35s, transform .35s;
+}
+.lgw-champ-draw-team.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.lgw-champ-draw-vs {
+  font-size: 12px;
+  color: rgba(255,255,255,.5);
+  margin: 4px 0;
+}
+.lgw-champ-draw-progress {
+  font-size: 12px;
+  color: rgba(255,255,255,.5);
+  text-align: center;
+}
+.lgw-champ-draw-eta {
+  font-size: 11px;
+  color: rgba(255,255,255,.35);
+  text-align: center;
+  margin-top: -8px;
+  min-height: 16px;
+}
+.lgw-champ-draw-skip-btn {
+  padding: 12px 32px;
+  background: var(--lgw-gold, #e8b400);
+  color: #1a2e5a;
+  border: none;
+  border-radius: 7px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.lgw-champ-draw-skip-btn:hover { background: #f0c800; transform: scale(1.03); }
+.lgw-champ-draw-skip-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.lgw-champ-draw-pairs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 500px;
+  justify-content: center;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.lgw-champ-draw-pair-chip {
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #fff;
+  text-align: center;
+  opacity: 0;
+  transform: scale(.8);
+  transition: opacity .3s, transform .3s;
+}
+.lgw-champ-draw-pair-chip.show {
+  opacity: 1;
+  transform: scale(1);
+}
+.lgw-champ-draw-pair-chip .vs-sep {
+  color: rgba(255,255,255,.4);
+  margin: 0 5px;
+  font-size: 10px;
+}
+.lgw-champ-draw-bye-chip {
+  border-color: rgba(232,180,0,.4);
+  background: rgba(232,180,0,.1);
+}
+
+.lgw-champ-draw-round-header {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--lgw-accent, #e8b400);
+  border-top: 1px solid rgba(255,255,255,.15);
+  margin: 8px 0 4px;
+  padding-top: 8px;
+}
+
+/* ── Admin: editable match indicator ────────────────────────────────────────── */
+.lgw-champ-editable {
+  cursor: pointer;
+}
+.lgw-champ-editable:hover {
+  box-shadow: 0 0 0 2px var(--lgw-navy, #1a2e5a);
+}
+
+/* ── Admin: score entry popover ──────────────────────────────────────────────── */
+.lgw-champ-score-popover {
+  position: absolute;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid var(--lgw-border, #d0d5e8);
+  border-radius: 9px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18);
+  padding: 14px 16px 12px;
+  min-width: 210px;
+  font-family: 'Saira', Arial, sans-serif;
+}
+.lgw-champ-score-pop-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--lgw-navy, #1a2e5a);
+  margin-bottom: 10px;
+}
+.lgw-champ-score-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.lgw-champ-score-pop-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #1a1a1a;
+}
+.lgw-champ-score-pop-input {
+  width: 52px;
+  padding: 5px 8px;
+  border: 1px solid var(--lgw-border, #d0d5e8);
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  text-align: center;
+  color: #1a1a1a;
+  background: #fff;
+}
+.lgw-champ-score-pop-input:focus {
+  outline: none;
+  border-color: var(--lgw-navy, #1a2e5a);
+  background: #fff;
+}
+.lgw-champ-score-pop-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.lgw-champ-score-pop-save {
+  flex: 1;
+  padding: 7px;
+  background: var(--lgw-navy, #1a2e5a);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.lgw-champ-score-pop-save:disabled { opacity: .6; cursor: default; }
+.lgw-champ-score-pop-cancel {
+  padding: 7px 12px;
+  background: none;
+  border: 1px solid var(--lgw-border, #d0d5e8);
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--lgw-text-muted, #666);
+}
+.lgw-champ-score-pop-msg {
+  font-size: 11px;
+  color: #c0202a;
+  margin-top: 5px;
+  min-height: 14px;
+}
+
+/* ── Match scorecard viewer ──────────────────────────────────────────────────── */
+.lgw-champ-has-scorecard {
+  cursor: pointer;
+}
+.lgw-champ-has-scorecard:hover {
+  box-shadow: 0 0 0 2px var(--lgw-navy, #1a2e5a);
+}
+.lgw-champ-sc-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,15,30,.7);
+  z-index: 99990;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Saira', Arial, sans-serif;
+  padding: 16px;
+}
+.lgw-champ-sc-modal-box {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.25);
+  max-width: 700px;
+  width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.lgw-champ-sc-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: #1a4e6e;
+  color: #fff;
+  flex-shrink: 0;
+}
+.lgw-champ-sc-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+.lgw-champ-sc-modal-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: .8;
+}
+.lgw-champ-sc-modal-close:hover { opacity: 1; }
+.lgw-champ-sc-modal-body {
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+.lgw-champ-sc-loading, .lgw-champ-sc-none {
+  color: #666;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px 0;
+}
+.lgw-champ-sc-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 6px;
+}
+.lgw-champ-sc-conf {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #1a2e5a;
+}
+.lgw-champ-sc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.lgw-champ-sc-table th {
+  background: #1a2e5a;
+  color: #fff;
+  padding: 6px 8px;
+  font-weight: 700;
+  text-align: left;
+}
+.lgw-champ-sc-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e8eaf0;
+  vertical-align: middle;
+}
+.lgw-champ-sc-table tfoot td {
+  background: #f0f2f8;
+  font-weight: 700;
+  border-top: 2px solid #1a2e5a;
+  border-bottom: none;
+}
+.lgw-champ-sc-rink {
+  color: #999;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.lgw-champ-sc-players { color: #1a1a1a; }
+.lgw-champ-sc-score {
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  width: 40px;
+}
+.lgw-champ-sc-score.win { color: #1a5c1a; }
+.lgw-champ-sc-vs { text-align: center; color: #999; font-size: 11px; }
+.lgw-champ-sc-total-lbl { color: #666; font-size: 11px; }
+
+/* ── Print styles ─────────────────────────────────────────────────────────────── */
+@page {
+  margin: 10mm;
+}
+
+@media print {
+  /* Remove all whitespace above the bracket */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide everything on the page */
+  body * { visibility: hidden; }
+
+  /* Show only the active section pane and its wrap */
+  .lgw-champ-section-pane.active,
+  .lgw-champ-section-pane.active *,
+  .lgw-champ-wrap,
+  .lgw-champ-wrap * { visibility: visible; }
+
+  /* Pull the active pane to the very top-left — eliminates all above-fold whitespace */
+  .lgw-champ-section-pane.active {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    visibility: visible !important;
+  }
+
+  .lgw-champ-wrap {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide UI chrome */
+  .lgw-champ-header-actions,
+  .lgw-champ-status,
+  .lgw-champ-tabs,
+  .lgw-champ-draw-overlay,
+  .lgw-champ-sc-modal,
+  .lgw-champ-score-popover,
+  .lgw-champ-empty { display: none !important; }
+
+  /* Header — compact */
+  .lgw-champ-header {
+    padding: 6px 12px !important;
+    font-size: 13px !important;
+  }
+
+  /* Show all rounds */
+  .lgw-champ-round { display: flex !important; }
+  .lgw-champ-round.mobile-active,
+  .lgw-champ-round:not(.mobile-active) { display: flex !important; }
+
+  /* Bracket outer — no overflow clipping, minimal padding */
+  .lgw-champ-bracket-outer {
+    overflow: visible !important;
+    padding: 4px 8px !important;
+  }
+
+  /* ── Spreadsheet layout for R0 and R1 ──────────────────────────────────
+     Each match becomes a single horizontal row: home | v | away
+     Both team divs become flex siblings so both are always visible.
+  ─────────────────────────────────────────────────────────────────────────── */
+
+  /* Bracket: wrap so R0/R1 sit side by side, later rounds flow below */
+  .lgw-champ-bracket {
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    gap: 0 !important;
+    align-items: flex-start !important;
+  }
+
+  /* R0 and R1 each take ~half the page */
+  .lgw-champ-round[data-round="0"],
+  .lgw-champ-round[data-round="1"] {
+    min-width: 0 !important;
+    width: 48% !important;
+    flex: 0 0 48% !important;
+  }
+
+  /* Later rounds sit below in a flexible row */
+  .lgw-champ-round:not([data-round="0"]):not([data-round="1"]) {
+    min-width: 100px !important;
+    flex: 1 !important;
+  }
+
+  .lgw-champ-connector-col { display: none !important; }
+
+  .lgw-champ-round-header {
+    font-size: 8pt !important;
+    padding: 3px 8px !important;
+    margin: 0 4px 3px !important;
+  }
+  .lgw-champ-game-num {
+    font-size: 7pt !important;
+    padding: 1px 5px !important;
+  }
+
+  /* Match card becomes a horizontal flex row */
+  .lgw-champ-round[data-round="0"] .lgw-champ-match,
+  .lgw-champ-round[data-round="1"] .lgw-champ-match {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    margin: 1px 4px !important;
+    padding: 0 !important;
+    border: 1px solid #ccc !important;
+    border-radius: 2px !important;
+    min-height: 0 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    overflow: visible !important;
+  }
+
+  /* Both team divs become equal-width flex cells */
+  .lgw-champ-round[data-round="0"] .lgw-champ-team,
+  .lgw-champ-round[data-round="1"] .lgw-champ-team {
+    flex: 1 !important;
+    padding: 2px 5px !important;
+    min-height: 0 !important;
+    border-top: none !important;
+    font-size: 8.5pt !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.25 !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  /* Divider between home and away */
+  .lgw-champ-round[data-round="0"] .lgw-champ-team + .lgw-champ-team,
+  .lgw-champ-round[data-round="1"] .lgw-champ-team + .lgw-champ-team {
+    border-left: 1px solid #ccc !important;
+    border-top: none !important;
+  }
+
+  /* Team name — full text, no truncation */
+  .lgw-champ-round[data-round="0"] .lgw-champ-team-name,
+  .lgw-champ-round[data-round="1"] .lgw-champ-team-name {
+    font-size: 8.5pt !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  /* Hide badges in all print rounds — saves space, not needed on paper */
+  .lgw-champ-team-badge { display: none !important; }
+
+  /* Draw numbers small and muted */
+  .lgw-champ-round[data-round="0"] .lgw-champ-draw-num,
+  .lgw-champ-round[data-round="1"] .lgw-champ-draw-num {
+    font-size: 7pt !important;
+    color: #888 !important;
+    margin-right: 3px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Later round cards — compact but keep stacked layout */
+  .lgw-champ-round:not([data-round="0"]):not([data-round="1"]) .lgw-champ-match {
+    margin: 3px 4px !important;
+    break-inside: avoid;
+  }
+  .lgw-champ-round:not([data-round="0"]):not([data-round="1"]) .lgw-champ-team {
+    padding: 3px 6px !important;
+    font-size: 8.5pt !important;
+    min-height: 0 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .lgw-champ-round:not([data-round="0"]):not([data-round="1"]) .lgw-champ-team-name {
+    font-size: 8.5pt !important;
+    white-space: normal !important;
+    overflow: visible !important;
+  }
+
+  .lgw-champ-champion { font-size: 10pt !important; padding: 6px !important; }
+  .lgw-champ-score    { font-size: 8.5pt !important; }
+}
+
+
+/* ── Mobile: tab-based round view ────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .lgw-champ-tabs { display: block; }
+  .lgw-champ-bracket-outer { padding: 12px; }
+  .lgw-champ-bracket {
+    flex-direction: column;
+    min-width: unset;
+  }
+  .lgw-champ-round {
+    display: none;
+    width: 100%;
+    min-width: unset;
+  }
+  .lgw-champ-round.mobile-active { display: flex; }
+  .lgw-champ-connector-col { display: none; }
+  .lgw-champ-round-header { text-align: left; padding: 0 4px 10px; }
+  .lgw-champ-match { margin: 6px 0; }
+  .lgw-champ-champion {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 10px 4px;
+    gap: 12px;
+  }
+}
+
+/* ── Dark mode ───────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-lgw-theme]):not([data-lgw-theme="light"]) .lgw-champ-draw-overlay {
+    background: rgba(5,8,20,.9);
+  }
+}

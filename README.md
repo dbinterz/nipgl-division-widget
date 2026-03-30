@@ -1,6 +1,6 @@
-# NIPGL Division Widget
+# League Game Widget
 
-A WordPress plugin that renders mobile-friendly league tables and fixtures for NIPGL bowls divisions, powered by published Google Sheets CSV data.
+A WordPress plugin that renders mobile-friendly league tables and fixtures for lawn bowls and other league sports, powered by published Google Sheets CSV data.
 
 ---
 
@@ -22,10 +22,10 @@ A WordPress plugin that renders mobile-friendly league tables and fixtures for N
 
 ## Installation
 
-1. Download the latest release zip from [Releases](https://github.com/dbinterz/nipgl-division-widget/releases)
+1. Download the latest release zip from [Releases](https://github.com/dbinterz/lgw-division-widget/releases)
 2. In WordPress go to **Plugins → Add New → Upload Plugin**
 3. Upload the zip and activate
-4. Go to **Settings → NIPGL Widget** to configure badges and sponsors
+4. Go to **Settings → LGW Widget** to configure badges and sponsors
 
 ---
 
@@ -34,7 +34,7 @@ A WordPress plugin that renders mobile-friendly league tables and fixtures for N
 Add a shortcode block to any page:
 
 ```
-[nipgl_division csv="YOUR_CSV_URL" title="Division 1" promote="2" relegate="2"]
+[lgw_division csv="YOUR_CSV_URL" title="Division 1" promote="2" relegate="2"]
 ```
 
 ### Shortcode Parameters
@@ -59,7 +59,7 @@ Add a shortcode block to any page:
 
 ## Settings
 
-Go to **Settings → NIPGL Widget** to manage:
+Go to **Settings → LGW Widget** to manage:
 
 - **Sponsors** — add logos with links; first sponsor appears above the title, others rotate below the table
 - **Club Badges** — map team names (as they appear in the sheet) to badge images
@@ -83,18 +83,18 @@ A section with a `FIXTURES` header row, followed by a column header row containi
 
 ## Scorecard Submission
 
-The `[nipgl_submit]` shortcode adds a scorecard entry page for clubs.
+The `[lgw_submit]` shortcode adds a scorecard entry page for clubs.
 
 ### Setup
 
-1. Go to **Settings → NIPGL Widget** and add each club with a passphrase under **Score Entry** — the [what3words](https://what3words.com) address for the clubhouse makes a good default (e.g. `filled.count.ripen`)
+1. Go to **Settings → LGW Widget** and add each club with a passphrase under **Score Entry** — the [what3words](https://what3words.com) address for the clubhouse makes a good default (e.g. `filled.count.ripen`)
 2. Add an Anthropic API key under **API Settings** if you want AI photo parsing
-3. Create a page with `[nipgl_submit]` — clubs visit this page to submit scorecards
+3. Create a page with `[lgw_submit]` — clubs visit this page to submit scorecards
 
 ### How it works
 
 - Clubs log in with their club name and passphrase (no WordPress account needed) — passphrase entry is case-insensitive
-- Three entry methods: **photo** (AI reads the scorecard image), **Excel** (upload the NIPGL template), or **manual**
+- Three entry methods: **photo** (AI reads the scorecard image), **Excel** (upload the LGW template), or **manual**
 - First submission sets status to **Pending** — awaiting confirmation from the other club
 - Second club can **Confirm** (scores agree → Confirmed ✅) or **Amend** (scores differ → Disputed ⚠️)
 - League admin resolves disputes via **wp-admin → Scorecards**
@@ -102,7 +102,7 @@ The `[nipgl_submit]` shortcode adds a scorecard entry page for clubs.
 
 ### Excel template
 
-The plugin parses the standard NIPGL scorecard Excel template. Cells with unresolved formulas (total shots) are handled automatically by summing rink scores as a fallback.
+The plugin parses the standard LGW scorecard Excel template. Cells with unresolved formulas (total shots) are handled automatically by summing rink scores as a fallback.
 
 ---
 
@@ -152,23 +152,23 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 - Fixed final stage showing "Preliminary Round / Final" instead of "Semi-Final / Final"
 
 ### v6.4.23
-- Fixed 500 error when entering the last result in a championship section — `nipgl_champ_try_seed_final` called undefined function `nipgl_champ_make_skeleton_bracket`; replaced with `nipgl_champ_perform_final_draw`
+- Fixed 500 error when entering the last result in a championship section — `lgw_champ_try_seed_final` called undefined function `lgw_champ_make_skeleton_bracket`; replaced with `lgw_champ_perform_final_draw`
 
 ### v6.4.22
 - Fixed championship section tabs not switching — clicking a section tab now correctly shows that section's pane (`initSectionTabs` was only saving to `sessionStorage`, not updating active classes; the DOM switching was lost when the inline script was removed in v6.4.20)
 
 ### v6.4.21
-- Code quality: shared draw library extracted to `nipgl-draw.php` — bracket geometry, animation pairs, and skeleton-round assembly now live in one place (`nipgl_draw_build_bracket`, `nipgl_draw_default_rounds`, `nipgl_draw_cup_club`); cup and champ draw functions refactored to thin wrappers
+- Code quality: shared draw library extracted to `lgw-draw.php` — bracket geometry, animation pairs, and skeleton-round assembly now live in one place (`lgw_draw_build_bracket`, `lgw_draw_default_rounds`, `lgw_draw_cup_club`); cup and champ draw functions refactored to thin wrappers
 
 ### v6.4.20
 - Robustness: bracket size check at draw time — rejects writes exceeding 800KB
-- Code quality: inline admin JS moved to nipgl-admin.js (cup draw, sync, champ draw)
+- Code quality: inline admin JS moved to lgw-admin.js (cup draw, sync, champ draw)
 - Code quality: redundant tab-switching script removed from champ shortcode
-- Build: GitHub Actions version check covers NIPGL_VERSION constant and readme.txt stable tag
+- Build: GitHub Actions version check covers LGW_VERSION constant and readme.txt stable tag
 
 ### v6.3.0
 
-- Fixed blank print/PDF — replaced `body > *` selector (fails when bracket is nested in page content) with `visibility: hidden` on all + `visibility: visible` on `.nipgl-cup-wrap` and descendants — works at any DOM depth; all round columns forced to `display: flex` before print dialog opens so mobile-hidden rounds appear
+- Fixed blank print/PDF — replaced `body > *` selector (fails when bracket is nested in page content) with `visibility: hidden` on all + `visibility: visible` on `.lgw-cup-wrap` and descendants — works at any DOM depth; all round columns forced to `display: flex` before print dialog opens so mobile-hidden rounds appear
 
 ### v6.2.9
 
@@ -178,7 +178,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### v6.2.8
 
-- Fixed draw stuck at N-1/N — round header entries counted in `pairs_for_anim` total but never called `nipgl_cup_advance_cursor`; cursor never reached total so `complete` was never set; headers now fire `advance_cursor` on the draw master side and during skip-to-end
+- Fixed draw stuck at N-1/N — round header entries counted in `pairs_for_anim` total but never called `lgw_cup_advance_cursor`; cursor never reached total so `complete` was never set; headers now fire `advance_cursor` on the draw master side and during skip-to-end
 
 ### v6.2.7
 
@@ -213,7 +213,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### v6.2.0
 
-- **Fully synchronised live draw** — the draw master's animation advances a server-side cursor match by match via `nipgl_cup_advance_cursor`; viewers poll at 1s and see each team revealed in lockstep with the draw master; viewers who open the page mid-draw join at the current position; the overlay closes and bracket renders for all viewers simultaneously when the draw completes
+- **Fully synchronised live draw** — the draw master's animation advances a server-side cursor match by match via `lgw_cup_advance_cursor`; viewers poll at 1s and see each team revealed in lockstep with the draw master; viewers who open the page mid-draw join at the current position; the overlay closes and bracket renders for all viewers simultaneously when the draw completes
 
 ### v6.1.9
 
@@ -229,12 +229,12 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### v6.1.6
 
-- Fixed "unexpected token" error on mobile after passphrase entry — `ajaxUrl` now always taken from `nipglCupData` (always present) rather than `nipglData` (only present when division widget is also on the page); AJAX response parsed as text first so non-JSON responses give a readable error message
+- Fixed "unexpected token" error on mobile after passphrase entry — `ajaxUrl` now always taken from `lgwCupData` (always present) rather than `lgwData` (only present when division widget is also on the page); AJAX response parsed as text first so non-JSON responses give a readable error message
 
 ### v6.1.5
 
 - Fixed team names pre-loading before draw animation — text now set inside the reveal timeout
-- Draw speed configurable under NIPGL → Cups: Fast (0.5×) through Very Slow (2×)
+- Draw speed configurable under LGW → Cups: Fast (0.5×) through Very Slow (2×)
 - Server-side double-draw guard — concurrent authenticated users cannot accidentally re-draw an already-drawn cup
 
 ### v6.1.4
@@ -251,7 +251,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### v6.1.2
 
-- Draw passphrase setting moved from the main NIPGL settings page to the Cups admin page
+- Draw passphrase setting moved from the main LGW settings page to the Cups admin page
 
 ### v6.1.1
 
@@ -259,7 +259,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### v6.1.0
 
-- **Draw passphrase gate** — set a global draw passphrase in Settings → NIPGL Widget; the public cup page shows a "🔑 Login to Draw" button; on correct passphrase entry a session token is issued and the draw proceeds; WP admins bypass the gate; passphrase is stored as SHA-256 hash
+- **Draw passphrase gate** — set a global draw passphrase in Settings → LGW Widget; the public cup page shows a "🔑 Login to Draw" button; on correct passphrase entry a session token is issued and the draw proceeds; WP admins bypass the gate; passphrase is stored as SHA-256 hash
 
 ### v6.0.10
 
@@ -271,7 +271,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 - Fixed score input contrast — hardcoded white background and dark text so inputs are readable regardless of theme
 - Draw numbers hidden when a score is present — avoids overlap between score value and draw number badge
-- **Cup scorecard**: `[nipgl_submit cup="cup-id"]` now supported — division is pre-filled and locked, a match selector lists all drawn bracket fixtures, selecting a match auto-populates home/away team fields; full hole-by-hole scorecard submission works as normal
+- **Cup scorecard**: `[lgw_submit cup="cup-id"]` now supported — division is pre-filled and locked, a match selector lists all drawn bracket fixtures, selecting a match auto-populates home/away team fields; full hole-by-hole scorecard submission works as normal
 
 ### v6.0.8
 
@@ -279,7 +279,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### v6.0.7
 
-- Fixed 17-team draw showing a blank vs TBD match — `nipgl_cup_default_rounds()` had an erroneous `array_reverse` causing round names to be in wrong order, producing an extra skeleton round
+- Fixed 17-team draw showing a blank vs TBD match — `lgw_cup_default_rounds()` had an erroneous `array_reverse` causing round names to be in wrong order, producing an extra skeleton round
 - Round names now correct for prelim-format cups: Preliminary Round → Round of 16 → Quarter Final → Semi-Final → Final
 - Edit button removed from public cup page
 - Cup widget explicitly defines light-mode CSS variables for standalone use
@@ -307,28 +307,28 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### v6.0.1
 
-- Fixed Cups admin page returning 404 — Cups submenu now registered inside `nipgl_admin_menu()` alongside Players/Scorecards submenus, guaranteeing the parent menu exists before the submenu is added
-- Fixed admin JS/CSS not loading on Cups pages — `admin_enqueue_scripts` hook now covers `nipgl_page_nipgl-cups`
+- Fixed Cups admin page returning 404 — Cups submenu now registered inside `lgw_admin_menu()` alongside Players/Scorecards submenus, guaranteeing the parent menu exists before the submenu is added
+- Fixed admin JS/CSS not loading on Cups pages — `admin_enqueue_scripts` hook now covers `lgw_page_lgw-cups`
 
 ### v6.0.0
 
-- **Cup bracket widget** — new `[nipgl_cup id="…"]` shortcode renders a full single-elimination knockout bracket with club badges, scores, winner highlighting, and champion display
+- **Cup bracket widget** — new `[lgw_cup id="…"]` shortcode renders a full single-elimination knockout bracket with club badges, scores, winner highlighting, and champion display
 - **Mobile-friendly** — round tabs on small screens; horizontal scroll bracket on desktop
 - **Live animated draw** — admin triggers the draw; any visitor on the page at that moment sees an animated team-reveal sequence pulled live via polling (no page reload needed)
-- **Cup management admin** — **NIPGL → Cups** page to create cups, enter the team list, set round names and dates, and link a Google Sheets CSV for result sync
+- **Cup management admin** — **LGW → Cups** page to create cups, enter the team list, set round names and dates, and link a Google Sheets CSV for result sync
 - **Google Sheets result sync** — pulls team advancement from the published bracket sheet and updates the stored bracket automatically
 - **Draw reset** — admin can clear and redo the draw before any results are recorded
 - **Dark mode + theme colours** — inherits all CSS variables from the division widget; fully compatible with per-shortcode theme overrides
-- New files: `nipgl-cup.php`, `nipgl-cup.js`, `nipgl-cup.css`
+- New files: `lgw-cup.php`, `lgw-cup.js`, `lgw-cup.css`
 
 ### v5.18.3
 
-- Import Passphrases admin tool — upload `nipgl-club-passphrases.xlsx` directly from **NIPGL → 🔑 Import Passphrases** in wp-admin to set all club passphrases in one go
+- Import Passphrases admin tool — upload `lgw-club-passphrases.xlsx` directly from **LGW → 🔑 Import Passphrases** in wp-admin to set all club passphrases in one go
 - Tool hides itself from the menu once dismissed, keeping the admin tidy
 
 ### v5.18.1
 
-- Fixed 404 on login button — `nipglSubmit` (ajaxUrl/nonce) was not always localised to the scorecard script when the `[nipgl_submit]` shortcode was on a page without `[nipgl_division]`. `wp_localize_script` now called unconditionally after enqueue in both enqueue functions.
+- Fixed 404 on login button — `lgwSubmit` (ajaxUrl/nonce) was not always localised to the scorecard script when the `[lgw_submit]` shortcode was on a page without `[lgw_division]`. `wp_localize_script` now called unconditionally after enqueue in both enqueue functions.
 
 ### v5.18.0
 
@@ -364,7 +364,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 - Drive settings: Service Account key can now be uploaded directly through WordPress admin — no SFTP needed
 - Key is validated (must be a valid service_account JSON) before saving
 - Service account email displayed after upload for confirmation
-- Key stored in protected `wp-content/uploads/nipgl-private/` with `.htaccess` blocking web access
+- Key stored in protected `wp-content/uploads/lgw-private/` with `.htaccess` blocking web access
 - Key path persists across settings saves via hidden field
 
 ### v5.13.0
@@ -377,7 +377,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 - Drive activity logged per scorecard, visible in admin scorecards History panel
 - Settings: service account key path (loaded from server file), root folder ID, test connection button
 - OAuth2 JWT auth — pure PHP, no Composer dependency
-- New files: `nipgl-drive.php`, `nipgl-pdf.php`
+- New files: `lgw-drive.php`, `lgw-pdf.php`
 
 ### v5.12.0
 - Admin scorecard edit — any field editable by admin: teams, date, venue, division, competition, per-rink player names, scores, totals and points
@@ -386,7 +386,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 - Audit trail — every submit, confirm, resolve and admin edit is logged with timestamp, username, and a field-level before/after diff
 - Audit history accessible via new 📋 History button on each scorecard row
 - View/Edit/History panels replace the old single toggle — each button opens its own panel, clicking again collapses it
-- New file: `nipgl-sc-admin.php`
+- New file: `lgw-sc-admin.php`
 
 ### v5.11.1
 - Fixed: season date filter was comparing against `played_at` (log time) instead of `match_date` (actual match date), causing all players to vanish when a season range was set
@@ -400,17 +400,17 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 - Per-club tabs: player × match matrix with date/team/opposition/venue/comp header rows, T/A/B/MW totals, Starred and Female columns, colour-coded appearance cells
 
 ### v5.10.4
-- Fixed: Players menu was invisible — parent slug corrected from `nipgl-settings` to `nipgl-scorecards`
+- Fixed: Players menu was invisible — parent slug corrected from `lgw-settings` to `lgw-scorecards`
 - Players now appears as a submenu under the Scorecards top-level menu item
 
 ### v5.10.4
-- Fixed: Players page not appearing in wp-admin — menu registration moved into main `nipgl_admin_menu()` to guarantee load order
-- NIPGL top-level menu now shows Scorecards and Players as submenus
+- Fixed: Players page not appearing in wp-admin — menu registration moved into main `lgw_admin_menu()` to guarantee load order
+- LGW top-level menu now shows Scorecards and Players as submenus
 
 ### v5.10.3
 - Updated plugin description in PHP header, readme.txt, and settings page to reflect all current features
 - Shortcode reference in settings page now uses a table and includes all parameters including sponsor overrides
-- Added `[nipgl_submit]` documentation alongside `[nipgl_division]` in the settings page
+- Added `[lgw_submit]` documentation alongside `[lgw_division]` in the settings page
 
 ### v5.10.2
 - Fixed: rink label in team modal scorecard now shows light background / dark text in light mode (was inheriting dark navy from scorecard.css)
@@ -422,7 +422,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 
 ### v5.10.0
 - Scorecard display in fixture modal — clicking a played fixture now loads the full rink-by-rink scorecard
-- Fixed script load order — nipgl-scorecard.js now correctly loads before nipgl-widget.js on all pages with [nipgl_division]
+- Fixed script load order — lgw-scorecard.js now correctly loads before lgw-widget.js on all pages with [lgw_division]
 - Switched to semantic versioning (MAJOR.MINOR.PATCH)
 
 ### v5.9
@@ -447,7 +447,7 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 - Replaced regex cell matching with `explode('</c>', ...)` approach — robust across all PHP versions
 
 ### v5.5
-- Added `nipgl-debug.html` diagnostic tool for testing Excel parser directly in browser
+- Added `lgw-debug.html` diagnostic tool for testing Excel parser directly in browser
 
 ### v5.4
 - Fixed Excel date serial numbers — now displayed as dd/mm/yyyy instead of raw number
@@ -466,10 +466,10 @@ The plugin parses the standard NIPGL scorecard Excel template. Cells with unreso
 - Improved API error surfacing — actual error message now shown on failure
 
 ### v5.1
-- Full scorecard submission system — `[nipgl_submit]` shortcode
+- Full scorecard submission system — `[lgw_submit]` shortcode
 - PIN-gated entry (no WordPress login needed)
 - AI photo reading (Anthropic API) pre-fills form from photo
-- Excel upload parsing for NIPGL scorecard template
+- Excel upload parsing for LGW scorecard template
 - Manual entry form with 4 rinks and player names
 - Played fixtures clickable in modal — shows full rink-by-rink scorecard
 - Scorecards admin page

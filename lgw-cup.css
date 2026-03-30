@@ -1,0 +1,853 @@
+/* NIPGL Cup Bracket CSS - v6.0.7 */
+
+/* ── Default light-mode CSS variables ──────────────────────────────────────── */
+/* These mirror the division widget defaults so the cup widget looks correct    */
+/* whether or not the division widget is on the same page.                      */
+.lgw-cup-wrap {
+  --lgw-bg:          #ffffff;
+  --lgw-bg-alt:      #f0f2f8;
+  --lgw-bg-hover:    #e6e9f5;
+  --lgw-border:      #d0d5e8;
+  --lgw-navy:        #1a2e5a;
+  --lgw-navy-mid:    #243d78;
+  --lgw-gold:        #e8b400;
+  --lgw-text:        #1a1a1a;
+  --lgw-text-muted:  #666666;
+  --lgw-tab-bg:      #dde1ef;
+  --lgw-promote:     #2a7a2a;
+  --lgw-shadow:      rgba(0,0,0,.10);
+  --lgw-accent:      #e8b400;
+}
+
+/* ── Wrapper ──────────────────────────────────────────────────────────────────── */
+.lgw-cup-wrap {
+  font-family: 'Saira', Arial, sans-serif;
+  color: var(--lgw-text, #1a1a1a);
+  background: var(--lgw-bg, #fff);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px var(--lgw-shadow, rgba(0,0,0,.10));
+  margin-bottom: 24px;
+}
+.lgw-cup-wrap * { box-sizing: border-box; }
+
+/* ── Header ──────────────────────────────────────────────────────────────────── */
+.lgw-cup-header {
+  background: #c0202a;
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lgw-cup-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: .03em;
+}
+.lgw-cup-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.lgw-cup-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 5px;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s;
+}
+.lgw-cup-btn-ghost {
+  background: rgba(255,255,255,.15);
+  color: #fff;
+}
+.lgw-cup-btn-ghost:hover { background: rgba(255,255,255,.25); }
+
+/* ── Round tabs (mobile) ─────────────────────────────────────────────────────── */
+.lgw-cup-tabs {
+  display: none;
+  background: var(--lgw-tab-bg, #dde1ef);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lgw-cup-tabs::-webkit-scrollbar { display: none; }
+.lgw-cup-tabs-inner {
+  display: flex;
+  min-width: max-content;
+}
+.lgw-cup-tab {
+  padding: 10px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--lgw-navy, #1a2e5a);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  white-space: nowrap;
+  transition: border-color .15s, color .15s;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.lgw-cup-tab.active {
+  border-bottom-color: var(--lgw-gold, #e8b400);
+  color: var(--lgw-navy, #1a2e5a);
+}
+
+/* ── Bracket scroll container ────────────────────────────────────────────────── */
+.lgw-cup-bracket-outer {
+  overflow-x: auto;
+  padding: 20px;
+  background: var(--lgw-bg-alt, #f0f2f8);
+  min-height: 200px;
+}
+
+/* ── Bracket grid ────────────────────────────────────────────────────────────── */
+.lgw-cup-bracket {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  min-width: max-content;
+}
+
+/* ── Round column ────────────────────────────────────────────────────────────── */
+.lgw-cup-round {
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  flex: 1;
+}
+.lgw-cup-round-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #1a2e5a;
+  padding: 6px 8px 6px;
+  text-align: center;
+  background: #e8b400;
+  border-radius: 4px 4px 0 0;
+  margin: 0 8px 6px;
+}
+.lgw-cup-round-date {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1a2e5a;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-top: 2px;
+  opacity: .8;
+}
+.lgw-cup-round-slots {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  position: relative;
+}
+
+/* ── Connector column ────────────────────────────────────────────────────────── */
+.lgw-cup-connector-col {
+  width: 24px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ── Match slot ──────────────────────────────────────────────────────────────── */
+.lgw-cup-match {
+  display: flex;
+  flex-direction: column;
+  background: var(--lgw-bg, #fff);
+  border: 1px solid var(--lgw-border, #d0d5e8);
+  border-radius: 7px;
+  overflow: hidden;
+  margin: 6px 8px;
+  transition: box-shadow .15s;
+  position: relative;
+}
+.lgw-cup-match:hover {
+  box-shadow: 0 2px 8px var(--lgw-shadow, rgba(0,0,0,.12));
+}
+.lgw-cup-match.lgw-cup-bye {
+  opacity: .55;
+  border-style: dashed;
+}
+.lgw-cup-match.lgw-cup-tbd {
+  opacity: .7;
+}
+
+/* ── Match team row ──────────────────────────────────────────────────────────── */
+.lgw-cup-team {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  min-height: 36px;
+  position: relative;
+}
+.lgw-cup-team + .lgw-cup-team {
+  border-top: 1px solid var(--lgw-border, #d0d5e8);
+}
+.lgw-cup-team-badge {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+.lgw-cup-team-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--lgw-text, #1a1a1a);
+}
+.lgw-cup-team-name.tbd {
+  color: var(--lgw-text-muted, #666);
+  font-weight: 400;
+  font-style: italic;
+}
+.lgw-cup-score {
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 22px;
+  text-align: right;
+  color: var(--lgw-navy, #1a2e5a);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* Hide draw number when a score is shown — they occupy the same right-side space */
+.lgw-cup-team:has(.lgw-cup-score) .lgw-cup-draw-num {
+  display: none;
+}
+
+/* ── Winner highlight ────────────────────────────────────────────────────────── */
+.lgw-cup-team.lgw-cup-winner {
+  background: #e6f4e6;
+}
+.lgw-cup-team.lgw-cup-winner .lgw-cup-team-name {
+  color: #1a5c1a;
+  font-weight: 700;
+}
+.lgw-cup-team.lgw-cup-winner .lgw-cup-score {
+  color: #1a5c1a;
+}
+.lgw-cup-team.lgw-cup-loser {
+  background: #fdf0f0;
+}
+.lgw-cup-team.lgw-cup-loser .lgw-cup-team-name {
+  color: #8b1a1a;
+}
+.lgw-cup-team.lgw-cup-loser .lgw-cup-score {
+  color: #8b1a1a;
+}
+
+/* ── Draw number badge ───────────────────────────────────────────────────────── */
+.lgw-cup-draw-num {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--lgw-text-muted, #999);
+  background: var(--lgw-bg-alt, #f0f2f8);
+  border-radius: 3px;
+  padding: 1px 4px;
+  letter-spacing: .03em;
+}
+
+/* ── Final match styling ──────────────────────────────────────────────────────── */
+.lgw-cup-round-final .lgw-cup-match {
+  border-color: var(--lgw-gold, #e8b400);
+  border-width: 2px;
+  box-shadow: 0 2px 12px rgba(232,180,0,.2);
+}
+.lgw-cup-round-final .lgw-cup-round-header {
+  background: #1a2e5a;
+  color: #e8b400;
+}
+
+/* ── Trophy / winner card ────────────────────────────────────────────────────── */
+.lgw-cup-champion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 120px;
+  padding: 0 8px;
+  text-align: center;
+}
+.lgw-cup-trophy {
+  font-size: 36px;
+  line-height: 1;
+}
+.lgw-cup-champion-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--lgw-gold, #e8b400);
+  text-align: center;
+  word-break: break-word;
+  max-width: 110px;
+}
+.lgw-cup-champion-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--lgw-text-muted, #999);
+}
+
+/* ── SVG connector lines ─────────────────────────────────────────────────────── */
+.lgw-cup-connectors {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.lgw-cup-connector-line {
+  fill: none;
+  stroke: var(--lgw-border, #d0d5e8);
+  stroke-width: 1.5;
+}
+
+/* ── Status bar ──────────────────────────────────────────────────────────────── */
+.lgw-cup-status {
+  padding: 10px 20px;
+  font-size: 12px;
+  color: var(--lgw-text-muted, #666);
+  border-top: 1px solid var(--lgw-border, #d0d5e8);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--lgw-bg, #fff);
+}
+.lgw-cup-status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--lgw-text-muted, #ccc);
+  flex-shrink: 0;
+}
+.lgw-cup-status-dot.live {
+  background: #2a7a2a;
+  animation: lgw-pulse 1.4s infinite;
+}
+@keyframes lgw-pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .3; }
+}
+
+/* ── Empty / loading state ───────────────────────────────────────────────────── */
+.lgw-cup-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--lgw-text-muted, #999);
+  font-size: 14px;
+}
+.lgw-cup-empty-icon { font-size: 36px; margin-bottom: 10px; }
+
+/* ── Draw login modal ────────────────────────────────────────────────────────── */
+.lgw-cup-draw-login-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,15,30,.75);
+  z-index: 99998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Saira', Arial, sans-serif;
+}
+.lgw-cup-draw-login-box {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 32px 24px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.25);
+}
+.lgw-cup-draw-login-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a2e5a;
+  margin-bottom: 8px;
+}
+.lgw-cup-draw-login-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #d0d5e8;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1a1a1a;
+  background: #fff;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+.lgw-cup-draw-login-input:focus {
+  outline: none;
+  border-color: #1a2e5a;
+}
+.lgw-cup-draw-login-actions {
+  display: flex;
+  gap: 8px;
+}
+.lgw-cup-draw-login-submit {
+  flex: 1;
+  padding: 9px;
+  background: #1a2e5a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.lgw-cup-draw-login-submit:disabled { opacity: .6; cursor: default; }
+.lgw-cup-draw-login-cancel {
+  padding: 9px 14px;
+  background: none;
+  border: 1px solid #d0d5e8;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  color: #666;
+}
+.lgw-cup-draw-login-msg {
+  font-size: 12px;
+  color: #c0202a;
+  margin-top: 8px;
+  min-height: 16px;
+}
+
+/* ── Draw animation ──────────────────────────────────────────────────────────── */
+.lgw-cup-draw-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,15,30,.85);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 24px;
+  font-family: 'Saira', Arial, sans-serif;
+}
+.lgw-cup-draw-pot {
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+.lgw-cup-draw-pot-icon {
+  font-size: 90px;
+  line-height: 1;
+  text-align: center;
+  display: block;
+  filter: drop-shadow(0 4px 20px rgba(232,180,0,.5));
+}
+.lgw-cup-draw-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: .04em;
+  text-align: center;
+}
+.lgw-cup-draw-subtitle {
+  font-size: 14px;
+  color: rgba(255,255,255,.6);
+  text-align: center;
+}
+.lgw-cup-draw-reveal {
+  background: var(--lgw-navy, #1a2e5a);
+  border: 2px solid var(--lgw-gold, #e8b400);
+  border-radius: 12px;
+  padding: 20px 36px;
+  text-align: center;
+  min-width: 260px;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.lgw-cup-draw-slot-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--lgw-gold, #e8b400);
+}
+.lgw-cup-draw-team {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity .35s, transform .35s;
+}
+.lgw-cup-draw-team.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.lgw-cup-draw-vs {
+  font-size: 12px;
+  color: rgba(255,255,255,.5);
+  margin: 4px 0;
+}
+.lgw-cup-draw-progress {
+  font-size: 12px;
+  color: rgba(255,255,255,.5);
+  text-align: center;
+}
+.lgw-cup-draw-eta {
+  font-size: 11px;
+  color: rgba(255,255,255,.35);
+  text-align: center;
+  margin-top: -8px;
+  min-height: 16px;
+}
+.lgw-cup-draw-skip-btn {
+  padding: 12px 32px;
+  background: var(--lgw-gold, #e8b400);
+  color: #1a2e5a;
+  border: none;
+  border-radius: 7px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.lgw-cup-draw-skip-btn:hover { background: #f0c800; transform: scale(1.03); }
+.lgw-cup-draw-skip-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.lgw-cup-draw-pairs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 500px;
+  justify-content: center;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.lgw-cup-draw-pair-chip {
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #fff;
+  text-align: center;
+  opacity: 0;
+  transform: scale(.8);
+  transition: opacity .3s, transform .3s;
+}
+.lgw-cup-draw-pair-chip.show {
+  opacity: 1;
+  transform: scale(1);
+}
+.lgw-cup-draw-pair-chip .vs-sep {
+  color: rgba(255,255,255,.4);
+  margin: 0 5px;
+  font-size: 10px;
+}
+.lgw-cup-draw-bye-chip {
+  border-color: rgba(232,180,0,.4);
+  background: rgba(232,180,0,.1);
+}
+
+.lgw-cup-draw-round-header {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--lgw-accent, #e8b400);
+  border-top: 1px solid rgba(255,255,255,.15);
+  margin: 8px 0 4px;
+  padding-top: 8px;
+}
+
+/* ── Admin: editable match indicator ────────────────────────────────────────── */
+.lgw-cup-editable {
+  cursor: pointer;
+}
+.lgw-cup-editable:hover {
+  box-shadow: 0 0 0 2px var(--lgw-navy, #1a2e5a);
+}
+
+/* ── Admin: score entry popover ──────────────────────────────────────────────── */
+.lgw-cup-score-popover {
+  position: absolute;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid var(--lgw-border, #d0d5e8);
+  border-radius: 9px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18);
+  padding: 14px 16px 12px;
+  min-width: 210px;
+  font-family: 'Saira', Arial, sans-serif;
+}
+.lgw-cup-score-pop-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--lgw-navy, #1a2e5a);
+  margin-bottom: 10px;
+}
+.lgw-cup-score-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.lgw-cup-score-pop-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #1a1a1a;
+}
+.lgw-cup-score-pop-input {
+  width: 52px;
+  padding: 5px 8px;
+  border: 1px solid var(--lgw-border, #d0d5e8);
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  text-align: center;
+  color: #1a1a1a;
+  background: #fff;
+}
+.lgw-cup-score-pop-input:focus {
+  outline: none;
+  border-color: var(--lgw-navy, #1a2e5a);
+  background: #fff;
+}
+.lgw-cup-score-pop-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.lgw-cup-score-pop-save {
+  flex: 1;
+  padding: 7px;
+  background: var(--lgw-navy, #1a2e5a);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+.lgw-cup-score-pop-save:disabled { opacity: .6; cursor: default; }
+.lgw-cup-score-pop-cancel {
+  padding: 7px 12px;
+  background: none;
+  border: 1px solid var(--lgw-border, #d0d5e8);
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--lgw-text-muted, #666);
+}
+.lgw-cup-score-pop-msg {
+  font-size: 11px;
+  color: #c0202a;
+  margin-top: 5px;
+  min-height: 14px;
+}
+
+/* ── Match scorecard viewer ──────────────────────────────────────────────────── */
+.lgw-cup-has-scorecard {
+  cursor: pointer;
+}
+.lgw-cup-has-scorecard:hover {
+  box-shadow: 0 0 0 2px var(--lgw-navy, #1a2e5a);
+}
+.lgw-cup-sc-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,15,30,.7);
+  z-index: 99990;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Saira', Arial, sans-serif;
+  padding: 16px;
+}
+.lgw-cup-sc-modal-box {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.25);
+  max-width: 700px;
+  width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.lgw-cup-sc-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: #c0202a;
+  color: #fff;
+  flex-shrink: 0;
+}
+.lgw-cup-sc-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+.lgw-cup-sc-modal-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: .8;
+}
+.lgw-cup-sc-modal-close:hover { opacity: 1; }
+.lgw-cup-sc-modal-body {
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+.lgw-cup-sc-loading, .lgw-cup-sc-none {
+  color: #666;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px 0;
+}
+.lgw-cup-sc-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 6px;
+}
+.lgw-cup-sc-conf {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #1a2e5a;
+}
+.lgw-cup-sc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.lgw-cup-sc-table th {
+  background: #1a2e5a;
+  color: #fff;
+  padding: 6px 8px;
+  font-weight: 700;
+  text-align: left;
+}
+.lgw-cup-sc-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e8eaf0;
+  vertical-align: middle;
+}
+.lgw-cup-sc-table tfoot td {
+  background: #f0f2f8;
+  font-weight: 700;
+  border-top: 2px solid #1a2e5a;
+  border-bottom: none;
+}
+.lgw-cup-sc-rink {
+  color: #999;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.lgw-cup-sc-players { color: #1a1a1a; }
+.lgw-cup-sc-score {
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  width: 40px;
+}
+.lgw-cup-sc-score.win { color: #1a5c1a; }
+.lgw-cup-sc-vs { text-align: center; color: #999; font-size: 11px; }
+.lgw-cup-sc-total-lbl { color: #666; font-size: 11px; }
+
+/* ── Print styles ─────────────────────────────────────────────────────────────── */
+@media print {
+  /* Hide everything, then selectively show only the cup bracket */
+  body * { visibility: hidden; }
+  .lgw-cup-wrap,
+  .lgw-cup-wrap * { visibility: visible; }
+  .lgw-cup-wrap {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    box-shadow: none !important;
+  }
+  .lgw-cup-header-actions { display: none !important; }
+  .lgw-cup-tabs { display: none !important; }
+  .lgw-cup-round { display: flex !important; }
+  .lgw-cup-round.mobile-active,
+  .lgw-cup-round:not(.mobile-active) { display: flex !important; }
+  .lgw-cup-bracket-outer { overflow: visible !important; padding: 8px !important; }
+  .lgw-cup-bracket { flex-wrap: wrap !important; min-width: 0 !important; }
+  .lgw-cup-match { break-inside: avoid; }
+  .lgw-cup-draw-overlay,
+  .lgw-cup-sc-modal,
+  .lgw-cup-score-popover { display: none !important; }
+}
+
+/* ── Mobile: tab-based round view ────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .lgw-cup-tabs { display: block; }
+  .lgw-cup-bracket-outer { padding: 12px; }
+  .lgw-cup-bracket {
+    flex-direction: column;
+    min-width: unset;
+  }
+  .lgw-cup-round {
+    display: none;
+    width: 100%;
+    min-width: unset;
+  }
+  .lgw-cup-round.mobile-active { display: flex; }
+  .lgw-cup-connector-col { display: none; }
+  .lgw-cup-round-header { text-align: left; padding: 0 4px 10px; }
+  .lgw-cup-match { margin: 6px 0; }
+  .lgw-cup-champion {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 10px 4px;
+    gap: 12px;
+  }
+}
+
+/* ── Dark mode ───────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-lgw-theme]):not([data-lgw-theme="light"]) .lgw-cup-draw-overlay {
+    background: rgba(5,8,20,.9);
+  }
+}

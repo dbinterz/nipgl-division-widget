@@ -1,0 +1,6 @@
+.lgw-admin-wrap .lgw-badge-table { margin-top: 10px; max-width: 900px; }
+.lgw-admin-wrap .lgw-badge-table th { font-weight: 600; }
+.lgw-admin-wrap .lgw-badge-table td { vertical-align: middle; padding: 8px; }
+.lgw-admin-wrap .lgw-badge-table .regular-text { width: 240px; margin-right: 6px; }
+.lgw-admin-wrap .lgw-badge-preview { border: 1px solid #ddd; border-radius: 4px; padding: 2px; background: #fafafa; }
+.lgw-admin-wrap pre { margin: 8px 0; }

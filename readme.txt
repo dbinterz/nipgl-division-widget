@@ -1,9 +1,9 @@
-=== NIPGL Division Widget ===
+=== League Game Widget ===
 Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 6.4.51
+Stable tag: 7.1.1
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -41,7 +41,7 @@ A full league management widget for bowls clubs and leagues. Displays live leagu
 = Shortcodes =
 
 League table and fixtures:
-`[nipgl_division csv="URL" title="Division 1"]`
+`[lgw_division csv="URL" title="Division 1"]`
 
 All parameters:
 * `csv` — required. Published Google Sheets CSV URL
@@ -53,23 +53,41 @@ All parameters:
 * `sponsor_name` — override primary sponsor alt text for this division
 
 Scorecard submission form:
-`[nipgl_submit]`
+`[lgw_submit]`
 
 Cup bracket:
-`[nipgl_cup id="senior-cup-2025" title="Senior Cup 2025"]`
+`[lgw_cup id="senior-cup-2025" title="Senior Cup 2025"]`
 
 Parameters:
-* `id` — required. The cup ID set in NIPGL → Cups admin page
+* `id` — required. The cup ID set in LGW → Cups admin page
 * `title` — optional override for the cup title displayed in the widget header
 
 
 
 1. Upload the plugin zip via Plugins > Add New > Upload Plugin
 2. Activate the plugin
-3. Go to Settings > NIPGL Widget to configure club badges and cache settings
+3. Go to Settings > LGW Widget to configure club badges and cache settings
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.1 =
+* Fixed: editing round dates after a draw now correctly updates the displayed dates on the live bracket page (bracket dates were previously frozen at draw time)
+* Fix applies to both cup and championship section/final stage brackets
+
+= 7.1.0 =
+* League Setup page restructured into clear sections: Data Source, Photo Analysis, Google Integration, Plugin
+* Data source selector added (Google Sheets active; Upload and WordPress DB placeholders for future)
+* Photo analysis provider selector added (Claude/Anthropic active; OpenAI and Gemini placeholders for future)
+* Google OAuth credentials consolidated into a single Google Integration section covering both Drive and Sheets
+* Plugin Updates and Clear Cache moved from Settings page to League Setup
+* Settings page now focused on appearance and branding only
+
+= 7.0.0 =
+* Rebranded: all internal references renamed from nipgl_ to lgw_ prefix
+* Plugin display name updated to League Game Widget
+* One-time DB migration on upgrade: all nipgl_* options and post meta automatically renamed to lgw_*
+* Shortcodes (lgw_division, lgw_cup, lgw_champ, lgw_submit) and plugin slug unchanged for drop-in compatibility
 
 = 6.4.51 =
 * Merged Quick Score Entry into the Scorecards admin page — removed separate Scores submenu
@@ -116,22 +134,22 @@ Parameters:
 
 = 6.4.24 =
 * Fixed score of 0 not displaying on match cards — escHtml used s||'' which treated 0 as falsy; changed to explicit null/undefined check
-* Fixed final stage bracket showing "Preliminary Round / Final" instead of "Semi-Final / Final" — final draw now passes nipgl_draw_default_rounds as stored_rounds so round names reflect the full bracket size
+* Fixed final stage bracket showing "Preliminary Round / Final" instead of "Semi-Final / Final" — final draw now passes lgw_draw_default_rounds as stored_rounds so round names reflect the full bracket size
 
 = 6.4.23 =
-* Fixed 500 error when entering the last result in a championship section — nipgl_champ_try_seed_final called undefined function nipgl_champ_make_skeleton_bracket; replaced with nipgl_champ_perform_final_draw which performs the full final stage draw automatically
+* Fixed 500 error when entering the last result in a championship section — lgw_champ_try_seed_final called undefined function lgw_champ_make_skeleton_bracket; replaced with lgw_champ_perform_final_draw which performs the full final stage draw automatically
 
 = 6.4.22 =
 * Fixed championship section tabs not switching — clicking a section tab now correctly shows that section's pane (the DOM switching was dropped when the inline script was removed in v6.4.20; initSectionTabs was only saving to sessionStorage, not updating active classes)
 
 = 6.4.21 =
-* Code quality: shared draw library extracted to nipgl-draw.php — bracket geometry, animation pairs, and skeleton-round assembly now live in one place (nipgl_draw_build_bracket, nipgl_draw_default_rounds, nipgl_draw_cup_club); cup and champ draw functions refactored to thin wrappers supplying their own club/home-limit callbacks
+* Code quality: shared draw library extracted to lgw-draw.php — bracket geometry, animation pairs, and skeleton-round assembly now live in one place (lgw_draw_build_bracket, lgw_draw_default_rounds, lgw_draw_cup_club); cup and champ draw functions refactored to thin wrappers supplying their own club/home-limit callbacks
 
 = 6.4.20 =
 * Robustness: bracket size check added at draw time — rejects writes exceeding 800KB to prevent option corruption
-* Code quality: inline admin JS moved to nipgl-admin.js (cup draw, cup sync, champ draw buttons)
-* Code quality: redundant inline tab-switching script removed from champ shortcode (handled by nipgl-champ.js)
-* Build: GitHub Actions version check extended to validate NIPGL_VERSION constant and readme.txt stable tag
+* Code quality: inline admin JS moved to lgw-admin.js (cup draw, cup sync, champ draw buttons)
+* Code quality: redundant inline tab-switching script removed from champ shortcode (handled by lgw-champ.js)
+* Build: GitHub Actions version check extended to validate LGW_VERSION constant and readme.txt stable tag
 
 = 6.3.0 =
 * Fixed empty print/PDF — replaced body > * visibility approach with visibility:hidden on all + visibility:visible on cup wrap, which works at any nesting depth; all rounds forced visible before print dialog opens
@@ -139,7 +157,7 @@ Parameters:
 = 6.2.9 =
 * Print Draw button appears in the bracket header after the draw is complete — prints a clean draw sheet hiding UI chrome
 * Clicking a completed match card shows the submitted scorecard in a modal (rink-by-rink with scores, players, winner highlighted, confirmation status)
-* Cup scorecards already feed into player appearance records automatically via the existing [nipgl_submit cup="..."] confirmation flow — no extra config needed
+* Cup scorecards already feed into player appearance records automatically via the existing [lgw_submit cup="..."] confirmation flow — no extra config needed
 
 = 6.2.8 =
 * Fixed draw stuck at "N-1 / N drawn" — round header entries in pairs_for_anim were included in the total count but never triggered an advance_cursor call; cursor never reached total so complete was never set; headers now advance the cursor on the draw master side (and on skip-to-end)
@@ -182,11 +200,11 @@ Parameters:
 * Fixed "unexpected response" on mobile passphrase entry — check_ajax_referer replaced with wp_verify_nonce in the draw auth and perform draw handlers so nonce failures return proper JSON errors instead of plain -1; stale nonces (from page caching) now show a "session expired, please refresh" message
 
 = 6.1.6 =
-* Fixed "unexpected token" error on mobile after passphrase entry — ajaxUrl now always sourced from nipglCupData; post() helper parses response as text first so non-JSON server responses produce a readable error
+* Fixed "unexpected token" error on mobile after passphrase entry — ajaxUrl now always sourced from lgwCupData; post() helper parses response as text first so non-JSON server responses produce a readable error
 
 = 6.1.5 =
 * Fixed draw animation showing next match teams before the reveal — text is now set inside the timeout, not before it
-* Draw animation speed configurable in NIPGL > Cups (0.5× fast to 2× slow); default 1× = 2.6s per match
+* Draw animation speed configurable in LGW > Cups (0.5× fast to 2× slow); default 1× = 2.6s per match
 * Server-side guard against double-draw from concurrent authenticated users
 
 = 6.1.4 =
@@ -200,13 +218,13 @@ Parameters:
 * Draw reset remains wp-admin only (Cups edit page)
 
 = 6.1.2 =
-* Draw passphrase setting moved from Settings > NIPGL Widget to the Cups admin page (NIPGL > Cups)
+* Draw passphrase setting moved from Settings > LGW Widget to the Cups admin page (LGW > Cups)
 
 = 6.1.1 =
 * Draw passphrase gate now applies to everyone on the public page including WP admins — the 🔑 Login to Draw button is shown to all visitors; the wp-admin inline draw button retains direct access for admins
 
 = 6.1.0 =
-* Draw passphrase gate — a global draw passphrase can be set in Settings > NIPGL Widget; when set, the public cup page shows a "Login to Draw" button instead of the draw button; the user enters the passphrase in a modal and on success the draw is unlocked for their browser session; WP admins bypass the gate entirely
+* Draw passphrase gate — a global draw passphrase can be set in Settings > LGW Widget; when set, the public cup page shows a "Login to Draw" button instead of the draw button; the user enters the passphrase in a modal and on success the draw is unlocked for their browser session; WP admins bypass the gate entirely
 
 = 6.0.10 =
 * Winner row: lighter green background (#e6f4e6) with dark green text (#1a5c1a)
@@ -216,7 +234,7 @@ Parameters:
 = 6.0.9 =
 * Fixed score input contrast — explicit white background and dark text on score popover inputs
 * Draw numbers hidden when a score is present to avoid overlap with the score value
-* Cup scorecard support — [nipgl_submit cup="cup-id"] pre-fills the division with the cup name and shows a match selector from the drawn bracket
+* Cup scorecard support — [lgw_submit cup="cup-id"] pre-fills the division with the cup name and shows a match selector from the drawn bracket
 
 = 6.0.8 =
 * Fixed undefined variable $drawn warning on line 104 — $drawn was used in the shortcode header before being defined
@@ -244,15 +262,15 @@ Parameters:
 * Draw now enforces club home-conflict rule — teams from the same club cannot both be the home team in Round 1 on the same date; home/away assignment is adjusted automatically after the random draw, with a same-club match (the one unavoidable exception) left in drawn order
 
 = 6.0.1 =
-* Cup bracket widget — new [nipgl_cup] shortcode renders a single-elimination knockout bracket with mobile-friendly round tabs and team badges
+* Cup bracket widget — new [lgw_cup] shortcode renders a single-elimination knockout bracket with mobile-friendly round tabs and team badges
 * Live animated draw — admin triggers the draw from wp-admin or the public page; visitors watching at the time see an animated team-reveal sequence in real time via polling
-* Cup management — NIPGL → Cups admin page to create and configure cups: name, entries, round names, dates, optional Google Sheets CSV URL for result sync
+* Cup management — LGW → Cups admin page to create and configure cups: name, entries, round names, dates, optional Google Sheets CSV URL for result sync
 * Results from Google Sheets — cup results can be synced from a published CSV matching the existing bracket spreadsheet format
 * Draw reset — admin can clear and redo the draw at any time before results are recorded
 * Dark mode and theme CSS variable support inherited from division widget
 
 = 5.18.3 =
-* Import Passphrases tool — upload the club passphrases xlsx directly from wp-admin (NIPGL → Import Passphrases) to set all club passphrases in one go. Tool removes itself from the menu when dismissed.
+* Import Passphrases tool — upload the club passphrases xlsx directly from wp-admin (LGW → Import Passphrases) to set all club passphrases in one go. Tool removes itself from the menu when dismissed.
 
 = 5.18.1 =
 * PIN authentication replaced with passphrase authentication — clubs now log in with a three-word passphrase instead of a numeric PIN
@@ -262,7 +280,7 @@ Parameters:
 * Login form updated with plain-text input, format hint, and autocapitalise disabled for mobile
 
 = 5.17.10 =
-* Fixed "headers already sent" error on theme reset — handler moved from nipgl_settings_page() to admin_init hook so redirect runs before any output
+* Fixed "headers already sent" error on theme reset — handler moved from lgw_settings_page() to admin_init hook so redirect runs before any output
 
 = 5.17.9 =
 * Fixed ReferenceError: widget is not defined in showTeamModal — widget element now passed as parameter through showTeamModal → openModal rather than assumed in scope
@@ -299,13 +317,13 @@ Parameters:
 * Team name validation now runs actively on submit — blocks club-name-only entries even without blurring fields
 * Date field normalises freeform dates (e.g. "10th May 2025") to dd/mm/yyyy on blur and after AI parse
 * AI photo parse prompt updated to request dd/mm/yyyy directly
-* Fixed missing nipgl_safe_filename() function causing Drive upload fatal after admin edit
+* Fixed missing lgw_safe_filename() function causing Drive upload fatal after admin edit
 * Drive folders now use full team name (e.g. "Dunbarton A") not stripped club prefix
 * Drive API errors now surfaced in Drive log rather than silently failing
 * Added OAuth 2.0 support for Drive uploads — works with personal Gmail accounts
 * Service account JWT retained as fallback for Sheets writeback
 * Admin edit handler wrapped in try/catch — Drive/Sheets errors no longer return HTTP 500
-* Fixed variable name collision in nipgl_ajax_get_division_teams
+* Fixed variable name collision in lgw_ajax_get_division_teams
 
 = 5.15.0 =
 * Scorecard submission now allowed even when division name is unrecognised — admin can correct via wp-admin
@@ -326,10 +344,10 @@ Parameters:
 * Increased API timeout to 40s
 
 = 5.1 =
-* Scorecard submission feature — new [nipgl_submit] shortcode
+* Scorecard submission feature — new [lgw_submit] shortcode
 * PIN-gated score entry form (no WordPress login needed)
 * AI photo reading via Anthropic API — upload a photo, form pre-fills automatically
-* Excel upload parsing — reads NIPGL scorecard template directly
+* Excel upload parsing — reads LGW scorecard template directly
 * Manual entry form with 4 rinks, player names, scores, totals
 * Scorecard storage as custom post type
 * Played fixture rows clickable — shows full rink-by-rink scorecard in modal
