@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
+  <polygon points="10,0 20,5 20,15 10,20 0,15 0,5" fill="#072a82"/>
+  <polygon points="10,2 18,6 18,14 10,18 2,14 2,6" fill="none" stroke="#138211" stroke-width="1.2"/>
+  <text x="10" y="11" font-family="system-ui,sans-serif" font-size="5.5" font-weight="800" fill="#fcfcfc" text-anchor="middle" dominant-baseline="central" letter-spacing="0.3">LGW</text>
+</svg>

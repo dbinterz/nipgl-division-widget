@@ -687,7 +687,7 @@ function lgw_champs_list_page() {
     }
     ?>
     <div class="wrap">
-    <h1>Championship Management</h1>
+    <?php lgw_page_header('Championship Management'); ?>
     <?php if (isset($_GET['saved'])): ?><div class="notice notice-success is-dismissible"><p>Championship saved.</p></div><?php endif; ?>
     <?php if (isset($_GET['deleted'])): ?><div class="notice notice-success is-dismissible"><p>Championship deleted.</p></div><?php endif; ?>
 
@@ -743,7 +743,7 @@ function lgw_champ_edit_page($champ_id) {
     $disciplines = array('singles' => 'Singles', 'pairs' => 'Pairs', 'triples' => 'Triples', 'fours' => 'Fours');
     ?>
     <div class="wrap">
-    <h1><?php echo $is_new ? 'New Championship' : 'Edit: ' . esc_html($champ['title'] ?? $champ_id); ?></h1>
+    <?php lgw_page_header($is_new ? 'New Championship' : 'Edit: ' . ($champ['title'] ?? $champ_id)); ?>
     <p><a href="<?php echo admin_url('admin.php?page=lgw-champs'); ?>">← Back to championships</a></p>
     <?php if (isset($_GET['saved'])): ?><div class="notice notice-success is-dismissible"><p>Saved.</p></div><?php endif; ?>
 

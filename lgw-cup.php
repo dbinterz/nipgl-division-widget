@@ -722,7 +722,7 @@ function lgw_cups_list_page() {
     }
     ?>
     <div class="wrap">
-    <h1>Cup Management</h1>
+    <?php lgw_page_header('Cup Management'); ?>
 
     <?php if (isset($_GET['saved'])): ?>
       <div class="notice notice-success is-dismissible"><p>Cup saved.</p></div>
@@ -856,7 +856,7 @@ function lgw_cup_edit_page($cup_id) {
     $drawn       = ($cup['draw_version'] ?? 0) > 0;
     ?>
     <div class="wrap">
-    <h1><?php echo $is_new ? 'New Cup' : 'Edit Cup: ' . esc_html($cup['title'] ?? $cup_id); ?></h1>
+    <?php lgw_page_header($is_new ? 'New Cup' : 'Edit Cup: ' . ($cup['title'] ?? $cup_id)); ?>
     <p><a href="<?php echo admin_url('admin.php?page=lgw-cups'); ?>">← Back to cups</a></p>
 
     <?php if (isset($_GET['saved'])): ?>

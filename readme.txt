@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.3
+Stable tag: 7.1.4
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,12 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.4 =
+* Added League Game Widget logo — hexagon badge in brand colours (#072a82 blue, #138211 green)
+* Logo registered as WordPress admin menu icon replacing dashicons-clipboard
+* Logo header added to all admin pages (Scorecards, Settings, League Setup, Cups, Championships, Import Passphrases)
+* lgw-logo.svg added to plugin files
 
 = 7.1.3 =
 * GitHub Personal Access Token and Plugin Updates diagnostic moved from League Setup to Settings page

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.3
+ * Version: 7.1.4
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,20 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.3');
+define('LGW_VERSION', '7.1.4');
+
+
+// ── Admin page logo header helper ────────────────────────────────────────────
+function lgw_page_header($title) {
+    $logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="36" height="36" style="display:block;flex-shrink:0"><polygon points="10,0 20,5 20,15 10,20 0,15 0,5" fill="#072a82"/><polygon points="10,2 18,6 18,14 10,18 2,14 2,6" fill="none" stroke="#138211" stroke-width="1.2"/><text x="10" y="11" font-family="system-ui,sans-serif" font-size="5.5" font-weight="800" fill="#fcfcfc" text-anchor="middle" dominant-baseline="central" letter-spacing="0.3">LGW</text></svg>';
+    echo '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'
+       . $logo
+       . '<div>'
+       . '<h1 style="margin:0;padding:0;line-height:1.2">' . esc_html($title) . '</h1>'
+       . '<p style="margin:0;padding:0;font-size:12px;color:#888">League Game Widget v' . LGW_VERSION . '</p>'
+       . '</div>'
+       . '</div>';
+}
 
 // ── One-time migration: nipgl_* options → lgw_* (originals kept for rollback) ─
 function lgw_migrate_options() {
@@ -407,7 +420,7 @@ function lgw_admin_menu() {
         'manage_options',
         'lgw-scorecards',
         'lgw_scorecards_admin_page',
-        'dashicons-clipboard',
+        'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjIwIj4KICA8cG9seWdvbiBwb2ludHM9IjEwLDAgMjAsNSAyMCwxNSAxMCwyMCAwLDE1IDAsNSIgZmlsbD0iIzA3MmE4MiIvPgogIDxwb2x5Z29uIHBvaW50cz0iMTAsMiAxOCw2IDE4LDE0IDEwLDE4IDIsMTQgMiw2IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMzgyMTEiIHN0cm9rZS13aWR0aD0iMS4yIi8+CiAgPHRleHQgeD0iMTAiIHk9IjExIiBmb250LWZhbWlseT0ic3lzdGVtLXVpLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iNS41IiBmb250LXdlaWdodD0iODAwIiBmaWxsPSIjZmNmY2ZjIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0iY2VudHJhbCIgbGV0dGVyLXNwYWNpbmc9IjAuMyI+TEdXPC90ZXh0Pgo8L3N2Zz4K',
         30
     );
     // Rename the auto-created first submenu item
@@ -483,7 +496,7 @@ function lgw_scorecards_admin_page() {
     $sc_nonce = wp_create_nonce('lgw_admin_nonce');
     ?>
     <div class="wrap">
-    <h1>📋 Scorecards</h1>
+    <?php lgw_page_header('Scorecards'); ?>
 
     <style>
     /* ── Collapsible sections ── */
@@ -1184,7 +1197,7 @@ function lgw_settings_page() {
     $saved  = isset($_GET['saved']);
     ?>
     <div class="wrap lgw-admin-wrap">
-        <h1>LGW Settings</h1>
+        <?php lgw_page_header('Settings'); ?>
         <?php if ($saved): ?>
             <div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>
         <?php endif; ?>
@@ -1422,7 +1435,7 @@ function lgw_league_setup_page() {
     $data_source = get_option('lgw_data_source', 'google_sheets');
     ?>
     <div class="wrap lgw-admin-wrap">
-        <h1>League Setup</h1>
+        <?php lgw_page_header('League Setup'); ?>
         <?php if ($saved): ?>
             <div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>
         <?php endif; ?>
@@ -1866,7 +1879,7 @@ function lgw_import_passphrases_page() {
     }
     ?>
     <div class="wrap">
-        <h1>🔑 Import Club Passphrases</h1>
+        <?php lgw_page_header('Import Club Passphrases'); ?>
         <p>Upload the <code>lgw-club-passphrases.xlsx</code> file with the Passphrase column filled in. The tool will upsert all clubs — updating existing ones and adding any new ones.</p>
 
         <?php if (!empty($errors)): ?>
