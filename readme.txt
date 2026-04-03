@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.8
+Stable tag: 7.1.9
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,13 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.9 =
+* Fixed: GitHub release transient was caching stale release data (e.g. v7.1.1) even after newer versions were installed, preventing the auto-updater from offering updates
+* Version-aware cache bust: if the cached release tag is <= the installed version, the transient is cleared automatically on next WP update check
+* Cache TTL reduced from 6 hours to 1 hour so stale data clears faster
+* upgrader_process_complete hook now also busts the transient after any plugin update
+* Force Update Check confirmation notice added to Settings page
 
 = 7.1.8 =
 * Fixed: Green Usage table date sort was sorting lexicographically (12/5 before 28/4); dates now parsed from DD/MM/YY or DD/MM/YYYY format before comparison

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.8
+ * Version: 7.1.9
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.8');
+define('LGW_VERSION', '7.1.9');
 
 
 // ── Admin page logo header helper ────────────────────────────────────────────
@@ -91,9 +91,25 @@ function lgw_inject_github_auth($args, $url) {
     return $args;
 }
 
+add_action('upgrader_process_complete', 'lgw_bust_update_transient', 10, 2);
+function lgw_bust_update_transient($upgrader, $options) {
+    if ($options['action'] === 'update' && $options['type'] === 'plugin') {
+        delete_transient('lgw_github_update');
+    }
+}
+
 add_filter('pre_set_site_transient_update_plugins', 'lgw_check_for_update');
 function lgw_check_for_update($transient) {
     if (empty($transient->checked)) return $transient;
+
+    // Bust cache if the stored release is older than or equal to installed version
+    $cached = get_transient('lgw_github_update');
+    if ($cached && !empty($cached->tag_name)) {
+        $cached_ver = ltrim($cached->tag_name, 'v');
+        if (version_compare($cached_ver, LGW_VERSION, '<=')) {
+            delete_transient('lgw_github_update');
+        }
+    }
 
     $plugin_slug = plugin_basename(__FILE__);
     $current_version = LGW_VERSION;
@@ -112,7 +128,7 @@ function lgw_check_for_update($transient) {
             return $transient;
         }
         $release = json_decode(wp_remote_retrieve_body($response));
-        set_transient($cache_key, $release, 6 * HOUR_IN_SECONDS);
+        set_transient($cache_key, $release, HOUR_IN_SECONDS);
     }
 
     if (empty($release->tag_name)) return $transient;
@@ -1200,6 +1216,9 @@ function lgw_settings_page() {
         <?php lgw_page_header('Settings'); ?>
         <?php if ($saved): ?>
             <div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>
+        <?php endif; ?>
+        <?php if (isset($_GET['updated'])): ?>
+            <div class="notice notice-success is-dismissible"><p>Update check complete — both GitHub and WordPress update caches cleared. Scroll down to Plugin Updates to see the latest release.</p></div>
         <?php endif; ?>
 
         <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
