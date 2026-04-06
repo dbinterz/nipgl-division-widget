@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.10
+ * Version: 7.1.13
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.10');
+define('LGW_VERSION', '7.1.13');
 
 
 // ── Admin page logo header helper ────────────────────────────────────────────
@@ -81,13 +81,17 @@ add_filter('http_request_args', 'lgw_inject_github_auth', 10, 2);
 function lgw_inject_github_auth($args, $url) {
     $token = get_option('lgw_github_token', '');
     if (!$token) return $args;
-    // Match both the GitHub API/release URL and CDN redirect domains used for asset downloads
-    $is_github = strpos($url, 'github.com/dbinterz/lgw-division-widget') !== false
-              || strpos($url, 'objects.githubusercontent.com') !== false
-              || strpos($url, 'codeload.github.com') !== false;
-    if (!$is_github) return $args;
+    // Only inject auth for GitHub API and release URLs — NOT CDN redirects
+    // Sending Authorization to S3/CDN causes 400/403/404
+    $is_github_api = strpos($url, 'api.github.com') !== false
+                  || strpos($url, 'github.com/dbinterz/lgw-division-widget') !== false;
+    if (!$is_github_api) return $args;
     if (!isset($args['headers'])) $args['headers'] = array();
     $args['headers']['Authorization'] = 'token ' . $token;
+    // For asset downloads, tell GitHub to return binary content
+    if (strpos($url, '/releases/assets/') !== false) {
+        $args['headers']['Accept'] = 'application/octet-stream';
+    }
     return $args;
 }
 
@@ -136,15 +140,28 @@ function lgw_check_for_update($transient) {
     $latest_version = ltrim($release->tag_name, 'v');
 
     if (version_compare($latest_version, $current_version, '>')) {
-        // Construct the deterministic release asset URL from the tag name
-        $tag     = $release->tag_name; // e.g. v6.4.34
-        $package = "https://github.com/{$github_user}/{$github_repo}/releases/download/{$tag}/{$github_repo}-{$tag}.zip";
+        // Use GitHub API asset URL which handles auth + redirect correctly for private repos
+        $tag        = $release->tag_name;
+        $asset_url  = '';
+        // Find the zip asset in the release assets list
+        if (!empty($release->assets)) {
+            foreach ($release->assets as $asset) {
+                if (isset($asset->name) && strpos($asset->name, '.zip') !== false) {
+                    $asset_url = $asset->url; // API URL: api.github.com/repos/.../releases/assets/{id}
+                    break;
+                }
+            }
+        }
+        // Fall back to direct URL if no asset found
+        if (!$asset_url) {
+            $asset_url = "https://github.com/{$github_user}/{$github_repo}/releases/download/{$tag}/{$github_repo}-{$tag}.zip";
+        }
         $transient->response[$plugin_slug] = (object) array(
             'slug'        => 'lgw-division-widget',
             'plugin'      => $plugin_slug,
             'new_version' => $latest_version,
             'url'         => "https://github.com/{$github_user}/{$github_repo}",
-            'package'     => $package,
+            'package'     => $asset_url,
         );
     }
 
@@ -168,8 +185,19 @@ function lgw_plugin_info($result, $action, $args) {
     $release = json_decode(wp_remote_retrieve_body($response));
     if (empty($release->tag_name)) return $result;
 
-    $tag     = $release->tag_name;
-    $package = "https://github.com/{$github_user}/{$github_repo}/releases/download/{$tag}/{$github_repo}-{$tag}.zip";
+    $tag       = $release->tag_name;
+    $asset_url = '';
+    if (!empty($release->assets)) {
+        foreach ($release->assets as $asset) {
+            if (isset($asset->name) && strpos($asset->name, '.zip') !== false) {
+                $asset_url = $asset->url; // API URL: api.github.com/.../releases/assets/{id}
+                break;
+            }
+        }
+    }
+    if (!$asset_url) {
+        $asset_url = "https://github.com/{$github_user}/{$github_repo}/releases/download/{$tag}/{$github_repo}-{$tag}.zip";
+    }
 
     return (object) array(
         'name'          => 'LGW Division Widget',
@@ -181,11 +209,79 @@ function lgw_plugin_info($result, $action, $args) {
             'description' => 'Scorecard records submitted via the LGW scorecard submission form.',
             'changelog'   => nl2br(isset($release->body) ? esc_html($release->body) : 'See GitHub releases for changelog.'),
         ),
-        'download_link' => $package,
+        'download_link' => $asset_url,
     );
 }
 
 // Check for updates now action
+add_action('admin_post_lgw_test_download', 'lgw_test_download');
+function lgw_test_download() {
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+    check_admin_referer('lgw_test_download_nonce');
+
+    $github_user = 'dbinterz';
+    $github_repo = 'lgw-division-widget';
+    $token       = get_option('lgw_github_token', '');
+
+    // Get latest tag
+    $api_response = wp_remote_get(
+        "https://api.github.com/repos/{$github_user}/{$github_repo}/releases/latest",
+        lgw_github_request_args()
+    );
+    $release = !is_wp_error($api_response) ? json_decode(wp_remote_retrieve_body($api_response)) : null;
+    $tag     = $release->tag_name ?? 'unknown';
+    $zip_url = "https://github.com/{$github_user}/{$github_repo}/releases/download/{$tag}/{$github_repo}-{$tag}.zip";
+
+    $lines = array();
+    $lines[] = '<strong>Token set:</strong> ' . ($token ? 'Yes (' . strlen($token) . ' chars)' : '<span style="color:red">NO</span>');
+    $lines[] = '<strong>Latest tag:</strong> ' . esc_html($tag);
+    $lines[] = '<strong>Direct URL:</strong> ' . esc_html($zip_url);
+
+    // Find asset URL from release
+    $asset_url = '';
+    $asset_id  = '';
+    if (!empty($release->assets)) {
+        foreach ($release->assets as $asset) {
+            if (isset($asset->name) && strpos($asset->name, '.zip') !== false) {
+                $asset_url = $asset->url;
+                $asset_id  = $asset->id ?? '';
+                break;
+            }
+        }
+    }
+    $lines[] = '<strong>API asset URL:</strong> ' . ($asset_url ? esc_html($asset_url) : '<span style="color:red">Not found in release assets</span>');
+
+    // Test 1: Direct URL with auth
+    $head = wp_remote_head($zip_url, array(
+        'headers'     => $token ? array('Authorization' => 'token ' . $token) : array(),
+        'redirection' => 0,
+        'sslverify'   => true,
+    ));
+    $head_code     = is_wp_error($head) ? 'ERROR: ' . $head->get_error_message() : wp_remote_retrieve_response_code($head);
+    $head_location = is_wp_error($head) ? '' : wp_remote_retrieve_header($head, 'location');
+    $lines[] = '<strong>Direct URL HEAD (with auth):</strong> HTTP ' . esc_html($head_code);
+    if ($head_location) $lines[] = '&nbsp;&nbsp;↳ Redirect to: ' . esc_html(substr($head_location, 0, 80)) . '…';
+
+    // Test 2: API asset URL with auth + Accept header
+    if ($asset_url) {
+        $head2 = wp_remote_head($asset_url, array(
+            'headers'     => array(
+                'Authorization' => 'token ' . $token,
+                'Accept'        => 'application/octet-stream',
+            ),
+            'redirection' => 5,
+            'sslverify'   => true,
+        ));
+        $head2_code = is_wp_error($head2) ? 'ERROR: ' . $head2->get_error_message() : wp_remote_retrieve_response_code($head2);
+        $lines[] = '<strong>API asset URL HEAD (with auth + Accept):</strong> HTTP ' . esc_html($head2_code);
+    }
+
+    $output = implode('<br>', $lines);
+    $encoded = base64_encode($output);
+    wp_redirect(admin_url('admin.php?page=lgw-settings&dl_test=' . urlencode($encoded)));
+    exit;
+}
+
 add_action('admin_post_lgw_check_updates', 'lgw_check_updates_now');
 function lgw_check_updates_now() {
     if (!current_user_can('manage_options')) wp_die('Unauthorized');
@@ -1427,7 +1523,18 @@ function lgw_settings_page() {
         <?php if ($wp_update_entry): ?>
         &nbsp;<a href="<?php echo admin_url('plugins.php'); ?>" class="button button-primary">Go to Plugins page to update</a>
         <?php endif; ?>
+        &nbsp;
+        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" style="display:inline">
+            <?php wp_nonce_field('lgw_test_download_nonce'); ?>
+            <input type="hidden" name="action" value="lgw_test_download">
+            <input type="submit" class="button button-secondary" value="Test Download URL">
+        </form>
         </p>
+        <?php if (isset($_GET['dl_test'])): ?>
+        <div style="margin-top:12px;padding:12px;background:#f6f7f7;border:1px solid #ddd;border-radius:4px;font-family:monospace;font-size:12px;max-width:700px">
+            <?php echo wp_kses_post(base64_decode(sanitize_text_field($_GET['dl_test']))); ?>
+        </div>
+        <?php endif; ?>
 
     </div>
     <script>
