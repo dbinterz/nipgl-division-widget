@@ -330,9 +330,8 @@ function lgw_csv_proxy() {
     $fetch_args = array('timeout' => 10, 'user-agent' => 'Mozilla/5.0');
     $response   = wp_remote_get($url, $fetch_args);
 
-    // Retry once on failure after a short delay
+    // Retry once on failure — no sleep() to avoid blocking the PHP worker
     if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
-        sleep(1);
         $response = wp_remote_get($url, $fetch_args);
     }
 

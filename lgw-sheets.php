@@ -114,13 +114,10 @@ function lgw_sheets_write_result($post_id) {
 // ── Date conversion: dd/mm/yyyy → "Sat 05-Apr-2025" ──────────────────────────
 function lgw_sheets_format_date($dmy) {
     if (!$dmy) return '';
-    $parts = explode('/', $dmy);
-    if (count($parts) !== 3) return $dmy;
-    [$d, $m, $y] = $parts;
-    $ts = mktime(0, 0, 0, (int)$m, (int)$d, (int)$y);
-    if (!$ts) return $dmy;
+    $dt = DateTime::createFromFormat('d/m/Y', $dmy);
+    if (!$dt) return $dmy;
     // Format: "Sat 05-Apr-2025"
-    return date('D d-M-Y', $ts);
+    return $dt->format('D d-M-Y');
 }
 
 // ── Resolve division name → sheet tab name ────────────────────────────────────

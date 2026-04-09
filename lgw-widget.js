@@ -54,15 +54,26 @@
   // Apply on load
   applyThemeToRoot(getDarkPref());
 
+  // ── HTML escaping — prevents XSS when inserting CSV/user data into innerHTML ──
+  function escHtml(str){
+    return String(str)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
   // ── Badge lookup: exact → case-insensitive exact → club prefix (longest wins) ─
   function badgeImg(team, cls){
     cls = cls||'lgw-badge';
+    var esc = escHtml(team);
     // 1. Exact match
-    if(badges[team]) return '<img class="'+cls+'" src="'+badges[team]+'" alt="'+team+'">';
+    if(badges[team]) return '<img class="'+cls+'" src="'+badges[team]+'" alt="'+esc+'">';
     // 2. Case-insensitive exact match
     var upper = team.toUpperCase();
     for(var key in badges){
-      if(key.toUpperCase() === upper) return '<img class="'+cls+'" src="'+badges[key]+'" alt="'+team+'">';
+      if(key.toUpperCase() === upper) return '<img class="'+cls+'" src="'+badges[key]+'" alt="'+esc+'">';
     }
     // 3. Club prefix match — case-insensitive, word-boundary aware, longest prefix wins
     var bestKey = '', bestImg = '';
@@ -75,7 +86,7 @@
         }
       }
     }
-    if(bestImg) return '<img class="'+cls+'" src="'+bestImg+'" alt="'+team+'">';
+    if(bestImg) return '<img class="'+cls+'" src="'+bestImg+'" alt="'+esc+'">';
     return '';
   }
 
@@ -250,9 +261,9 @@
         var scoreStr = m.played ? m.shotsHome+' – '+m.shotsAway : 'v';
         var ptsStr   = m.played ? '<span class="fx-pts">('+m.ptsHome+' – '+m.ptsAway+')</span>' : '';
         html+='<tr>'
-          +'<td class="fx-home">'+badgeImg(m.homeTeam)+m.homeTeam+'</td>'
+          +'<td class="fx-home">'+badgeImg(m.homeTeam)+escHtml(m.homeTeam)+'</td>'
           +'<td class="fx-score">'+scoreStr+' '+ptsStr+'</td>'
-          +'<td class="fx-away">'+badgeImg(m.awayTeam)+m.awayTeam+'</td>'
+          +'<td class="fx-away">'+badgeImg(m.awayTeam)+escHtml(m.awayTeam)+'</td>'
           +'</tr>';
       });
       html+='</tbody></table>';
@@ -369,7 +380,7 @@
     }
 
     var bdg=badgeImg(teamName,'lgw-modal-badge');
-    var titleHtml=bdg+'<h2>'+teamName+'</h2>';
+    var titleHtml=bdg+'<h2>'+escHtml(teamName)+'</h2>';
 
     var statsHtml='';
     if(teamData){
@@ -411,7 +422,7 @@
         fixtureRows+='<tr class="modal-fx-row'+(rowCls?' '+rowCls:'')+'"'+scAttrs+'>'
           +'<td>'+g.date+'</td>'
           +'<td style="text-align:center;font-weight:700;color:'+(isHome?'#1a2e5a':'#c0202a')+'">'+ha+'</td>'
-          +'<td>'+badgeImg(opponent)+opponent+'</td>'
+          +'<td>'+badgeImg(opponent)+escHtml(opponent)+'</td>'
           +'<td style="text-align:center">'+scoreStr+'</td>'
           +'<td style="text-align:center;font-weight:700">'+(m.played?myPts:'')+'</td>'
           +'<td style="text-align:center">'+(rowCls?'<span class="modal-result-lbl">'+resultLbl+'</span>':'')
@@ -512,9 +523,9 @@
       if(zone==='promote')  rc=clinched?' row-promoted':' row-promote-zone';
       if(zone==='relegate') rc=clinched?' row-relegated':' row-relegate-zone';
       rc+=bt;
-      h+='<tr class="'+(rc.trim())+' lgw-team-row" data-team="'+t.team+'">'
+      h+='<tr class="'+(rc.trim())+' lgw-team-row" data-team="'+escHtml(t.team)+'">'
         +'<td class="cp">'+t.pos+'</td>'
-        +'<td class="ct"><span class="lgw-team-link">'+badgeImg(t.team)+t.team+'</span></td>'
+        +'<td class="ct"><span class="lgw-team-link">'+badgeImg(t.team)+escHtml(t.team)+'</span></td>'
         +'<td>'+t.pl+'</td><td class="ck">'+t.pts+'</td><td>'+t.diff+'</td>'
         +'<td>'+t.w+'</td><td>'+t.l+'</td><td>'+t.d+'</td>'
         +'<td>'+t.f+'</td><td>'+t.a+'</td></tr>';
@@ -558,9 +569,9 @@
         var fxAttrs=m.played?' data-home="'+m.homeTeam.replace(/"/g,"&quot;")+'" data-away="'+m.awayTeam.replace(/"/g,"&quot;")+'" data-date="'+g.date.replace(/"/g,"&quot;")+'" title="Click to view full scorecard"':'';
         h+='<div class="fx-row'+pc+'"'+fxAttrs+'>'
           +'<div class="fx-ph">'+(m.played?m.ptsHome:'')+'</div>'
-          +'<div class="fx-h"><span class="lgw-team-link" data-team="'+m.homeTeam+'">'+badgeImg(m.homeTeam)+m.homeTeam+'</span></div>'
+          +'<div class="fx-h"><span class="lgw-team-link" data-team="'+escHtml(m.homeTeam)+'">'+badgeImg(m.homeTeam)+escHtml(m.homeTeam)+'</span></div>'
           +'<div class="fx-sc"><span class="fx-sb">'+m.shotsHome+'</span><span class="fx-sep">v</span><span class="fx-sb">'+m.shotsAway+'</span></div>'
-          +'<div class="fx-a"><span class="lgw-team-link" data-team="'+m.awayTeam+'">'+badgeImg(m.awayTeam)+m.awayTeam+'</span></div>'
+          +'<div class="fx-a"><span class="lgw-team-link" data-team="'+escHtml(m.awayTeam)+'">'+badgeImg(m.awayTeam)+escHtml(m.awayTeam)+'</span></div>'
           +'<div class="fx-pa">'+(m.played?m.ptsAway:'')+'</div>'
           +(m.timeNote?'<div class="fx-time">&#9200; '+m.timeNote+'</div>':'')
           +'</div>';
@@ -608,7 +619,7 @@
       if(!extraSponsors.length) return '';
       var sp=extraSponsors[Math.floor(Math.random()*extraSponsors.length)];
       if(!sp||!sp.image) return '';
-      var img='<img src="'+sp.image+'" alt="'+(sp.name||'Sponsor')+'" class="lgw-sponsor-img">';
+      var img='<img src="'+sp.image+'" alt="'+escHtml(sp.name||'Sponsor')+'" class="lgw-sponsor-img">';
       var inner=sp.url?'<a href="'+sp.url+'" target="_blank" rel="noopener">'+img+'</a>':img;
       return '<div class="lgw-sponsor-bar lgw-sponsor-secondary">'+inner+'</div>';
     }

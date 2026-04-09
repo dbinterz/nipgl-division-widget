@@ -125,6 +125,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             msg.textContent = 'Error: ' + (res.data || 'Unknown');
                         }
                     }
+                })
+                .catch(function(err){
+                    btn.disabled = false; btn.textContent = '🎲 Perform Draw Now';
+                    if (msg) { msg.style.display = ''; msg.style.color = '#c0202a'; msg.textContent = 'Network error. Please try again.'; }
                 });
         });
     }
@@ -149,6 +153,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         msg.textContent = res.success ? '✅ Results synced.' : '❌ ' + (res.data || 'Error');
                         msg.style.color = res.success ? '#0a3622' : '#c0202a';
                     }
+                })
+                .catch(function(err){
+                    btn.disabled = false; btn.textContent = '🔄 Sync Results Now';
+                    if (msg) { msg.style.display = ''; msg.style.color = '#c0202a'; msg.textContent = 'Network error. Please try again.'; }
                 });
         });
     }
@@ -179,6 +187,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             msg.textContent = 'Error: ' + (res.data || 'Unknown');
                         }
                     }
+                })
+                .catch(function(err){
+                    btn.disabled = false; btn.textContent = '🎲 Draw Now';
+                    if (msg) { msg.style.display = ''; msg.style.color = '#c0202a'; msg.textContent = 'Network error. Please try again.'; }
                 });
         });
     });
