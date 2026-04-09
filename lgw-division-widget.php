@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.14
+ * Version: 7.1.15
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.14');
+define('LGW_VERSION', '7.1.15');
 
 
 // ── Admin page logo header helper ────────────────────────────────────────────
@@ -54,15 +54,37 @@ function lgw_migrate_options() {
 }
 add_action('init', 'lgw_migrate_options');
 
-// Include scorecard feature
-require_once plugin_dir_path(__FILE__) . 'lgw-draw.php';
-require_once plugin_dir_path(__FILE__) . 'lgw-scorecards.php';
-require_once plugin_dir_path(__FILE__) . 'lgw-cup.php';
-require_once plugin_dir_path(__FILE__) . 'lgw-champ.php';
-require_once plugin_dir_path(__FILE__) . 'lgw-players.php';
-require_once plugin_dir_path(__FILE__) . 'lgw-sc-admin.php';
-require_once plugin_dir_path(__FILE__) . 'lgw-drive.php';
-require_once plugin_dir_path(__FILE__) . 'lgw-sheets.php';
+// Include plugin modules — guarded so a missing/broken file cannot bring the whole site down
+$lgw_modules = array(
+    'lgw-draw.php',
+    'lgw-scorecards.php',
+    'lgw-cup.php',
+    'lgw-champ.php',
+    'lgw-players.php',
+    'lgw-sc-admin.php',
+    'lgw-drive.php',
+    'lgw-sheets.php',
+);
+$lgw_missing = array();
+foreach ($lgw_modules as $lgw_module) {
+    $lgw_path = plugin_dir_path(__FILE__) . $lgw_module;
+    if (!file_exists($lgw_path)) {
+        $lgw_missing[] = $lgw_module;
+        continue;
+    }
+    try {
+        require_once $lgw_path;
+    } catch (\Throwable $e) {
+        $lgw_missing[] = $lgw_module . ' (' . $e->getMessage() . ')';
+    }
+}
+if (!empty($lgw_missing)) {
+    add_action('admin_notices', function() use ($lgw_missing) {
+        echo '<div class="notice notice-error"><p><strong>League Game Widget:</strong> The following modules could not be loaded — some features may be unavailable: <code>'
+            . esc_html(implode(', ', $lgw_missing))
+            . '</code></p></div>';
+    });
+}
 
 // ── Auto-updater (checks GitHub releases) ────────────────────────────────────
 // ── GitHub API helper — adds auth header if a PAT is configured ──────────────
