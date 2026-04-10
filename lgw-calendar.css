@@ -1,0 +1,367 @@
+/* LGW Calendar Widget CSS - v7.1.15 */
+
+/* ── Wrapper ─────────────────────────────────────────────────────────────── */
+.lgw-cal-wrap {
+  font-family: 'Saira', Arial, sans-serif;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  border: 1px solid var(--lgw-border);
+  border-radius: 0 0 6px 6px;
+
+  /* Force light theme — dark text on light background is easier to read
+     for a dense calendar grid. Overrides both OS dark mode and manual toggle. */
+  --lgw-bg:         #ffffff;
+  --lgw-bg-alt:     #f0f2f8;
+  --lgw-bg-hover:   #e6e9f5;
+  --lgw-border:     #d0d5e8;
+  --lgw-navy:       #1a2e5a;
+  --lgw-navy-mid:   #243d78;
+  --lgw-red:        #c0202a;
+  --lgw-gold:       #e8b400;
+  --lgw-text:       #1a1a1a;
+  --lgw-text-muted: #666666;
+  --lgw-pts:        #8f1520;
+  --lgw-tab-bg:     #dde1ef;
+  color: var(--lgw-text);
+  background: var(--lgw-bg);
+}
+.lgw-cal-wrap * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Title bar — match max-width so header and body align */
+.lgw-title {
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.lgw-title + .lgw-cal-wrap { border-radius: 0 0 6px 6px; margin-top: 0; }
+
+/* ── Status / loading / error ────────────────────────────────────────────── */
+.lgw-cal-status {
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--lgw-text-muted);
+  font-size: 14px;
+}
+.lgw-cal-error { color: var(--lgw-red); font-weight: 600; }
+
+/* ── Month navigation bar ────────────────────────────────────────────────── */
+.lgw-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--lgw-navy);
+  color: #fff;
+  padding: 8px 10px;
+}
+.lgw-cal-month-label {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  flex: 1;
+  text-align: center;
+}
+.lgw-cal-nav-btn {
+  background: rgba(255,255,255,.15);
+  border: none;
+  color: #fff;
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s;
+  flex-shrink: 0;
+}
+.lgw-cal-nav-btn:hover:not([disabled]) { background: rgba(255,255,255,.3); }
+.lgw-cal-nav-btn[disabled] { opacity: .35; cursor: default; }
+
+/* ── Month tab strip ─────────────────────────────────────────────────────── */
+.lgw-cal-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  background: var(--lgw-bg-alt);
+  border-bottom: 1px solid var(--lgw-border);
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* IE/Edge */
+}
+.lgw-cal-tabs::-webkit-scrollbar { display: none; }
+
+.lgw-cal-tab {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  border-radius: 20px;
+  border: 1px solid var(--lgw-border);
+  background: var(--lgw-bg);
+  color: var(--lgw-navy);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+  font-family: 'Saira', Arial, sans-serif;
+}
+.lgw-cal-tab:hover { background: var(--lgw-bg-hover); }
+.lgw-cal-tab.active {
+  background: var(--lgw-navy);
+  color: #fff;
+  border-color: var(--lgw-navy);
+}
+
+/* ── Event list ──────────────────────────────────────────────────────────── */
+.lgw-cal-list { padding: 0; }
+
+.lgw-cal-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--lgw-text-muted);
+  font-size: 14px;
+}
+
+/* ── Day group ───────────────────────────────────────────────────────────── */
+.lgw-cal-day-group {
+  border-bottom: 2px solid var(--lgw-border);
+}
+.lgw-cal-day-group:last-child { border-bottom: none; }
+
+.lgw-cal-day-hdr {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--lgw-red, #c0202a);
+  padding: 6px 14px;
+}
+
+/* ── Individual event ────────────────────────────────────────────────────── */
+.lgw-cal-event {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--lgw-border);
+  background: var(--lgw-bg);
+}
+.lgw-cal-event:last-child { border-bottom: none; }
+.lgw-cal-event:nth-child(even) { background: var(--lgw-bg-alt); }
+
+.lgw-cal-event-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--lgw-text);
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+
+.lgw-cal-event-meta {
+  font-size: 12px;
+  color: var(--lgw-text-muted);
+  margin-top: 3px;
+  line-height: 1.3;
+}
+
+.lgw-cal-venue { }  /* pin emoji already in JS */
+
+/* Competition/category badge */
+.lgw-cal-badge {
+  display: inline-block;
+  background: var(--lgw-navy);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: .03em;
+}
+
+/* ── Mobile tweaks ───────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .lgw-cal-month-label { font-size: 14px; }
+  .lgw-cal-nav-btn { width: 30px; height: 30px; font-size: 20px; }
+  .lgw-cal-event-title { font-size: 13px; }
+  .lgw-cal-day-hdr { font-size: 11px; padding: 5px 12px; }
+}
+
+/* ── Event colour coding (matches spreadsheet fills) ────────────────────── */
+/* Each colour class sets a left border + subtle tinted background.          */
+/* Text stays dark for readability on all backgrounds.                       */
+
+.lgw-cal-event { border-left: 4px solid transparent; }
+
+.lgw-cal-event.lgw-cal-c-red        { border-left-color: #CF2E2E; background: #fdf2f2; }
+.lgw-cal-event.lgw-cal-c-magenta    { border-left-color: #c000c0; background: #fdf0fd; }
+.lgw-cal-event.lgw-cal-c-green      { border-left-color: #38761D; background: #f2f8f0; }
+.lgw-cal-event.lgw-cal-c-yellow     { border-left-color: #b8a000; background: #fdfbea; }
+.lgw-cal-event.lgw-cal-c-lime       { border-left-color: #2a9e2a; background: #f0fdf0; }
+.lgw-cal-event.lgw-cal-c-blue       { border-left-color: #0000CC; background: #f0f0fd; }
+.lgw-cal-event.lgw-cal-c-purple     { border-left-color: #6d5ea8; background: #f5f3fc; }
+.lgw-cal-event.lgw-cal-c-amber      { border-left-color: #c08800; background: #fdf8e8; }
+.lgw-cal-event.lgw-cal-c-salmon     { border-left-color: #C05050; background: #fdf4f4; }
+.lgw-cal-event.lgw-cal-c-lightblue  { border-left-color: #4a7ab8; background: #f0f4fd; }
+.lgw-cal-event.lgw-cal-c-lightgreen { border-left-color: #5a9e40; background: #f2fbee; }
+.lgw-cal-event.lgw-cal-c-cyan       { border-left-color: #009898; background: #edfafa; }
+.lgw-cal-event.lgw-cal-c-darkblue   { border-left-color: #0B5394; background: #eef3fb; }
+.lgw-cal-event.lgw-cal-c-teal       { border-left-color: #2a8a92; background: #edf8f9; }
+.lgw-cal-event.lgw-cal-c-grey       { border-left-color: #666666; background: #f5f5f5; }
+.lgw-cal-event.lgw-cal-c-navy       { border-left-color: #073763; background: #eef1f8; }
+
+/* Dark mode overrides removed — calendar uses forced light theme */
+
+/* ── Legend ──────────────────────────────────────────────────────────────── */
+.lgw-cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--lgw-border);
+  background: var(--lgw-bg-alt);
+}
+.lgw-cal-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--lgw-text-muted);
+  white-space: nowrap;
+}
+.lgw-cal-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,.15);
+}
+/* Swatch background colours match the border colours */
+.lgw-cal-c-red        .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-red        { background: #CF2E2E; }
+.lgw-cal-c-magenta    .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-magenta    { background: #c000c0; }
+.lgw-cal-c-green      .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-green      { background: #38761D; }
+.lgw-cal-c-yellow     .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-yellow     { background: #b8a000; }
+.lgw-cal-c-lime       .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-lime       { background: #2a9e2a; }
+.lgw-cal-c-blue       .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-blue       { background: #0000CC; }
+.lgw-cal-c-purple     .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-purple     { background: #6d5ea8; }
+.lgw-cal-c-amber      .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-amber      { background: #c08800; }
+.lgw-cal-c-salmon     .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-salmon     { background: #C05050; }
+.lgw-cal-c-lightblue  .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-lightblue  { background: #4a7ab8; }
+.lgw-cal-c-lightgreen .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-lightgreen { background: #5a9e40; }
+.lgw-cal-c-cyan       .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-cyan       { background: #009898; }
+.lgw-cal-c-darkblue   .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-darkblue   { background: #0B5394; }
+.lgw-cal-c-teal       .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-teal       { background: #2a8a92; }
+.lgw-cal-c-grey       .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-grey       { background: #666666; }
+.lgw-cal-c-navy       .lgw-cal-legend-swatch, .lgw-cal-legend-swatch.lgw-cal-c-navy       { background: #073763; }
+
+/* ── View toggle ─────────────────────────────────────────────────────────── */
+.lgw-cal-view-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--lgw-bg-alt);
+  border-bottom: 1px solid var(--lgw-border);
+  justify-content: flex-end;
+}
+.lgw-cal-view-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--lgw-border);
+  background: var(--lgw-bg);
+  color: var(--lgw-text-muted);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.lgw-cal-view-btn svg { width: 14px; height: 14px; }
+.lgw-cal-view-btn:hover { background: var(--lgw-bg-hover); color: var(--lgw-navy); }
+.lgw-cal-view-btn.active { background: var(--lgw-navy); color: #fff; border-color: var(--lgw-navy); }
+
+/* ── Table (grid) view ───────────────────────────────────────────────────── */
+.lgw-cal-table-wrap { overflow-x: auto; }
+
+.lgw-cal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Saira', Arial, sans-serif;
+  table-layout: fixed;
+}
+
+.lgw-cal-table thead th {
+  background: var(--lgw-navy);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 6px 4px;
+  border: 1px solid var(--lgw-navy-mid);
+}
+
+.lgw-cal-td {
+  vertical-align: top;
+  border: 1px solid var(--lgw-border);
+  padding: 4px;
+  min-height: 60px;
+  background: var(--lgw-bg);
+}
+.lgw-cal-td-empty {
+  border: 1px solid var(--lgw-border);
+  background: var(--lgw-bg-alt);
+}
+.lgw-cal-today { background: var(--lgw-bg-hover) !important; }
+.lgw-cal-today .lgw-cal-td-num { color: var(--lgw-red); font-weight: 800; }
+
+.lgw-cal-td-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--lgw-text-muted);
+  margin-bottom: 3px;
+  line-height: 1;
+}
+
+.lgw-cal-td-event {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 2px 4px;
+  border-radius: 3px;
+  margin-bottom: 2px;
+  color: var(--lgw-text);
+  background: var(--lgw-bg-alt);
+  border-left: 3px solid transparent;
+  word-break: break-word;
+}
+
+/* Colour classes on table event cells — border + tint */
+.lgw-cal-td-event.lgw-cal-c-red        { border-left-color: #CF2E2E; background: #fdf2f2; }
+.lgw-cal-td-event.lgw-cal-c-magenta    { border-left-color: #c000c0; background: #fdf0fd; }
+.lgw-cal-td-event.lgw-cal-c-green      { border-left-color: #38761D; background: #f2f8f0; }
+.lgw-cal-td-event.lgw-cal-c-yellow     { border-left-color: #b8a000; background: #fdfbea; }
+.lgw-cal-td-event.lgw-cal-c-lime       { border-left-color: #2a9e2a; background: #f0fdf0; }
+.lgw-cal-td-event.lgw-cal-c-blue       { border-left-color: #0000CC; background: #f0f0fd; }
+.lgw-cal-td-event.lgw-cal-c-purple     { border-left-color: #6d5ea8; background: #f5f3fc; }
+.lgw-cal-td-event.lgw-cal-c-amber      { border-left-color: #c08800; background: #fdf8e8; }
+.lgw-cal-td-event.lgw-cal-c-salmon     { border-left-color: #C05050; background: #fdf4f4; }
+.lgw-cal-td-event.lgw-cal-c-lightblue  { border-left-color: #4a7ab8; background: #f0f4fd; }
+.lgw-cal-td-event.lgw-cal-c-lightgreen { border-left-color: #5a9e40; background: #f2fbee; }
+.lgw-cal-td-event.lgw-cal-c-cyan       { border-left-color: #009898; background: #edfafa; }
+.lgw-cal-td-event.lgw-cal-c-darkblue   { border-left-color: #0B5394; background: #eef3fb; }
+.lgw-cal-td-event.lgw-cal-c-teal       { border-left-color: #2a8a92; background: #edf8f9; }
+.lgw-cal-td-event.lgw-cal-c-grey       { border-left-color: #666666; background: #f5f5f5; }
+.lgw-cal-td-event.lgw-cal-c-navy       { border-left-color: #073763; background: #eef1f8; }
+
+/* Dark mode table overrides removed — calendar uses forced light theme */
+
+/* ── Mobile: table view shrinks text further ─────────────────────────────── */
+@media (max-width: 600px) {
+  .lgw-cal-table thead th { font-size: 10px; padding: 5px 2px; }
+  .lgw-cal-td { padding: 2px; }
+  .lgw-cal-td-num { font-size: 11px; }
+  .lgw-cal-td-event { font-size: 10px; padding: 1px 3px; }
+}

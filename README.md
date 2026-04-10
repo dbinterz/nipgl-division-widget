@@ -108,61 +108,93 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### v7.1.16
+- New: `[lgw_calendar]` shortcode — mobile-friendly calendar widget powered by Google Sheets CSV
+- Month tab strip (scrollable on mobile) + prev/next chevron navigation; opens on current month automatically
+- Events grouped by day; each event shows title, venue (📍) and competition/category badge
+- Reuses existing `lgw_csv` AJAX proxy — no new server-side endpoint needed
+- New files: `lgw-calendar.php`, `lgw-calendar.js`, `lgw-calendar.css`
+
+### v7.1.15
+- Defensive module loading: all `require_once` calls replaced with guarded loader — `file_exists()` check + `try/catch` around each module
+- Missing or broken modules surface an admin notice with the filename rather than fatalling the site
+- GitHub Actions workflow fixed: `lgw-draw.php` and `lgw-logo.svg` were missing from the `cp` list (root cause of prior site outage)
+- Zip manifest verification step added to workflow — Action fails before publishing if any expected file is absent
+
+### v7.1.14
+- Dummy test release — no code changes; used to confirm auto-updater end-to-end ✅
+
 ### v7.1.13
-- Fixed: `plugins_api` (info popup / View Details) was still using direct download URL for `download_link`, causing 404 on update; now uses GitHub API asset URL to match the update checker
+- Fixed: View Details popup (`plugins_api`) was using direct GitHub download URL for `download_link`, causing 404 on update
+- Fixed to use GitHub API asset URL, matching the update checker
 
 ### v7.1.12
-- Auto-update download fix: switched to GitHub API asset URL (`api.github.com/.../releases/assets/{id}`) to avoid auth header being stripped on CDN redirect
-- Auth injection filter restricted to `api.github.com` and `github.com` only — not CDN redirect targets
+- Fixed: auto-update download was failing because Authorization header was being sent to GitHub CDN redirect targets (S3), causing 404
+- Switched package URL from direct download URL to GitHub API asset URL which handles auth + redirect correctly for private repos
+- Auth filter now only injects Authorization header for `api.github.com` and `github.com` URLs, not CDN redirects
 - `Accept: application/octet-stream` header added for asset downloads
-- Test Download URL diagnostic added to Settings page
+- Test Download URL diagnostic updated to test both direct URL and API asset URL
 
 ### v7.1.11
-- Test Download URL button in Settings — shows HTTP status at each redirect step for diagnosing update failures
+- Added Test Download URL diagnostic button to Settings page — tests HEAD request to release zip with and without auth, follows redirect and reports HTTP status at each step
 
 ### v7.1.10
-- Cup bracket TBD slots now show abbreviated predecessor team names (e.g. "Sal A/B'mena B") instead of plain TBD
+- Cup bracket: TBD slots in future rounds now show abbreviated predecessor team names (e.g. "Sal A/B'mena B") instead of plain TBD
+- Abbreviation format: first 3 chars of main name + suffix, e.g. "Ballymena B" → "B'mena B", "Salisbury A" → "Sal A"
+- Placeholder text styled in muted italic to distinguish from confirmed teams
 
 ### v7.1.9
-- Auto-updater stale transient fix: version-aware cache bust; TTL reduced from 6h to 1h; cache busted on plugin update
+- Fixed: GitHub release transient was caching stale release data even after newer versions were installed, preventing the auto-updater from offering updates
+- Version-aware cache bust: if cached release tag is ≤ installed version, transient is cleared automatically on next WP update check
+- Cache TTL reduced from 6 hours to 1 hour
+- `upgrader_process_complete` hook now also busts the transient after any plugin update
+- Force Update Check confirmation notice added to Settings page
 
 ### v7.1.8
-- Green usage table date sort fix: DD/MM/YY dates now parsed as timestamps before sorting
+- Fixed: Green Usage table date sort was sorting lexicographically; dates now parsed from DD/MM/YY or DD/MM/YYYY format before comparison
 
 ### v7.1.7
-- Green usage table: sortable by Date or Club; rowspan merging; championships merged per date/club cell
+- Green Usage table: sort by Date or Club via link controls
+- Rows merged by primary sort key using rowspan
+- Championship titles merged into a single cell per club/date group when multiple competitions share the same date
+- Full indicator shown in red when a club's green is at capacity
 
 ### v7.1.6
-- Green bookings backfill: `lgw_rebuild_green_bookings()` scans all drawn brackets; auto-backfill on init if never built; manual Recalculate button on Championship Management page
+- Green bookings backfill: `lgw_rebuild_green_bookings()` scans all existing drawn brackets and rebuilds the register from scratch
+- Auto-backfill runs on init if `lgw_green_bookings` has never been built — upgrades from pre-7.1.5 handled silently
+- Manual "Recalculate from All Drawn Brackets" button added to Championship Management page
 
 ### v7.1.5
-- Cross-championship green capacity management: `lgw_green_bookings` tracks home slots per date/club across all championships; drag-to-reorder priority list; hard-block lower-priority championships from exceeding remaining slots; Green Usage table and capacity warning before drawing
+- Cross-championship green capacity: home green slots shared and allocated by priority across championships sharing the same round date
+- Drag-to-reorder draw priority list on Championship Management page
+- Hard-block enforcement: lower-priority championships cannot exceed remaining green slots already booked by higher-priority championships
+- Green usage table on Championship Management page
+- Reset draw now releases green bookings for that championship
 
 ### v7.1.4
-- Added hexagon badge logo (`lgw-logo.svg`) in brand colours (#072a82 / #138211 / #fcfcfc); registered as WP admin menu icon; `lgw_page_header()` helper added to all admin pages
+- Added League Game Widget logo — hexagon badge in brand colours (#072a82 blue, #138211 green)
+- Logo registered as WordPress admin menu icon
+- Logo header added to all admin pages
+- `lgw-logo.svg` added to plugin files
 
 ### v7.1.3
-- GitHub PAT and Plugin Updates diagnostic moved from League Setup to Settings page
+- GitHub Personal Access Token and Plugin Updates diagnostic moved from League Setup to Settings page
+- League Setup form no longer redirects to Settings on save
 
 ### v7.1.2
-- Auto-update CDN auth fix: auth header filter extended to match GitHub CDN domains so it isn't stripped on redirect
+- Fixed: CDN redirect auth header stripping causing 404 on auto-update downloads
 
 ### v7.1.1
-- Cup/championship bracket date sync fix: editing round dates after draw now updates the live bracket immediately
-
-### v7.1.0
-- Settings page restructured: League Setup reorganised into Data Source, Photo Analysis, Google Integration, and Plugin sections
-- Data source selector (Google Sheets active; Upload/WordPress DB as placeholders)
-- Photo analysis provider selector (Claude active; OpenAI/Gemini as placeholders)
-- GitHub PAT and Plugin Updates moved to Settings page
+- Settings page restructured into four sections: Data Source, Photo Analysis, Google Integration, Plugin
 
 ### v7.0.0
-- **Full rebrand** — all internal identifiers renamed from `nipgl_` to `lgw_` prefix across all files
-- Plugin display name changed to **League Game Widget**; main file/folder renamed to `lgw-division-widget`
-- All shortcodes renamed: `[lgw_division]`, `[lgw_cup]`, `[lgw_champ]`, `[lgw_submit]`
-- One-time DB migration copies `nipgl_*` options/post meta to `lgw_*`; originals retained for rollback
+- Plugin rebranded from `nipgl-division-widget` to `lgw-division-widget`
+- All option/meta prefixes migrated from `nipgl_` to `lgw_`
+- All shortcodes renamed to `[lgw_*]`
+- One-time DB migration with rollback capability
+- Plugin display name changed to "League Game Widget"
 
-### v6.4.51
+### 6.4.51
 - Simplified auto-updater to construct release asset URL directly from tag name
 
 ### 6.4.34

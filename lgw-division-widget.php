@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.15
+ * Version: 7.1.16
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.15');
+define('LGW_VERSION', '7.1.16');
 
 
 // ── Admin page logo header helper ────────────────────────────────────────────
@@ -54,37 +54,35 @@ function lgw_migrate_options() {
 }
 add_action('init', 'lgw_migrate_options');
 
-// Include plugin modules — guarded so a missing/broken file cannot bring the whole site down
-$lgw_modules = array(
-    'lgw-draw.php',
-    'lgw-scorecards.php',
-    'lgw-cup.php',
-    'lgw-champ.php',
-    'lgw-players.php',
-    'lgw-sc-admin.php',
-    'lgw-drive.php',
-    'lgw-sheets.php',
-);
-$lgw_missing = array();
-foreach ($lgw_modules as $lgw_module) {
-    $lgw_path = plugin_dir_path(__FILE__) . $lgw_module;
-    if (!file_exists($lgw_path)) {
-        $lgw_missing[] = $lgw_module;
-        continue;
+// ── Guarded module loader — site stays up if a module is missing/broken ──────
+function lgw_load_module($file) {
+    $path = plugin_dir_path(__FILE__) . $file;
+    if (!file_exists($path)) {
+        add_action('admin_notices', function() use ($file) {
+            echo '<div class="notice notice-error"><p><strong>League Game Widget:</strong> Module <code>'
+               . esc_html($file) . '</code> is missing. Please reinstall the plugin.</p></div>';
+        });
+        return;
     }
     try {
-        require_once $lgw_path;
+        require_once $path;
     } catch (\Throwable $e) {
-        $lgw_missing[] = $lgw_module . ' (' . $e->getMessage() . ')';
+        add_action('admin_notices', function() use ($file, $e) {
+            echo '<div class="notice notice-error"><p><strong>League Game Widget:</strong> Failed to load <code>'
+               . esc_html($file) . '</code>: ' . esc_html($e->getMessage()) . '</p></div>';
+        });
     }
 }
-if (!empty($lgw_missing)) {
-    add_action('admin_notices', function() use ($lgw_missing) {
-        echo '<div class="notice notice-error"><p><strong>League Game Widget:</strong> The following modules could not be loaded — some features may be unavailable: <code>'
-            . esc_html(implode(', ', $lgw_missing))
-            . '</code></p></div>';
-    });
-}
+
+lgw_load_module('lgw-calendar.php');
+lgw_load_module('lgw-draw.php');
+lgw_load_module('lgw-scorecards.php');
+lgw_load_module('lgw-cup.php');
+lgw_load_module('lgw-champ.php');
+lgw_load_module('lgw-players.php');
+lgw_load_module('lgw-sc-admin.php');
+lgw_load_module('lgw-drive.php');
+lgw_load_module('lgw-sheets.php');
 
 // ── Auto-updater (checks GitHub releases) ────────────────────────────────────
 // ── GitHub API helper — adds auth header if a PAT is configured ──────────────
@@ -212,11 +210,12 @@ function lgw_plugin_info($result, $action, $args) {
     if (!empty($release->assets)) {
         foreach ($release->assets as $asset) {
             if (isset($asset->name) && strpos($asset->name, '.zip') !== false) {
-                $asset_url = $asset->url; // API URL: api.github.com/.../releases/assets/{id}
+                $asset_url = $asset->url; // API URL: api.github.com/repos/.../releases/assets/{id}
                 break;
             }
         }
     }
+    // Fall back to direct URL if no asset found
     if (!$asset_url) {
         $asset_url = "https://github.com/{$github_user}/{$github_repo}/releases/download/{$tag}/{$github_repo}-{$tag}.zip";
     }
@@ -403,13 +402,22 @@ function lgw_csv_proxy() {
 }
 
 // ── 2. Enqueue CSS + JS ───────────────────────────────────────────────────────
+// Always register shared handles (priority 5) so any widget shortcode — calendar,
+// cup, champ — can declare lgw-widget / lgw-saira as a dependency without needing
+// [lgw_division] on the same page.
+add_action('wp_enqueue_scripts', 'lgw_register_shared_assets', 5);
+function lgw_register_shared_assets() {
+    wp_register_style('lgw-saira',  'https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap', array(), null);
+    wp_register_style('lgw-widget', plugin_dir_url(__FILE__) . 'lgw-widget.css', array('lgw-saira'), LGW_VERSION);
+}
+
 add_action('wp_enqueue_scripts', 'lgw_enqueue');
 function lgw_enqueue() {
     global $post;
     if (!is_a($post, 'WP_Post') || !has_shortcode($post->post_content, 'lgw_division')) return;
 
-    wp_enqueue_style('lgw-saira', 'https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap', array(), null);
-    wp_enqueue_style('lgw-widget', plugin_dir_url(__FILE__) . 'lgw-widget.css', array('lgw-saira'), LGW_VERSION);
+    wp_enqueue_style('lgw-saira');
+    wp_enqueue_style('lgw-widget');
 
     // Register scorecard script here so lgw-widget can declare it as a dependency.
     // This guarantees lgw-scorecard.js loads before lgw-widget.js on any page
