@@ -1,4 +1,4 @@
-/* LGW Scorecard JS - v5.17.14 */
+/* LGW Scorecard JS - v5.17.15 */
 (function(){
   'use strict';
 
@@ -757,6 +757,19 @@
 
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
+  // Format a dd/mm/yyyy string as "Sat 9-May-2026" (fixture date display format)
+  var _dayNames   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var _monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function formatDateLong(ddmmyyyy) {
+    if (!ddmmyyyy) return null;
+    var p = ddmmyyyy.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!p) return null;
+    var d = parseInt(p[1],10), mo = parseInt(p[2],10)-1, y = parseInt(p[3],10);
+    var dt = new Date(y, mo, d);
+    if (isNaN(dt.getTime())) return null;
+    return _dayNames[dt.getDay()] + ' ' + d + '-' + _monthNames[mo] + '-' + y;
+  }
+
   // Normalise date field on blur
   var dateInput = qs('#sc-date');
   if (dateInput) {
@@ -1437,7 +1450,9 @@
         });
       });
       // Date played: use if filled, else fall back to fixture date
-      var datePlayed = ((el.querySelector('#lgw-modal-date-played')||{}).value||'').trim();
+      // Normalise back to dd/mm/yyyy for consistent storage (field may show long format)
+      var datePlayedRaw = ((el.querySelector('#lgw-modal-date-played')||{}).value||'').trim();
+      var datePlayed = datePlayedRaw ? (normaliseDate(datePlayedRaw) || datePlayedRaw) : '';
       var fixtureDate = (el.querySelector('#lgw-modal-date')||{}).value || date;
       return {
         home_team:    (el.querySelector('#lgw-modal-home')||{}).value || home,
@@ -1587,9 +1602,13 @@
       if(datePlayedEl){
         datePlayedEl.addEventListener('blur', function(){
           var normalised = normaliseDate(datePlayedEl.value);
-          if(normalised && normalised !== datePlayedEl.value){
-            datePlayedEl.value = normalised;
-            datePlayedEl.style.borderColor = '#b2dfb2';
+          if(normalised){
+            var long = formatDateLong(normalised);
+            var display = long || normalised;
+            if(display !== datePlayedEl.value){
+              datePlayedEl.value = display;
+              datePlayedEl.style.borderColor = '#b2dfb2';
+            }
           }
         });
       }
