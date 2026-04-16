@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.43
+Stable tag: 7.1.46
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,23 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.46 =
+* Fix: points auto-suggest now updates correctly after every rink score change, not just the first — programmatic input events no longer incorrectly cleared the auto-fill flag
+* Fix: same isTrusted guard applied to totals auto-sum to prevent similar edge cases
+* Scorecard modal: Date Played field now normalises to dd/mm/yyyy format on blur, matching the fixture date display
+
+= 7.1.45 =
+* Scorecard submission: rink scores now auto-suggest home/away points as you type, based on configurable points-per-rink-win and overall-match-win values
+* Points calculation: 1 per rink win, 3 overall win by default (0.5/1.5 for draws); totals to 7 for 4-rink, 6 for 3-rink matches
+* League Setup: new Points System section to configure points-per-rink and overall-match points (live preview of max points per match)
+* If user manually overrides auto-suggested points, a mismatch warning is shown but submission is not blocked
+* Points auto-suggest also fires after photo AI parse and Excel import
+
+= 7.1.44 =
+* Scorecard submission: rink scores now auto-sum into the Home/Away Total Shots fields as you type
+* Totals are updated silently when auto-filled; if the user manually enters a total that doesn't match the rink sum, an inline warning is shown (submission is not blocked)
+* Auto-sum also fires after photo AI parse and Excel import so totals are always in sync with populated rink scores
 
 = 7.1.43 =
 * Fix: Cup scorecard modal now shows the round date (e.g. 01/05/2025) as the fixture date — passed from the bracket's dates[] array at card-click time

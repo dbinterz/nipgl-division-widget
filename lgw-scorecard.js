@@ -1,4 +1,4 @@
-/* LGW Scorecard JS - v5.17.11 */
+/* LGW Scorecard JS - v5.17.14 */
 (function(){
   'use strict';
 
@@ -307,6 +307,9 @@
       if(hs) hs.value = rk.home_score !== null ? rk.home_score : '';
       if(as) as.value = rk.away_score !== null ? rk.away_score : '';
     });
+    // Trigger rink-totals auto-sum after populate
+    var firstRinkScore = qs('.lgw-score-home');
+    if(firstRinkScore) firstRinkScore.dispatchEvent(new Event('input', {bubbles: true}));
     var form = qs('#lgw-scorecard-form');
     if(form) form.scrollIntoView({behavior:'smooth', block:'start'});
     // Validate team names against division if we have one
@@ -851,6 +854,212 @@
     });
   }
 
+  // ── Rink score → totals auto-sum ──────────────────────────────────────────────
+  // scopeEl: parent element to search within (document for standalone, modal el for modal)
+  // homeId / awayId: IDs of the total fields
+  // Returns a teardown function (not currently used but available)
+  function bindRinkTotals(scopeEl, homeId, awayId) {
+    var scope = scopeEl || document;
+
+    function sumSide(side) {
+      var total = 0;
+      var anyFilled = false;
+      scope.querySelectorAll('.lgw-score-' + side).forEach(function(inp){
+        var v = inp.value === '' ? null : parseInt(inp.value, 10);
+        if(v !== null && !isNaN(v)){ total += v; anyFilled = true; }
+      });
+      return anyFilled ? total : null;
+    }
+
+    function updateTotals() {
+      ['home', 'away'].forEach(function(side){
+        var id      = side === 'home' ? homeId : awayId;
+        var warnId  = id + '-sum-warn';
+        var totalEl = scope.querySelector ? scope.querySelector('#' + id) : qs('#' + id);
+        if(!totalEl) return;
+
+        var sum = sumSide(side);
+        if(sum === null) return; // no rink scores yet — leave total field alone
+
+        var existing = totalEl.value === '' ? null : parseInt(totalEl.value, 10);
+
+        // Remove previous warning
+        var oldWarn = (scope.querySelector ? scope.querySelector('#' + warnId) : qs('#' + warnId));
+        if(oldWarn) oldWarn.parentNode.removeChild(oldWarn);
+
+        if(existing === null || totalEl.getAttribute('data-auto-sum') === '1'){
+          // Field empty or was previously auto-set — silently update
+          totalEl.value = sum;
+          totalEl.setAttribute('data-auto-sum', '1');
+        } else if(existing !== sum){
+          // Manual value that doesn't match — warn but don't overwrite
+          var warn = document.createElement('p');
+          warn.id = warnId;
+          warn.className = 'lgw-notice lgw-notice-warn';
+          warn.style.cssText = 'margin:2px 0 6px;font-size:11px';
+          warn.textContent = '⚠ Rink scores add up to ' + sum + ', but total shows ' + existing + '. Update the total if this is incorrect.';
+          totalEl.parentNode.insertBefore(warn, totalEl.nextSibling);
+        }
+        // If existing === sum, nothing to do
+      });
+    }
+
+    // Clear auto-sum flag if user manually edits a total
+    function clearAutoFlag(id) {
+      var totalEl = scope.querySelector ? scope.querySelector('#' + id) : qs('#' + id);
+      if(totalEl) totalEl.removeAttribute('data-auto-sum');
+      var warnId  = id + '-sum-warn';
+      var oldWarn = scope.querySelector ? scope.querySelector('#' + warnId) : qs('#' + warnId);
+      if(oldWarn) oldWarn.parentNode.removeChild(oldWarn);
+      // Re-run update so warning reappears if needed
+      updateTotals();
+    }
+
+    // Bind to rink score inputs (use delegation on scope for modal-generated inputs)
+    scope.addEventListener('input', function(e){
+      if(e.target && (e.target.classList.contains('lgw-score-home') || e.target.classList.contains('lgw-score-away'))){
+        updateTotals();
+      }
+    });
+
+    // Bind manual-edit detection on total fields (only genuine user input)
+    var hEl = scope.querySelector ? scope.querySelector('#' + homeId) : qs('#' + homeId);
+    var aEl = scope.querySelector ? scope.querySelector('#' + awayId) : qs('#' + awayId);
+    if(hEl) hEl.addEventListener('input', function(e){ if(e.isTrusted) clearAutoFlag(homeId); });
+    if(aEl) aEl.addEventListener('input', function(e){ if(e.isTrusted) clearAutoFlag(awayId); });
+  }
+
+  // Wire up rink totals for the standalone submission page form
+  var scForm = qs('#lgw-scorecard-form');
+  if(scForm) bindRinkTotals(document, 'sc-home-total', 'sc-away-total');
+
+  // ── Rink scores → points auto-suggest ────────────────────────────────────────
+  // pointsPerRink: points for a rink win (half for draw)
+  // pointsOverall: bonus points for winning overall shots (half for draw)
+  var lgwPtsPerRink  = (typeof lgwSubmit !== 'undefined' && lgwSubmit.pointsPerRink  != null) ? parseFloat(lgwSubmit.pointsPerRink)  : 1;
+  var lgwPtsOverall  = (typeof lgwSubmit !== 'undefined' && lgwSubmit.pointsOverall  != null) ? parseFloat(lgwSubmit.pointsOverall)  : 3;
+
+  function calcPoints(rinks, homeTotal, awayTotal) {
+    // Returns {home, away} points or null if not enough data
+    var homeRinkPts = 0, awayRinkPts = 0;
+    var hasAllScores = rinks.length > 0;
+    rinks.forEach(function(rk){
+      if(rk.home_score === null || rk.away_score === null){ hasAllScores = false; return; }
+      if(rk.home_score > rk.away_score)       { homeRinkPts += lgwPtsPerRink; }
+      else if(rk.away_score > rk.home_score)  { awayRinkPts += lgwPtsPerRink; }
+      else                                     { homeRinkPts += lgwPtsPerRink / 2; awayRinkPts += lgwPtsPerRink / 2; }
+    });
+    if(!hasAllScores) return null;
+
+    // Overall bonus
+    var hTotal = homeTotal, aTotal = awayTotal;
+    if(hTotal === null || aTotal === null){
+      // Sum rinks as fallback for overall calculation
+      hTotal = 0; aTotal = 0;
+      rinks.forEach(function(rk){ hTotal += rk.home_score || 0; aTotal += rk.away_score || 0; });
+    }
+    if(hTotal > aTotal)       { homeRinkPts += lgwPtsOverall; }
+    else if(aTotal > hTotal)  { awayRinkPts += lgwPtsOverall; }
+    else                      { homeRinkPts += lgwPtsOverall / 2; awayRinkPts += lgwPtsOverall / 2; }
+
+    // Round to 1 decimal to avoid float noise
+    return {
+      home: Math.round(homeRinkPts * 10) / 10,
+      away: Math.round(awayRinkPts * 10) / 10,
+    };
+  }
+
+  // bindPointsSuggest: wires rink score inputs in scopeEl to auto-suggest points
+  // homePtsId / awayPtsId: IDs of the points inputs
+  // getRinks: function() → [{home_score, away_score}]
+  // getTotal: function(side) → number|null
+  function bindPointsSuggest(scopeEl, homePtsId, awayPtsId, getRinks, getTotal) {
+    var scope = scopeEl || document;
+
+    function updatePoints() {
+      var rinks = getRinks();
+      var homeTotal = getTotal ? getTotal('home') : null;
+      var awayTotal = getTotal ? getTotal('away') : null;
+      var pts = calcPoints(rinks, homeTotal, awayTotal);
+      if(pts === null) return;
+
+      ['home', 'away'].forEach(function(side){
+        var id      = side === 'home' ? homePtsId : awayPtsId;
+        var warnId  = id + '-pts-warn';
+        var ptsEl   = scope.querySelector ? scope.querySelector('#' + id) : qs('#' + id);
+        if(!ptsEl) return;
+
+        var suggested = side === 'home' ? pts.home : pts.away;
+        var existing  = ptsEl.value === '' ? null : parseFloat(ptsEl.value);
+
+        var oldWarn = scope.querySelector ? scope.querySelector('#' + warnId) : qs('#' + warnId);
+        if(oldWarn) oldWarn.parentNode.removeChild(oldWarn);
+
+        if(existing === null || ptsEl.getAttribute('data-auto-pts') === '1'){
+          ptsEl.value = suggested;
+          ptsEl.setAttribute('data-auto-pts', '1');
+          // Also trigger the existing points hint update
+          ptsEl.dispatchEvent(new Event('input'));
+        } else if(existing !== suggested){
+          var warn = document.createElement('p');
+          warn.id = warnId;
+          warn.className = 'lgw-notice lgw-notice-warn';
+          warn.style.cssText = 'margin:2px 0 6px;font-size:11px';
+          warn.textContent = '⚠ Calculated points: ' + suggested + ', but you\'ve entered ' + existing + '. Update if incorrect.';
+          ptsEl.parentNode.insertBefore(warn, ptsEl.nextSibling);
+        }
+      });
+    }
+
+    // Clear auto-pts flag on manual edit (only for genuine user input, not programmatic)
+    [homePtsId, awayPtsId].forEach(function(id){
+      var el = scope.querySelector ? scope.querySelector('#' + id) : qs('#' + id);
+      if(el) el.addEventListener('input', function(e){
+        if(!e.isTrusted) return; // programmatic dispatch — ignore
+        el.removeAttribute('data-auto-pts');
+        var warnId = id + '-pts-warn';
+        var oldWarn = scope.querySelector ? scope.querySelector('#' + warnId) : qs('#' + warnId);
+        if(oldWarn) oldWarn.parentNode.removeChild(oldWarn);
+        updatePoints();
+      });
+    });
+
+    // Trigger on any rink score change (delegation)
+    scope.addEventListener('input', function(e){
+      if(e.target && (e.target.classList.contains('lgw-score-home') || e.target.classList.contains('lgw-score-away')
+                   || e.target.id === (scopeEl ? 'lgw-modal-home-total' : 'sc-home-total')
+                   || e.target.id === (scopeEl ? 'lgw-modal-away-total' : 'sc-away-total'))){
+        updatePoints();
+      }
+    });
+
+    return updatePoints; // return so callers can trigger manually
+  }
+
+  // Wire points suggest for standalone form
+  if(scForm) {
+    bindPointsSuggest(
+      document,
+      'sc-home-points', 'sc-away-points',
+      function(){
+        var rinks = [];
+        for(var r=1;r<=4;r++){
+          var hs = qs('.lgw-score-home[data-rink="'+r+'"]');
+          var as = qs('.lgw-score-away[data-rink="'+r+'"]');
+          var hv = hs && hs.value !== '' ? parseInt(hs.value,10) : null;
+          var av = as && as.value !== '' ? parseInt(as.value,10) : null;
+          if(hv !== null || av !== null) rinks.push({home_score:hv, away_score:av});
+        }
+        return rinks;
+      },
+      function(side){
+        var id = side==='home' ? 'sc-home-total' : 'sc-away-total';
+        var el = qs('#'+id);
+        return el && el.value !== '' ? parseFloat(el.value) : null;
+      }
+    );
+  }
+
   // ── Scorecard display (called from lgw-widget.js for played fixtures) ─────────
   window.lgwFetchScorecard = function(home, away, date, containerEl) {
     containerEl.innerHTML = '<p class="lgw-sc-loading">Loading scorecard…</p>';
@@ -1204,6 +1413,10 @@
       // Trigger points hint update
       var hpEl2 = el.querySelector('#lgw-modal-home-pts');
       if (hpEl2) hpEl2.dispatchEvent(new Event('input'));
+      // Trigger rink-totals auto-sum after populate
+      var firstScore = el.querySelector('.lgw-score-home');
+      if (firstScore) firstScore.dispatchEvent(new Event('input', {bubbles: true}));
+      // Points auto-suggest will fire via the same event delegation above
     }
     function collectModalForm(el) {
       var rinks = [];
@@ -1368,6 +1581,18 @@
           if(panel){ panel.style.display=''; panel.classList.add('active'); }
         });
       });
+
+      // ── Date Played — normalise on blur ───────────────────────────────────
+      var datePlayedEl = el.querySelector('#lgw-modal-date-played');
+      if(datePlayedEl){
+        datePlayedEl.addEventListener('blur', function(){
+          var normalised = normaliseDate(datePlayedEl.value);
+          if(normalised && normalised !== datePlayedEl.value){
+            datePlayedEl.value = normalised;
+            datePlayedEl.style.borderColor = '#b2dfb2';
+          }
+        });
+      }
 
       // ── Photo upload ───────────────────────────────────────────────────────
       var photoInput2   = el.querySelector('#lgw-modal-photo-input');
@@ -1542,6 +1767,33 @@
         });
         setTimeout(function(){ autoResize(ta); }, 0);
       });
+
+      // ── Rink score → totals auto-sum (modal) ─────────────────────────────
+      bindRinkTotals(el, 'lgw-modal-home-total', 'lgw-modal-away-total');
+
+      // ── Rink scores → points auto-suggest (modal) ─────────────────────────
+      if(maxPts > 0) {
+        bindPointsSuggest(
+          el,
+          'lgw-modal-home-pts', 'lgw-modal-away-pts',
+          function(){
+            var rinks = [];
+            el.querySelectorAll('.lgw-modal-rink-row').forEach(function(row){
+              var hs = row.querySelector('.lgw-score-home');
+              var as = row.querySelector('.lgw-score-away');
+              var hv = hs && hs.value !== '' ? parseInt(hs.value,10) : null;
+              var av = as && as.value !== '' ? parseInt(as.value,10) : null;
+              if(hv !== null || av !== null) rinks.push({home_score:hv, away_score:av});
+            });
+            return rinks;
+          },
+          function(side){
+            var id = side==='home' ? 'lgw-modal-home-total' : 'lgw-modal-away-total';
+            var te = el.querySelector('#'+id);
+            return te && te.value !== '' ? parseFloat(te.value) : null;
+          }
+        );
+      }
 
       // ── Save — shows preview popup first ─────────────────────────────────
       var saveBtn   = el.querySelector('#lgw-modal-sc-save');

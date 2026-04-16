@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.43
+ * Version: 7.1.46
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.43');
+define('LGW_VERSION', '7.1.46');
 
 
 // ── Admin page logo header helper ────────────────────────────────────────────
@@ -428,10 +428,12 @@ function lgw_enqueue() {
     // Always localise — safe to call multiple times, ensures lgwSubmit is defined
     // even if script was registered (not enqueued) by a prior call.
     wp_localize_script('lgw-scorecard', 'lgwSubmit', array(
-        'ajaxUrl'  => admin_url('admin-ajax.php'),
-        'nonce'    => wp_create_nonce('lgw_submit_nonce'),
-        'authClub' => lgw_get_auth_club(),
-        'clubs'    => array_map(function($c){ return $c['name']; }, get_option('lgw_clubs', array())),
+        'ajaxUrl'        => admin_url('admin-ajax.php'),
+        'nonce'          => wp_create_nonce('lgw_submit_nonce'),
+        'authClub'       => lgw_get_auth_club(),
+        'clubs'          => array_map(function($c){ return $c['name']; }, get_option('lgw_clubs', array())),
+        'pointsPerRink'  => floatval(get_option('lgw_points_per_rink',  1)),
+        'pointsOverall'  => floatval(get_option('lgw_points_overall',   3)),
     ));
 
     wp_enqueue_script('lgw-widget', plugin_dir_url(__FILE__) . 'lgw-widget.js', array('lgw-scorecard'), LGW_VERSION, true);
@@ -1281,6 +1283,12 @@ function lgw_save_league_setup() {
     lgw_drive_save_settings();
     lgw_sheets_save_settings();
 
+    // Points system
+    $pts_rink    = isset($_POST['lgw_points_per_rink']) ? max(0, floatval($_POST['lgw_points_per_rink'])) : 1;
+    $pts_overall = isset($_POST['lgw_points_overall'])  ? max(0, floatval($_POST['lgw_points_overall']))  : 3;
+    update_option('lgw_points_per_rink',  $pts_rink);
+    update_option('lgw_points_overall',   $pts_overall);
+
     wp_redirect(admin_url('admin.php?page=lgw-league-setup&saved=1'));
     exit;
 }
@@ -1740,7 +1748,65 @@ function lgw_league_setup_page() {
             </div>
 
             <hr>
-            <!-- ── 2. Photo Analysis ── -->
+            <!-- ── 2. Points System ── -->
+            <h2>🏅 Points System</h2>
+            <p>Configure how points are calculated per match. Points are auto-suggested in the scorecard form based on rink scores.</p>
+            <?php
+                $pts_rink    = floatval(get_option('lgw_points_per_rink', 1));
+                $pts_overall = floatval(get_option('lgw_points_overall',  3));
+                $pts_total_4 = ($pts_rink * 4) + $pts_overall;
+                $pts_total_3 = ($pts_rink * 3) + $pts_overall;
+            ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="lgw_points_per_rink">Points per rink win</label></th>
+                    <td>
+                        <input type="number" id="lgw_points_per_rink" name="lgw_points_per_rink"
+                            value="<?php echo esc_attr($pts_rink); ?>" min="0" step="0.5" style="width:80px">
+                        <p class="description">Points awarded for winning a single rink. Half this value is awarded for a rink draw. Default: 1.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="lgw_points_overall">Points for overall match win</label></th>
+                    <td>
+                        <input type="number" id="lgw_points_overall" name="lgw_points_overall"
+                            value="<?php echo esc_attr($pts_overall); ?>" min="0" step="0.5" style="width:80px">
+                        <p class="description">Bonus points for winning the overall match (more total shots). Half this value for an overall draw. Default: 3.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Maximum points per match</th>
+                    <td>
+                        <p id="lgw-pts-preview" style="margin:0;font-size:13px;color:#444">
+                            <?php printf(
+                                '<strong>%s</strong> for a 4-rink match &nbsp;|&nbsp; <strong>%s</strong> for a 3-rink match',
+                                esc_html(rtrim(rtrim(number_format($pts_total_4, 1), '0'), '.')),
+                                esc_html(rtrim(rtrim(number_format($pts_total_3, 1), '0'), '.'))
+                            ); ?>
+                        </p>
+                        <p class="description">Auto-calculated from the values above. This is what the scorecard form will use as its <code>max_points</code> target.</p>
+                    </td>
+                </tr>
+            </table>
+            <script>
+            (function(){
+                function updatePtsPreview(){
+                    var r = parseFloat(document.getElementById('lgw_points_per_rink').value) || 0;
+                    var o = parseFloat(document.getElementById('lgw_points_overall').value) || 0;
+                    var t4 = (r*4)+o, t3 = (r*3)+o;
+                    function fmt(n){ return parseFloat(n.toFixed(1)).toString(); }
+                    var el = document.getElementById('lgw-pts-preview');
+                    if(el) el.innerHTML = '<strong>'+fmt(t4)+'</strong> for a 4-rink match &nbsp;|&nbsp; <strong>'+fmt(t3)+'</strong> for a 3-rink match';
+                }
+                ['lgw_points_per_rink','lgw_points_overall'].forEach(function(id){
+                    var el = document.getElementById(id);
+                    if(el) el.addEventListener('input', updatePtsPreview);
+                });
+            })();
+            </script>
+
+            <hr>
+            <!-- ── 3. Photo Analysis ── -->
             <h2>📷 Photo Analysis</h2>
             <p>AI-powered reading of scorecard photos uploaded by clubs. Parses the scorecard image and pre-fills scores automatically.</p>
             <table class="form-table">
