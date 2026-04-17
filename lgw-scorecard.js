@@ -1227,14 +1227,14 @@
     var canAct = (ctx.canSubmit || ctx.isAdmin)
       && status === 'pending'
       && currentClubCtx
-      && !lgwClubMatchesTeamStr(currentClubCtx, submittedBy);
+      && !lgwClubMatchesTeam(currentClubCtx, submittedBy);
 
     // Also check the current club is actually involved in this match
     var homeTeam = sc.home_team || '';
     var awayTeam = sc.away_team || '';
     var clubInvolved = homeTeam && awayTeam && currentClubCtx && (
-      lgwClubMatchesTeamStr(currentClubCtx, homeTeam) ||
-      lgwClubMatchesTeamStr(currentClubCtx, awayTeam)
+      lgwClubMatchesTeam(currentClubCtx, homeTeam) ||
+      lgwClubMatchesTeam(currentClubCtx, awayTeam)
     );
 
     if (canAct && clubInvolved) {
@@ -1389,7 +1389,7 @@
       // Venue — overwrite if AI/Excel gave us one; keep home/away/date/division locked
       if (sc.venue)      { var v = el.querySelector('#lgw-modal-venue');       if(v) v.value = sc.venue; }
       if (sc.date) {
-        var normDate = (typeof normaliseDate === 'function') ? normaliseDate(sc.date) : sc.date;
+        var normDate = normaliseDate(sc.date);
         // If date differs from fixture date, put it in the "date played" override field
         if (normDate && normDate !== date) {
           var dp = el.querySelector('#lgw-modal-date-played');
@@ -2074,16 +2074,6 @@
     }
   };
 
-  // ── Helper: club prefix match against a team or submitted_by string ──────────
-  function lgwClubMatchesTeamStr(club, team) {
-    if(!club || !team) return false;
-    var c = club.toUpperCase().trim();
-    var t = team.toUpperCase().trim();
-    if(c === t) return true;
-    if(t.indexOf(c) === 0 && (t.length === c.length || t[c.length] === ' ')) return true;
-    return false;
-  }
-
   // ── Bind confirm/amend actions on an inline review block ─────────────────────
   // sc: the full scorecard data object
   // containerEl: the outer container (to replace with submit form on amend)
@@ -2171,6 +2161,7 @@
   // ── Helper: does a club name prefix-match a team name? ────────────────────────
   // Mirrors lgw_club_matches_team in PHP
   function lgwClubMatchesTeam(club, team) {
+    if (!club || !team) return false;
     var c = club.toUpperCase().trim();
     var t = team.toUpperCase().trim();
     if(c === t) return true;

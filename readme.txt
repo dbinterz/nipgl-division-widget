@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.47
+Stable tag: 7.1.50
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -71,9 +71,14 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.47 =
+= 7.1.50 =
+* Cup and championship management list pages: "📥 Export" button now appears inline next to Edit/Delete for each drawn competition — no longer requires navigating into the edit page to download the draw spreadsheet
+* Export Draw section removed from cup and championship edit pages
+
+= 7.1.48 =
 * Scorecard modal: Date Played field now displays in the same format as the fixture date (e.g. "Sat 9-May-2026") after blur, making it easier to confirm the correct day was entered
 * Date is normalised back to dd/mm/yyyy internally on save so storage format remains consistent
+* Code cleanup: consolidated duplicate lgwClubMatchesTeamStr into lgwClubMatchesTeam (null guard added); removed redundant typeof normaliseDate defensive check in populateModalForm
 
 = 7.1.46 =
 * Fix: points auto-suggest now updates correctly after every rink score change, not just the first — programmatic input events no longer incorrectly cleared the auto-fill flag
