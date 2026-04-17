@@ -37,6 +37,7 @@ jobs:
           cp lgw-scorecards.php      lgw-division-widget/
           cp lgw-scorecard.js        lgw-division-widget/
           cp lgw-scorecard.css       lgw-division-widget/
+          cp lgw-export.php          lgw-division-widget/
           cp lgw-cup.php             lgw-division-widget/
           cp lgw-cup.js              lgw-division-widget/
           cp lgw-cup.css             lgw-division-widget/
