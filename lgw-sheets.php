@@ -59,13 +59,19 @@ function lgw_sheets_write_result($post_id) {
     }
 
     // Get sheet config
-    $opts        = get_option('lgw_drive', []);
-    $spreadsheet = trim($opts['sheets_id'] ?? '1oCJhKdT5zFxPhqFfNzQOesWNbb4bS9JkKdOXJ_FpdRc');
+    $opts  = get_option('lgw_drive', []);
 
-    // Resolve sheet tab for this division
-    $tab = lgw_sheets_tab_for_division($division, $opts);
-    if (!$tab) {
+    // Resolve full division entry — tab name + per-division spreadsheet ID
+    $entry = lgw_sheets_entry_for_division($division, $opts);
+    if (!$entry || empty($entry['tab'])) {
         lgw_sheets_log($post_id, 'warn', "No sheet tab mapped for division: $division — skipping writeback");
+        return false;
+    }
+    $tab         = trim($entry['tab']);
+    // Per-division spreadsheet_id takes priority; fall back to legacy global
+    $spreadsheet = trim($entry['spreadsheet_id'] ?? $opts['sheets_id'] ?? '');
+    if (!$spreadsheet) {
+        lgw_sheets_log($post_id, 'error', "No spreadsheet ID configured for division: $division");
         return false;
     }
 
@@ -77,7 +83,9 @@ function lgw_sheets_write_result($post_id) {
     }
 
     // Convert scorecard date dd/mm/yyyy → sheet format "Sat 05-Apr-2025"
-    $sheet_date = lgw_sheets_format_date($date_raw);
+    // Use fixture_date meta if available (set by front-end modal); fall back to played date.
+    $fixture_date_raw = trim(get_post_meta($post_id, 'lgw_fixture_date', true) ?: $date_raw);
+    $sheet_date = lgw_sheets_format_date($fixture_date_raw);
 
     // Fetch the sheet data to find the right row
     $sheet_data = lgw_sheets_fetch($token, $spreadsheet, $tab);
@@ -89,8 +97,15 @@ function lgw_sheets_write_result($post_id) {
     // Detect column positions from header row
     $cols = lgw_sheets_detect_cols($sheet_data);
 
-    // Find the matching row
+    // Find the matching row — try with date first, then without (handles rescheduled matches)
     $match = lgw_sheets_find_row($sheet_data, $cols, $home_team, $away_team, $sheet_date);
+    if ($match === false && $sheet_date) {
+        // Played date didn't match the fixture date in the sheet — find by team names only
+        $match = lgw_sheets_find_row($sheet_data, $cols, $home_team, $away_team, '');
+        if ($match !== false) {
+            lgw_sheets_log($post_id, 'info', "Row found by team names only (played '$sheet_date' differs from fixture date in sheet)");
+        }
+    }
     if ($match === false) {
         lgw_sheets_log($post_id, 'warn', "Could not find fixture row: '$home_team' v '$away_team' on '$sheet_date' in tab '$tab'");
         return false;
@@ -112,8 +127,14 @@ function lgw_sheets_write_result($post_id) {
         return false;
     }
 
+    // Clear the CSV transient so the widget fetches fresh data on next load
+    $csv_url = trim($entry['csv_url'] ?? '');
+    if ($csv_url) {
+        delete_transient('lgw_csv_' . md5($csv_url));
+    }
+
     lgw_sheets_log($post_id, 'info',
-        "Written to sheet: tab='$tab', row=" . ($row_index + 1)
+        "Written to sheet: spreadsheet='$spreadsheet', tab='$tab', row=" . ($row_index + 1)
         . ", HScore=$home_score, AScore=$away_score, HPts=$home_pts, APts=$away_pts"
     );
     return true;
@@ -127,24 +148,34 @@ function lgw_sheets_format_date($dmy) {
     [$d, $m, $y] = $parts;
     $ts = mktime(0, 0, 0, (int)$m, (int)$d, (int)$y);
     if (!$ts) return $dmy;
-    // Format: "Sat 05-Apr-2025"
-    return date('D d-M-Y', $ts);
+    // Format: "Sat 5-Apr-2025" (no leading zero on day, matches typical sheet format)
+    return date('D', $ts) . ' ' . ltrim(date('d', $ts), '0') . '-' . date('M-Y', $ts);
 }
 
-// ── Resolve division name → sheet tab name ────────────────────────────────────
-function lgw_sheets_tab_for_division($division, $opts) {
-    // Try exact match in configured mapping
-    $mapping = $opts['sheets_tabs'] ?? [];
+// ── Resolve division name → full sheets config entry ─────────────────────────
+/**
+ * Returns the full sheets_tabs entry for a division: {division, tab, csv_url, spreadsheet_id}
+ * or false if not found.
+ */
+function lgw_sheets_entry_for_division($division, $opts) {
+    $division = trim($division ?? '');
+    $mapping  = $opts['sheets_tabs'] ?? [];
     foreach ($mapping as $entry) {
         if (strcasecmp(trim($entry['division'] ?? ''), $division) === 0) {
-            return trim($entry['tab']);
+            return $entry;
         }
     }
-    // Fallback: if only one tab configured, use it regardless of division
+    // Fallback: single-tab config
     if (count($mapping) === 1 && !empty($mapping[0]['tab'])) {
-        return trim($mapping[0]['tab']);
+        return $mapping[0];
     }
-    return '';
+    return false;
+}
+
+function lgw_sheets_tab_for_division($division, $opts) {
+    $entry = lgw_sheets_entry_for_division($division, $opts);
+    if (!$entry) return '';
+    return trim($entry['tab'] ?? '');
 }
 
 // ── Fetch sheet values ────────────────────────────────────────────────────────
@@ -199,25 +230,30 @@ function lgw_sheets_find_row($rows, $cols, $home_team, $away_team, $sheet_date) 
     $date_re = '/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}-[A-Za-z]+-\d{4}$/';
     $current_date = '';
 
+    // Normalise a date string for loose comparison:
+    // strip leading zeros from day, lowercase — "Sat 05-Apr-2025" → "sat 5-apr-2025"
+    $norm_date = function($d) {
+        return strtolower(preg_replace('/\b0(\d)/', '$1', trim($d)));
+    };
+
+    $needle_date = $sheet_date ? $norm_date($sheet_date) : '';
+    $needle_home = strtolower(trim($home_team));
+    $needle_away = strtolower(trim($away_team));
+
     foreach ($rows as $i => $row) {
         $first = trim($row[0] ?? $row[1] ?? '');
         if (preg_match($date_re, $first)) {
-            $current_date = $first;
+            $current_date = $norm_date($first);
             continue;
         }
 
-        $ht = trim($row[$cols['hteam']] ?? '');
-        $at = trim($row[$cols['ateam']] ?? '');
+        $ht = strtolower(trim($row[$cols['hteam']] ?? ''));
+        $at = strtolower(trim($row[$cols['ateam']] ?? ''));
         if (!$ht || !$at) continue;
 
-        $home_match = strcasecmp($ht, $home_team) === 0;
-        $away_match = strcasecmp($at, $away_team) === 0;
-
-        if ($home_match && $away_match) {
+        if ($ht === $needle_home && $at === $needle_away) {
             // If we have a date to match and it doesn't match, keep looking
-            if ($sheet_date && $current_date) {
-                if (strcasecmp($current_date, $sheet_date) !== 0) continue;
-            }
+            if ($needle_date && $current_date && $current_date !== $needle_date) continue;
             return [$i, $row];
         }
     }
@@ -319,6 +355,28 @@ function lgw_ajax_sheets_retry() {
         $log = get_post_meta($post_id, 'lgw_sheets_log', true) ?: [];
         $last = end($log);
         wp_send_json_error('Failed: ' . ($last['message'] ?? 'unknown error'));
+    }
+}
+
+// ── Force-sync override AJAX ──────────────────────────────────────────────────
+add_action('wp_ajax_lgw_sync_override', 'lgw_ajax_sync_override');
+function lgw_ajax_sync_override() {
+    check_ajax_referer('lgw_sheets_retry', 'nonce');
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    $post_id = intval($_POST['post_id'] ?? 0);
+    if (!$post_id) wp_send_json_error('Missing post_id');
+    if (function_exists('lgw_sync_override_from_scorecard')) {
+        lgw_sync_override_from_scorecard($post_id);
+        // Check the last log entry to determine if it succeeded
+        $log  = get_post_meta($post_id, 'lgw_sheets_log', true) ?: [];
+        $last = end($log);
+        if (($last['level'] ?? '') === 'info' && strpos($last['message'] ?? '', 'Override synced') !== false) {
+            wp_send_json_success('Override synced. ✅ ' . ($last['message'] ?? ''));
+        } else {
+            wp_send_json_error('Sync failed: ' . ($last['message'] ?? 'unknown — check division mapping'));
+        }
+    } else {
+        wp_send_json_error('lgw_sync_override_from_scorecard not available');
     }
 }
 
@@ -543,37 +601,71 @@ function lgw_render_sheets_log($post_id) {
         echo '</div>';
     }
     echo '</div>';
+    $retry_nonce = wp_create_nonce('lgw_sheets_retry');
     if ($has_actionable) {
-        $retry_nonce = wp_create_nonce('lgw_sheets_retry');
-        echo '<p style="margin-top:8px">';
+        echo '<p style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
         echo '<button type="button" class="button button-small"';
         echo ' onclick="lgwSheetsRetry(' . intval($post_id) . ', \'' . esc_js($retry_nonce) . '\')">';
         echo '&#8635; Retry Sheets writeback';
         echo '</button>';
+        echo '<button type="button" class="button button-small"';
+        echo ' onclick="lgwSyncOverride(' . intval($post_id) . ', \'' . esc_js($retry_nonce) . '\')">';
+        echo '&#8645; Force sync widget override';
+        echo '</button>';
+        echo '<span id="lgw-sheets-retry-' . intval($post_id) . '" style="font-size:12px"></span>';
+        echo '</p>';
+    } else {
+        // Always show the override sync button so admin can force-sync any confirmed scorecard
+        echo '<p style="margin-top:8px">';
+        echo '<button type="button" class="button button-small"';
+        echo ' onclick="lgwSyncOverride(' . intval($post_id) . ', \'' . esc_js($retry_nonce) . '\')">';
+        echo '&#8645; Force sync widget override';
+        echo '</button>';
         echo '<span id="lgw-sheets-retry-' . intval($post_id) . '" style="margin-left:8px;font-size:12px"></span>';
         echo '</p>';
-        echo '<script>';
-        echo 'function lgwSheetsRetry(postId, nonce) {';
-        echo '    var span = document.getElementById(\'lgw-sheets-retry-\'+postId);';
-        echo '    span.textContent = \'Retrying\u2026\';';
-        echo '    var fd = new FormData();';
-        echo '    fd.append(\'action\',  \'lgw_sheets_retry\');';
-        echo '    fd.append(\'nonce\',   nonce);';
-        echo '    fd.append(\'post_id\', postId);';
-        echo '    var xhr = new XMLHttpRequest();';
-        echo '    xhr.open(\'POST\', ajaxurl);';
-        echo '    xhr.onload = function() {';
-        echo '        try {';
-        echo '            var d = JSON.parse(xhr.responseText);';
-        echo '            span.textContent = d.success ? \'\u2705 \'+d.data : \'\u274c \'+d.data;';
-        echo '            span.style.color = d.success ? \'green\' : \'red\';';
-        echo '        } catch(e) { span.textContent = \'Bad response\'; span.style.color=\'red\'; }';
-        echo '    };';
-        echo '    xhr.onerror = function() { span.textContent = \'Request failed\'; span.style.color=\'red\'; };';
-        echo '    xhr.send(fd);';
-        echo '}';
-        echo '</script>';
     }
+    echo '<script>';
+    echo 'if(typeof lgwSheetsRetry==="undefined"){';
+    echo 'function lgwSheetsRetry(postId, nonce) {';
+    echo '    var span = document.getElementById(\'lgw-sheets-retry-\'+postId);';
+    echo '    span.textContent = \'Retrying\u2026\';';
+    echo '    var fd = new FormData();';
+    echo '    fd.append(\'action\',  \'lgw_sheets_retry\');';
+    echo '    fd.append(\'nonce\',   nonce);';
+    echo '    fd.append(\'post_id\', postId);';
+    echo '    var xhr = new XMLHttpRequest();';
+    echo '    xhr.open(\'POST\', ajaxurl);';
+    echo '    xhr.onload = function() {';
+    echo '        try {';
+    echo '            var d = JSON.parse(xhr.responseText);';
+    echo '            span.textContent = d.success ? \'\u2705 \'+d.data : \'\u274c \'+d.data;';
+    echo '            span.style.color = d.success ? \'green\' : \'red\';';
+    echo '        } catch(e) { span.textContent = \'Bad response\'; span.style.color=\'red\'; }';
+    echo '    };';
+    echo '    xhr.onerror = function() { span.textContent = \'Request failed\'; span.style.color=\'red\'; };';
+    echo '    xhr.send(fd);';
+    echo '}}';
+    echo 'if(typeof lgwSyncOverride==="undefined"){';
+    echo 'function lgwSyncOverride(postId, nonce) {';
+    echo '    var span = document.getElementById(\'lgw-sheets-retry-\'+postId);';
+    echo '    span.textContent = \'Syncing\u2026\';';
+    echo '    var fd = new FormData();';
+    echo '    fd.append(\'action\',  \'lgw_sync_override\');';
+    echo '    fd.append(\'nonce\',   nonce);';
+    echo '    fd.append(\'post_id\', postId);';
+    echo '    var xhr = new XMLHttpRequest();';
+    echo '    xhr.open(\'POST\', ajaxurl);';
+    echo '    xhr.onload = function() {';
+    echo '        try {';
+    echo '            var d = JSON.parse(xhr.responseText);';
+    echo '            span.textContent = d.success ? \'\u2705 \'+d.data : \'\u274c \'+d.data;';
+    echo '            span.style.color = d.success ? \'green\' : \'red\';';
+    echo '        } catch(e) { span.textContent = \'Bad response\'; span.style.color=\'red\'; }';
+    echo '    };';
+    echo '    xhr.onerror = function() { span.textContent = \'Request failed\'; span.style.color=\'red\'; };';
+    echo '    xhr.send(fd);';
+    echo '}}';
+    echo '</script>';
 }
 
 // ── AJAX: Get team names for a division (for scorecard form validation) ────────

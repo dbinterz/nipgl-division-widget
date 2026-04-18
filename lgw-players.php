@@ -167,10 +167,15 @@ function lgw_get_or_create_player($club, $name) {
     return intval($wpdb->insert_id);
 }
 
-/**
- * Remove player records that have no appearances (e.g. after an admin name correction).
- * Starred players are preserved regardless — they may be manually curated.
- */
+// ── Clean up appearances when a scorecard is deleted or trashed ───────────────
+add_action('before_delete_post', 'lgw_on_scorecard_deleted');
+add_action('wp_trash_post',      'lgw_on_scorecard_deleted');
+function lgw_on_scorecard_deleted($post_id) {
+    if (get_post_type($post_id) !== 'lgw_scorecard') return;
+    global $wpdb;
+    $wpdb->delete(lgw_appearances_table(), array('scorecard_id' => $post_id), array('%d'));
+    lgw_prune_orphaned_players();
+}
 function lgw_prune_orphaned_players() {
     global $wpdb;
     $pt = lgw_players_table();
@@ -180,6 +185,54 @@ function lgw_prune_orphaned_players() {
          LEFT JOIN $at a ON a.player_id = p.id
          WHERE a.id IS NULL AND p.starred = 0"
     );
+}
+
+// ── AJAX: Get player game history ────────────────────────────────────────────
+add_action('wp_ajax_lgw_get_player_history', 'lgw_ajax_get_player_history');
+function lgw_ajax_get_player_history() {
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    check_ajax_referer('lgw_players_nonce', 'nonce');
+
+    $player_id = intval($_POST['player_id'] ?? 0);
+    if (!$player_id) wp_send_json_error('Missing player ID');
+
+    global $wpdb;
+    $pt = lgw_players_table();
+    $at = lgw_appearances_table();
+
+    $player = $wpdb->get_row($wpdb->prepare("SELECT * FROM $pt WHERE id = %d", $player_id));
+    if (!$player) wp_send_json_error('Player not found');
+
+    $appearances = $wpdb->get_results($wpdb->prepare(
+        "SELECT a.id, a.team, a.match_title, a.match_date, a.rink, a.scorecard_id, a.played_at
+         FROM $at a
+         WHERE a.player_id = %d
+         ORDER BY STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') DESC, a.played_at DESC",
+        $player_id
+    ));
+
+    // Enrich with scorecard status/division where available
+    $enriched = array();
+    foreach ($appearances as $app) {
+        $sc_data   = $app->scorecard_id ? get_post_meta($app->scorecard_id, 'lgw_scorecard_data', true) : null;
+        $sc_status = $app->scorecard_id ? get_post_meta($app->scorecard_id, 'lgw_sc_status', true) : '';
+        $enriched[] = array(
+            'match_title' => $app->match_title,
+            'match_date'  => $app->match_date,
+            'team'        => $app->team,
+            'rink'        => $app->rink,
+            'division'    => $sc_data['division'] ?? '',
+            'home_score'  => $sc_data['home_total'] ?? '',
+            'away_score'  => $sc_data['away_total'] ?? '',
+            'status'      => $sc_status,
+            'scorecard_id'=> $app->scorecard_id,
+        );
+    }
+
+    wp_send_json_success(array(
+        'player'      => array('name' => $player->name, 'club' => $player->club),
+        'appearances' => $enriched,
+    ));
 }
 
 // ── AJAX: Check which players are new (not yet in DB) for preview highlighting ─
@@ -367,6 +420,25 @@ function lgw_players_admin_page() {
     .lgw-add-form input,.lgw-add-form select{width:100%;margin-bottom:12px}
     .lgw-appearances-zero{color:#999}
     .lgw-highlight{background:#fff3cd}
+    .lgw-player-link{cursor:pointer;color:#1a2e5a;text-decoration:underline dotted;border:none;background:none;padding:0;font:inherit;font-weight:600}
+    .lgw-player-link:hover{color:#0073aa}
+    /* History modal */
+    #lgw-history-modal{display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.5);align-items:flex-start;justify-content:center;padding:40px 16px}
+    #lgw-history-modal.open{display:flex}
+    #lgw-history-inner{background:#fff;border-radius:8px;width:100%;max-width:720px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+    #lgw-history-header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:2px solid #1a2e5a;position:sticky;top:0;background:#fff;z-index:1}
+    #lgw-history-header h2{margin:0;font-size:16px;color:#1a2e5a}
+    #lgw-history-close{background:none;border:none;font-size:22px;cursor:pointer;color:#666;line-height:1}
+    #lgw-history-body{padding:16px 20px}
+    .lgw-history-table{width:100%;border-collapse:collapse;font-size:13px}
+    .lgw-history-table th{background:#1a2e5a;color:#fff;padding:7px 10px;text-align:left}
+    .lgw-history-table td{padding:7px 10px;border-bottom:1px solid #eee;vertical-align:middle}
+    .lgw-history-table tr:last-child td{border-bottom:none}
+    .lgw-history-table tr:hover td{background:#f0f4ff}
+    .lgw-sc-status{display:inline-block;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700}
+    .lgw-sc-confirmed{background:#d4edda;color:#155724}
+    .lgw-sc-pending{background:#fff3cd;color:#856404}
+    .lgw-sc-disputed{background:#f8d7da;color:#721c24}
     </style>
 
     <div class="lgw-pt-tabs">
@@ -407,7 +479,95 @@ function lgw_players_admin_page() {
             sel.value = '';
         });
     }
+
+    // ── Player history modal ──────────────────────────────────────────────────
+    var lgwPlayersNonce = '<?php echo wp_create_nonce('lgw_players_nonce'); ?>';
+    var lgwAjaxUrl      = '<?php echo admin_url('admin-ajax.php'); ?>';
+
+    function lgwShowPlayerHistory(playerId) {
+        var modal = document.getElementById('lgw-history-modal');
+        var body  = document.getElementById('lgw-history-body');
+        body.innerHTML = '<p>Loading…</p>';
+        modal.classList.add('open');
+
+        var fd = new FormData();
+        fd.append('action',    'lgw_get_player_history');
+        fd.append('nonce',     lgwPlayersNonce);
+        fd.append('player_id', playerId);
+
+        fetch(lgwAjaxUrl, { method: 'POST', body: fd })
+            .then(function(r){ return r.json(); })
+            .then(function(data) {
+                if (!data.success) { body.innerHTML = '<p style="color:red">'+data.data+'</p>'; return; }
+                var pl   = data.data.player;
+                var apps = data.data.appearances;
+                document.getElementById('lgw-history-title').textContent =
+                    pl.name + ' \u2014 ' + pl.club;
+
+                if (!apps.length) {
+                    body.innerHTML = '<p>No game appearances recorded yet.</p>';
+                    return;
+                }
+
+                var html = '<p style="margin:0 0 12px;color:#555;font-size:13px">'
+                    + apps.length + ' appearance' + (apps.length !== 1 ? 's' : '') + ' recorded</p>'
+                    + '<table class="lgw-history-table">'
+                    + '<thead><tr><th>Date</th><th>Match</th><th>Division</th>'
+                    + '<th style="text-align:center">Rink</th><th>Team</th>'
+                    + '<th style="text-align:center">Score</th><th>Status</th></tr></thead><tbody>';
+
+                apps.forEach(function(a) {
+                    var scoreTxt = (a.home_score !== '' && a.away_score !== '' && a.home_score !== null && a.away_score !== null)
+                        ? a.home_score + '\u2013' + a.away_score : '\u2014';
+                    var statusHtml = '';
+                    if (a.status) {
+                        var cls = 'lgw-sc-' + ({'confirmed':'confirmed','pending':'pending','disputed':'disputed'}[a.status] || 'pending');
+                        statusHtml = '<span class="lgw-sc-status ' + cls + '">'
+                            + a.status.charAt(0).toUpperCase() + a.status.slice(1) + '</span>';
+                    }
+                    html += '<tr>'
+                        + '<td style="white-space:nowrap">' + lgwEsc(a.match_date) + '</td>'
+                        + '<td>' + lgwEsc(a.match_title) + '</td>'
+                        + '<td>' + lgwEsc(a.division) + '</td>'
+                        + '<td style="text-align:center">' + (a.rink || '\u2014') + '</td>'
+                        + '<td>' + lgwEsc(a.team) + '</td>'
+                        + '<td style="text-align:center;white-space:nowrap">' + lgwEsc(scoreTxt) + '</td>'
+                        + '<td>' + statusHtml + '</td>'
+                        + '</tr>';
+                });
+                html += '</tbody></table>';
+                body.innerHTML = html;
+            })
+            .catch(function(){ body.innerHTML = '<p style="color:red">Request failed.</p>'; });
+    }
+
+    function lgwEsc(str) {
+        return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('lgw-history-close').addEventListener('click', function(){
+            document.getElementById('lgw-history-modal').classList.remove('open');
+        });
+        document.getElementById('lgw-history-modal').addEventListener('click', function(e){
+            if (e.target === this) this.classList.remove('open');
+        });
+        document.addEventListener('keydown', function(e){
+            if (e.key === 'Escape') document.getElementById('lgw-history-modal').classList.remove('open');
+        });
+    });
     </script>
+
+    <!-- Player history modal -->
+    <div id="lgw-history-modal" role="dialog" aria-modal="true" aria-labelledby="lgw-history-title">
+        <div id="lgw-history-inner">
+            <div id="lgw-history-header">
+                <h2 id="lgw-history-title">Player History</h2>
+                <button id="lgw-history-close" title="Close">&times;</button>
+            </div>
+            <div id="lgw-history-body"></div>
+        </div>
+    </div>
 
     <?php // ── Tab 1: Players ── ?>
     <div class="lgw-pt-panel active" id="lgw-panel-players">
@@ -437,7 +597,11 @@ function lgw_players_admin_page() {
                 <tbody>
                 <?php foreach ($club_players as $pl): ?>
                 <tr<?php echo $pl->appearances == 0 ? ' class="lgw-appearances-zero"' : ''; ?>>
-                    <td><strong><?php echo esc_html($pl->name); ?></strong></td>
+                    <td>
+                        <button class="lgw-player-link"
+                            onclick="lgwShowPlayerHistory(<?php echo $pl->id; ?>)"
+                            title="View game history"><?php echo esc_html($pl->name); ?></button>
+                    </td>
                     <td><?php echo esc_html($pl->teams ?: '—'); ?></td>
                     <td style="text-align:center"><?php echo intval($pl->appearances); ?></td>
                     <td style="text-align:center">

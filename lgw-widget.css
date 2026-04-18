@@ -211,6 +211,7 @@ table.lg{width:100%;border-collapse:collapse;font-size:13px}
 .fx-sb{background:var(--lgw-bg-alt);border:1px solid var(--lgw-border);border-radius:3px;min-width:26px;padding:2px 5px;text-align:center;font-weight:700;font-size:14px;color:var(--lgw-navy)}
 .fx-sep{padding:0 4px;color:var(--lgw-text-muted);font-size:12px}
 .fx-time{grid-column:1/-1;text-align:right;font-size:11px;color:var(--lgw-gold);font-weight:700;padding:0 2px 4px;margin-top:-4px}
+.fx-played-date{grid-column:1/-1;font-size:11px;color:var(--lgw-text-muted);font-style:italic;padding:0 2px 4px;margin-top:-2px;opacity:.8}
 .fx-row.played .fx-sb{background:var(--lgw-navy);color:#fff;border-color:var(--lgw-navy-mid)}
 
 /* ── Badges ──────────────────────────────────────────────────────────────────── */
@@ -391,3 +392,21 @@ body.lgw-modal-open{overflow:hidden}
 }
 /* In visitor-preview mode, hide admin-only scorecard UI */
 .lgw-visitor-preview .lgw-sc-admin-only{display:none!important}
+
+/* ── Results ticker ──────────────────────────────────────────────────────────── */
+.lgw-results-ticker{display:flex;align-items:stretch;background:var(--lgw-navy);color:#fff;border-radius:8px 8px 0 0;overflow:hidden;font-family:'Saira',Arial,sans-serif;font-size:13px;margin-bottom:0;min-height:38px}
+.lgw-ticker-label{flex-shrink:0;background:var(--lgw-gold,#c8a84b);color:var(--lgw-navy);font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.06em;padding:0 14px;display:flex;align-items:center;white-space:nowrap;border-right:2px solid rgba(255,255,255,.15)}
+.lgw-ticker-track{flex:1;overflow:hidden;position:relative;display:flex;align-items:center}
+.lgw-ticker-scroll{display:inline-flex;align-items:center;white-space:nowrap;animation:lgwTickerScroll 50s linear infinite;padding-left:100%}
+.lgw-ticker-scroll:hover{animation-play-state:paused}
+@keyframes lgwTickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.lgw-ticker-item{display:inline-flex;align-items:center;gap:5px;padding:0 18px 0 0;color:#fff}
+.lgw-ticker-score{font-weight:800;color:var(--lgw-gold,#c8a84b);font-size:14px}
+.lgw-ticker-pts{font-size:11px;color:rgba(255,255,255,.65);margin-left:3px}
+.lgw-ticker-div{font-size:10px;background:rgba(255,255,255,.15);border-radius:3px;padding:1px 5px;margin-left:4px;color:rgba(255,255,255,.8)}
+.lgw-ticker-date{font-size:10px;color:rgba(255,255,255,.5);margin-left:3px}
+.lgw-ticker-sep{display:inline-block;margin:0 10px;color:rgba(255,255,255,.25);font-size:10px}
+.lgw-ticker-badge{width:18px;height:18px;object-fit:contain;vertical-align:middle;border-radius:2px;margin:0 3px 0 0}
+[data-lgw-theme="dark"] .lgw-ticker-label{background:var(--lgw-gold,#c8a84b)}
+[data-lgw-theme="dark"] .lgw-results-ticker{background:var(--lgw-navy)}
+@media(prefers-reduced-motion:reduce){.lgw-ticker-scroll{animation:none;padding-left:12px;overflow-x:auto;width:100%}}

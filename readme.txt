@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.52
+Stable tag: 7.1.68
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,26 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.68 =
+* Fix: Sheets writeback now finds the fixture row even when the match was played on a different date to scheduled — tries the fixture date first, then falls back to team-name-only search
+* Fix: Same date-fallback applied to the override sync so both the spreadsheet write and the widget override use the correct row
+
+= 7.1.68 =
+* Fix: Override key now uses the fixture date read directly from the published CSV (by finding the home/away team pair row), not the played date stored on the scorecard — fixes cases where a match was played on a different date to scheduled (e.g. 12/05 played instead of 09/05 fixture)
+* Fix: lgw_sync_get_fixture_date_from_csv() helper added — fetches the division CSV and returns the exact date string the widget will use as a key for that fixture row
+* Fix: Confirmed scorecards now update the widget immediately — lgw_sync_override_from_scorecard() was silently bailing when the division had no csv_url in sheets_tabs; now falls back to the active season division config
+* Fix: Override key now uses the fixture date (lgw_fixture_date post meta) rather than the played date, so it correctly matches the CSV fixture row even when a match was played on a different date to scheduled
+* Fix: lgw_sync_override_from_scorecard() now logs success and failure to the per-scorecard sheets log, visible in the History panel
+* Feature: "Force sync widget override" button added to the Sheets Writeback Log on every scorecard's History panel — allows admin to manually re-push any confirmed scorecard's score to the override table without re-saving
+* Fix: Deleting or trashing a scorecard now removes all associated player appearance records and prunes orphaned player entries
+* Fix: Player re-save (same club resubmitting a previously confirmed scorecard) now fires the sheets writeback action so Google Sheets is updated correctly
+* Feature: Player names on the Player Tracking page are now clickable — opens a modal showing every game the player appeared in, with date, match, division, rink, team, score, and scorecard status
+* Fix: lgw_sheets_find_row now normalises dates (strips leading zeros, lowercases) and trims/lowercases team names before comparing — fixes "row not found" caused by "05-Apr" vs "5-Apr" day padding or whitespace differences
+* Fix: lgw_sheets_format_date now omits the leading zero from the day number to match the typical sheet format ("Sat 5-Apr-2025" not "Sat 05-Apr-2025")
+* Fix: OAuth redirect URI was hardcoded to lgw-league-setup; introduced LGW_SETUP_PAGE constant so the redirect URI is always self-consistent and matches what Google Cloud Console expects
+* Fix: Google auth token scope now includes spreadsheets — OAuth and service account JWTs were only requesting drive scope, causing auth_failed on all Sheets writeback and score override writes
+
 
 = 7.1.52 =
 * Fix: season switcher now matches archived divisions to the shortcode title even when the title includes a trailing year (e.g. "Division 1 2026" matches archived "Division 1" or "Division 1 2025") — year suffix is stripped from both sides before comparison

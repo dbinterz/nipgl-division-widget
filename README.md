@@ -108,6 +108,22 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### v7.1.68
+- **Fix:** Sheets writeback (`lgw_sheets_write_result`) now finds the fixture row even when the match was played on a rescheduled date — tries the fixture date first, then falls back to matching by team names only; logs a note when the fallback is used
+- **Fix:** Same fix applied to the override sync path so both the spreadsheet write and the `lgw_score_overrides` key use the correct row
+
+### v7.1.68
+- **Fix:** Override key now uses the fixture date read directly from the published CSV (by matching the home/away team pair in the fixture list), not the played date on the scorecard — fixes cases where a match was rescheduled (e.g. played 12/05 but fixture row is keyed under 09/05)
+- **New:** `lgw_sync_get_fixture_date_from_csv()` helper fetches the division CSV and returns the exact date string the widget uses as a key, so `applyScoreOverrides()` in the JS always finds a match regardless of when the game was actually played
+
+### v7.1.66
+- **Fix:** Confirmed scorecards now update the widget score immediately — `lgw_sync_override_from_scorecard()` was silently bailing when the division had no `csv_url` in `sheets_tabs`; now falls back to the active season division config
+- **Fix:** `lgw_sync_override_from_scorecard()` now logs success/failure to the per-scorecard sheets log; visible in the History panel
+- **Feature:** "Force sync widget override" button added to every scorecard's History panel
+- **Fix:** Deleting or trashing a scorecard removes all associated player appearance records and prunes orphaned player entries
+- **Fix:** Player re-save (same club resubmitting a confirmed scorecard) now fires the sheets writeback action
+- **Feature:** Player names on the Player Tracking admin page are now clickable — opens a modal showing every game the player appeared in
+
 ### v7.1.52
 - **Fix:** Season switcher now matches archived divisions to the shortcode `title` even when the title includes a trailing year — e.g. `"Division 1 2026"` matches `"Division 1"` or `"Division 1 2025"`. Year suffix stripped from both sides before comparison.
 - **Fix:** Seasons admin — editing an existing archived season no longer triggers "season already exists" error; the Edit form now correctly updates the season in place

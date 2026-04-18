@@ -206,9 +206,15 @@ function lgw_ajax_admin_edit_scorecard() {
 function lgw_render_admin_edit_form($post_id, $sc) {
     if (!$sc) { echo '<p>No scorecard data to edit.</p>'; return; }
     $rinks           = $sc['rinks'] ?? array();
-    $div_unresolved  = get_post_meta($post_id, 'lgw_division_unresolved', true);
     $drive_opts      = get_option('lgw_drive', array());
     $known_divisions = array_map(function($e){ return $e['division']; }, $drive_opts['sheets_tabs'] ?? array());
+    // Re-evaluate live so a stale flag doesn't persist after the division is corrected
+    $resolved_tab   = lgw_sheets_tab_for_division($sc['division'] ?? '', $drive_opts);
+    $div_unresolved = empty($sc['division']) || !$resolved_tab;
+    if (!$div_unresolved) {
+        // Proactively clear any stale flag
+        delete_post_meta($post_id, 'lgw_division_unresolved');
+    }
     ?>
     <div class="lgw-edit-form" id="lgw-edit-<?php echo $post_id; ?>">
         <h4 style="margin:0 0 12px;color:#1a2e5a">✏️ Edit Scorecard</h4>

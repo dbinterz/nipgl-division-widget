@@ -1458,6 +1458,7 @@
         home_team:    (el.querySelector('#lgw-modal-home')||{}).value || home,
         away_team:    (el.querySelector('#lgw-modal-away')||{}).value || away,
         date:         datePlayed || fixtureDate,
+        fixture_date: fixtureDate,
         division:     (el.querySelector('#lgw-modal-division')||{}).value || division,
         venue:        ((el.querySelector('#lgw-modal-venue')||{}).value||'').trim(),
         submitter:    ((el.querySelector('#lgw-modal-submitter')||{}).value||'').trim(),

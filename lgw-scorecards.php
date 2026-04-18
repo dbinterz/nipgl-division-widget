@@ -217,6 +217,12 @@ function lgw_ajax_confirm_scorecard() {
 
     update_post_meta($id, 'lgw_sc_status',    'confirmed');
     update_post_meta($id, 'lgw_confirmed_by', $club);
+    // Clear division-unresolved flag if the division maps to a known sheet tab
+    $drive_opts_conf  = get_option('lgw_drive', array());
+    $resolved_tab_conf = lgw_sheets_tab_for_division($sc['division'] ?? '', $drive_opts_conf);
+    if (!empty($sc['division']) && $resolved_tab_conf) {
+        delete_post_meta($id, 'lgw_division_unresolved');
+    }
     lgw_log_appearances($id);
     lgw_audit_log($id, 'confirmed', 'Confirmed by ' . $club);
     do_action('lgw_scorecard_confirmed', $id);
@@ -565,13 +571,13 @@ function lgw_ajax_save_scorecard() {
     }
 
     $sc = array(
-        'division'    => sanitize_text_field($raw['division']    ?? ''),
-        'venue'       => sanitize_text_field($raw['venue']       ?? ''),
-        'date'        => sanitize_text_field($raw['date']        ?? ''),
-        'home_team'   => sanitize_text_field($raw['home_team']   ?? ''),
-        'away_team'   => sanitize_text_field($raw['away_team']   ?? ''),
-        'submitter'   => sanitize_text_field($raw['submitter']   ?? ''),
-        'submitter'   => sanitize_text_field($raw['submitter']   ?? ''),
+        'division'     => sanitize_text_field($raw['division']     ?? ''),
+        'venue'        => sanitize_text_field($raw['venue']        ?? ''),
+        'date'         => sanitize_text_field($raw['date']         ?? ''),
+        'fixture_date' => sanitize_text_field($raw['fixture_date'] ?? ''),
+        'home_team'    => sanitize_text_field($raw['home_team']    ?? ''),
+        'away_team'    => sanitize_text_field($raw['away_team']    ?? ''),
+        'submitter'    => sanitize_text_field($raw['submitter']    ?? ''),
         'home_total'  => is_numeric($raw['home_total']  ?? '') ? floatval($raw['home_total'])  : null,
         'away_total'  => is_numeric($raw['away_total']  ?? '') ? floatval($raw['away_total'])  : null,
         'home_points' => is_numeric($raw['home_points'] ?? '') ? floatval($raw['home_points']) : null,
@@ -619,6 +625,7 @@ function lgw_ajax_save_scorecard() {
                 update_post_meta($existing->ID, 'lgw_confirmed_by', '');
             }
             update_post_meta($existing->ID, 'lgw_scorecard_data', $sc);
+            if (!empty($sc['fixture_date'])) update_post_meta($existing->ID, 'lgw_fixture_date', $sc['fixture_date']);
             wp_send_json_success(array('message' => 'Scorecard updated. Awaiting confirmation from the other club.', 'status' => 'pending'));
         } else {
             // Second club submitting — compare scores
@@ -650,6 +657,7 @@ function lgw_ajax_save_scorecard() {
         if (is_wp_error($post_id)) wp_send_json_error('The scorecard could not be saved to the database: ' . $post_id->get_error_message() . '. Please try again or contact the league administrator.');
         update_post_meta($post_id, 'lgw_match_key',     $match_key);
         update_post_meta($post_id, 'lgw_scorecard_data',$sc);
+        if (!empty($sc['fixture_date'])) update_post_meta($post_id, 'lgw_fixture_date', $sc['fixture_date']);
         // Tag context (league/cup) so lookups don't cross-match
         $ctx = sanitize_key($raw['context'] ?? 'league');
         update_post_meta($post_id, 'lgw_sc_context', $ctx ?: 'league');
@@ -696,6 +704,7 @@ function lgw_save_scorecard_admin_both($sc) {
         update_post_meta($existing->ID, 'lgw_submitted_by',   $sc['home_team']);
         update_post_meta($existing->ID, 'lgw_confirmed_by',   $sc['away_team']);
         update_post_meta($existing->ID, 'lgw_submitted_for',  'both');
+        if (!empty($sc['fixture_date'])) update_post_meta($existing->ID, 'lgw_fixture_date', $sc['fixture_date']);
         lgw_log_appearances($existing->ID);
         lgw_audit_log($existing->ID, 'confirmed', 'Admin submitted for both teams (' . $admin_login . ') — auto-confirmed');
         do_action('lgw_scorecard_confirmed', $existing->ID);
@@ -721,6 +730,7 @@ function lgw_save_scorecard_admin_both($sc) {
     update_post_meta($post_id, 'lgw_confirmed_by',   $sc['away_team']);
     update_post_meta($post_id, 'lgw_submitted_for',  'both');
     update_post_meta($post_id, 'lgw_sc_context',     $sc_context);
+    if (!empty($sc['fixture_date'])) update_post_meta($post_id, 'lgw_fixture_date', $sc['fixture_date']);
 
     if (function_exists('lgw_get_active_season_id')) {
         $season_id = lgw_get_active_season_id();
@@ -911,7 +921,26 @@ function lgw_render_submit_form($csv_url = '', $cup_id = '') {
               </div>
               <?php endif; ?>
             <?php else: ?>
-              <input type="text" id="sc-division" placeholder="e.g. Division 1">
+              <?php
+              // Build known-division list for autocomplete hint
+              $drive_opts_sc   = get_option('lgw_drive', array());
+              $known_divs_form = array_values(array_filter(array_map(
+                  function($e){ return trim($e['division'] ?? ''); },
+                  $drive_opts_sc['sheets_tabs'] ?? array()
+              )));
+              ?>
+              <input type="text" id="sc-division" placeholder="e.g. Division 1"
+                     list="lgw-division-list" autocomplete="off">
+              <?php if (!empty($known_divs_form)): ?>
+              <datalist id="lgw-division-list">
+                <?php foreach ($known_divs_form as $kd): ?>
+                <option value="<?php echo esc_attr($kd); ?>">
+                <?php endforeach; ?>
+              </datalist>
+              <span class="lgw-hint" style="font-size:11px;color:#888;margin-top:3px;display:block">
+                Known: <?php echo esc_html(implode(', ', $known_divs_form)); ?>
+              </span>
+              <?php endif; ?>
             <?php endif; ?>
           </div>
           <div class="lgw-form-row lgw-form-row-2">
@@ -998,10 +1027,17 @@ function lgw_enqueue_scorecard() {
     }
     // Always localise — safe to call multiple times, ensures lgwSubmit is defined
     // even if the script was already enqueued by lgw_enqueue() on a combined page.
+    // Build known-division list from Sheets tab config so the front-end can offer a datalist
+    $drive_opts       = get_option('lgw_drive', array());
+    $known_divisions  = array_values(array_filter(array_map(
+        function($e) { return trim($e['division'] ?? ''); },
+        $drive_opts['sheets_tabs'] ?? array()
+    )));
     wp_localize_script('lgw-scorecard', 'lgwSubmit', array(
-        'ajaxUrl'  => admin_url('admin-ajax.php'),
-        'nonce'    => wp_create_nonce('lgw_submit_nonce'),
-        'authClub' => lgw_get_auth_club(),
+        'ajaxUrl'         => admin_url('admin-ajax.php'),
+        'nonce'           => wp_create_nonce('lgw_submit_nonce'),
+        'authClub'        => lgw_get_auth_club(),
+        'knownDivisions'  => $known_divisions,
     ));
 }
 
@@ -1164,8 +1200,16 @@ function lgw_ajax_admin_resolve() {
     update_post_meta($post_id, 'lgw_sc_status',       'confirmed');
     update_post_meta($post_id, 'lgw_away_scorecard',  '');
     update_post_meta($post_id, 'lgw_confirmed_by',    'admin');
+    // Clear division-unresolved flag if the division maps to a known sheet tab
+    $sc_data_res      = get_post_meta($post_id, 'lgw_scorecard_data', true);
+    $drive_opts_res   = get_option('lgw_drive', array());
+    $resolved_tab_res = lgw_sheets_tab_for_division($sc_data_res['division'] ?? '', $drive_opts_res);
+    if (!empty($sc_data_res['division']) && $resolved_tab_res) {
+        delete_post_meta($post_id, 'lgw_division_unresolved');
+    }
     lgw_log_appearances($post_id);
     lgw_audit_on_resolve($post_id, $version, $sub_by, $con_by);
+    do_action('lgw_scorecard_confirmed', $post_id);
 
     $label = $version === 'away' ? 'Version B' : 'Version A';
     wp_send_json_success(array('message' => $label . ' accepted — scorecard confirmed. ✅'));

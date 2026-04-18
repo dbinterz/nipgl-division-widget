@@ -6,6 +6,8 @@
   var clubBadges = (typeof lgwData !== 'undefined' && lgwData.clubBadges) ? lgwData.clubBadges : {};
   var ajaxUrl        = (typeof lgwData !== 'undefined') ? lgwData.ajaxUrl : '/wp-admin/admin-ajax.php';
   var scoreOverrides = (typeof lgwData !== 'undefined' && lgwData.scoreOverrides) ? lgwData.scoreOverrides : {};
+  var playedDates    = (typeof lgwData !== 'undefined' && lgwData.playedDates)    ? lgwData.playedDates    : {};
+  var recentResults  = (typeof lgwData !== 'undefined' && lgwData.recentResults)  ? lgwData.recentResults  : [];
 
   // ── Apply admin score overrides to parsed fixture groups ─────────────────────
   function applyScoreOverrides(groups, csvUrl){
@@ -562,6 +564,10 @@
         var fxAttrs=m.played
           ?' data-home="'+m.homeTeam.replace(/"/g,"&quot;")+'" data-away="'+m.awayTeam.replace(/"/g,"&quot;")+'" data-date="'+g.date.replace(/"/g,"&quot;")+'" title="Click to view full scorecard"'
           :' data-home="'+m.homeTeam.replace(/"/g,"&quot;")+'" data-away="'+m.awayTeam.replace(/"/g,"&quot;")+'" data-date="'+g.date.replace(/"/g,"&quot;")+'"';
+        // Show date-played annotation if game was played on a different date
+        var pdKey=(m.homeTeam+'||'+m.awayTeam+'||'+g.date).toLowerCase();
+        var playedOn=playedDates[pdKey]||'';
+        var playedNote=playedOn?'<div class="fx-played-date">📅 Played '+playedOn+'</div>':'';
         h+='<div class="fx-row'+pc+'"'+fxAttrs+'>'
           +'<div class="fx-ph">'+(m.played?m.ptsHome:'')+'</div>'
           +'<div class="fx-h"><span class="lgw-team-link" data-team="'+m.homeTeam+'">'+badgeImg(m.homeTeam)+m.homeTeam+'</span></div>'
@@ -569,6 +575,7 @@
           +'<div class="fx-a"><span class="lgw-team-link" data-team="'+m.awayTeam+'">'+badgeImg(m.awayTeam)+m.awayTeam+'</span></div>'
           +'<div class="fx-pa">'+(m.played?m.ptsAway:'')+'</div>'
           +(m.timeNote?'<div class="fx-time">&#9200; '+m.timeNote+'</div>':'')
+          +playedNote
           +'</div>';
       });
       h+='</div>';
@@ -576,7 +583,38 @@
     return h;
   }
 
+  // ── Results ticker: horizontal scrolling strip of latest results ─────────────
+  function renderResultsTicker() {
+    if (!recentResults || !recentResults.length) return '';
+    var items = recentResults.map(function(r) {
+      var ht  = (r.home_total  !== null && r.home_total  !== undefined) ? r.home_total  : '?';
+      var at  = (r.away_total  !== null && r.away_total  !== undefined) ? r.away_total  : '?';
+      var pts = (r.home_points !== null && r.home_points !== undefined &&
+                 r.away_points !== null && r.away_points !== undefined)
+        ? '<span class="lgw-ticker-pts">(' + r.home_points + '–' + r.away_points + ' pts)</span>'
+        : '';
+      var div = r.division ? '<span class="lgw-ticker-div">' + r.division + '</span>' : '';
+      var dt  = r.date     ? '<span class="lgw-ticker-date">' + r.date    + '</span>' : '';
+      return '<span class="lgw-ticker-item">'
+        + badgeImg(r.home_team, 'lgw-ticker-badge') + r.home_team
+        + '<strong class="lgw-ticker-score"> ' + ht + ' – ' + at + ' </strong>'
+        + badgeImg(r.away_team, 'lgw-ticker-badge') + r.away_team
+        + pts + div + dt
+        + '</span>';
+    });
+    // Duplicate content so CSS animation loops seamlessly
+    var inner = items.join('<span class="lgw-ticker-sep">●</span>');
+    inner = inner + '<span class="lgw-ticker-sep"> </span>' + inner;
+    return '<div class="lgw-results-ticker" aria-label="Latest results" role="marquee">'
+      + '<div class="lgw-ticker-label">Latest Results</div>'
+      + '<div class="lgw-ticker-track">'
+      + '<div class="lgw-ticker-scroll">' + inner + '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
   function filterBar(af){
+
     var h='<div class="fix-filter">';
     ['all','results','upcoming'].forEach(function(f){
       var cap=f.charAt(0).toUpperCase()+f.slice(1);
@@ -586,7 +624,24 @@
   }
 
   // ── Init widget ───────────────────────────────────────────────────────────────
+  // Track whether the results ticker has already been injected on this page
+  var lgwTickerInjected = false;
+
   function initWidget(widget){
+    // -- Results ticker -- injected once per page above the first widget wrap
+    if (!lgwTickerInjected) {
+      var tickerHtml = renderResultsTicker();
+      if (tickerHtml) {
+        var wrap = widget.closest('.lgw-widget-wrap') || widget.parentElement;
+        if (wrap) {
+          var tickerEl = document.createElement('div');
+          tickerEl.innerHTML = tickerHtml;
+          var ticker = tickerEl.firstChild;
+          wrap.parentNode.insertBefore(ticker, wrap);
+          lgwTickerInjected = true;
+        }
+      }
+    }
     var csvUrl   =widget.getAttribute('data-csv');
     var promote  =parseInt(widget.getAttribute('data-promote')  ||'0',10);
     var relegate =parseInt(widget.getAttribute('data-relegate') ||'0',10);

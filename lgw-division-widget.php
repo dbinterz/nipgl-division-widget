@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.52
+ * Version: 7.1.68
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,8 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.52');
+define('LGW_VERSION', '7.1.68');
+define('LGW_SETUP_PAGE', 'lgw-league-setup'); // page slug for League Setup admin page
 
 
 // ── Admin page logo header helper ────────────────────────────────────────────
@@ -406,6 +407,97 @@ function lgw_csv_proxy() {
     exit;
 }
 
+// ── Played-dates map: fixture date → actual played date (where different) ────
+/**
+ * Returns an array keyed by "home||away||fixtureDate" (lowercased home/away)
+ * whose value is the actual played date — only when it differs from fixture date.
+ * Used by widget JS to annotate fixture rows where the game was rescheduled.
+ */
+function lgw_build_played_dates_map() {
+    try {
+        $active_id = function_exists('lgw_get_active_season_id') ? lgw_get_active_season_id() : '';
+        $meta_query = array(
+            'relation' => 'AND',
+            array('key' => 'lgw_sc_context', 'value' => 'league', 'compare' => '='),
+        );
+        if ($active_id) {
+            $meta_query[] = array('key' => 'lgw_sc_season', 'value' => $active_id, 'compare' => '=');
+        }
+        $posts = get_posts(array(
+            'post_type'      => 'lgw_scorecard',
+            'posts_per_page' => 500,
+            'post_status'    => 'publish',
+            'meta_query'     => $meta_query,
+        ));
+        $map = array();
+        foreach ($posts as $p) {
+            $sc           = get_post_meta($p->ID, 'lgw_scorecard_data', true);
+            $fixture_date = get_post_meta($p->ID, 'lgw_fixture_date',   true);
+            if (!$sc || empty($sc['date'])) continue;
+            $played_date = $sc['date'];
+            $fix_date    = $fixture_date ?: $played_date; // fall back if not stored
+            if ($played_date === $fix_date) continue;     // same — no annotation needed
+            $key = strtolower($sc['home_team'] ?? '') . '||' . strtolower($sc['away_team'] ?? '') . '||' . $fix_date;
+            $map[$key] = $played_date;
+        }
+        return $map;
+    } catch (Exception $e) {
+        return array();
+    }
+}
+
+// ── Recent results: confirmed scorecards sorted by date played ────────────────
+/**
+ * Returns up to $limit confirmed league scorecards for the active season,
+ * sorted by actual played date descending. Provides data for the results ticker.
+ */
+function lgw_get_recent_results($limit = 30) {
+    try {
+        $active_id = function_exists('lgw_get_active_season_id') ? lgw_get_active_season_id() : '';
+        $meta_query = array(
+            'relation' => 'AND',
+            array('key' => 'lgw_sc_context', 'value' => 'league',    'compare' => '='),
+            array('key' => 'lgw_sc_status',  'value' => 'confirmed', 'compare' => '='),
+        );
+        if ($active_id) {
+            $meta_query[] = array('key' => 'lgw_sc_season', 'value' => $active_id, 'compare' => '=');
+        }
+        $posts = get_posts(array(
+            'post_type'      => 'lgw_scorecard',
+            'posts_per_page' => $limit * 3,
+            'post_status'    => 'publish',
+            'meta_query'     => $meta_query,
+        ));
+        $results = array();
+        foreach ($posts as $p) {
+            $sc = get_post_meta($p->ID, 'lgw_scorecard_data', true);
+            if (!$sc || empty($sc['home_team']) || empty($sc['away_team'])) continue;
+            $results[] = array(
+                'home_team'   => $sc['home_team'],
+                'away_team'   => $sc['away_team'],
+                'home_total'  => isset($sc['home_total'])  ? $sc['home_total']  : null,
+                'away_total'  => isset($sc['away_total'])  ? $sc['away_total']  : null,
+                'home_points' => isset($sc['home_points']) ? $sc['home_points'] : null,
+                'away_points' => isset($sc['away_points']) ? $sc['away_points'] : null,
+                'date'        => $sc['date']     ?? '',
+                'division'    => $sc['division'] ?? '',
+            );
+        }
+        // Sort by parsed date descending (dd/mm/yyyy)
+        usort($results, function($a, $b) {
+            $da = $a['date'] ? DateTime::createFromFormat('d/m/Y', $a['date']) : false;
+            $db = $b['date'] ? DateTime::createFromFormat('d/m/Y', $b['date']) : false;
+            if (!$da && !$db) return 0;
+            if (!$da) return  1;
+            if (!$db) return -1;
+            return $db <=> $da;
+        });
+        return array_slice($results, 0, $limit);
+    } catch (Exception $e) {
+        return array();
+    }
+}
+
 // ── 2. Enqueue CSS + JS ───────────────────────────────────────────────────────
 add_action('wp_enqueue_scripts', 'lgw_enqueue');
 function lgw_enqueue() {
@@ -454,6 +546,8 @@ function lgw_enqueue() {
         'submissionMode' => get_option('lgw_submission_mode', 'open'),
         'isAdmin'        => current_user_can('manage_options') ? '1' : '0',
         'authClub'       => lgw_get_auth_club(),
+        'playedDates'    => lgw_build_played_dates_map(),
+        'recentResults'  => lgw_get_recent_results(30),
     ));
 }
 
@@ -672,7 +766,7 @@ function lgw_admin_menu() {
         'League Setup',
         '⚙️ League Setup',
         'manage_options',
-        'lgw-league-setup',
+        LGW_SETUP_PAGE,
         'lgw_league_setup_page'
     );
     // Settings — theme, sponsors, club badges, clubs/passphrases
@@ -881,7 +975,8 @@ function lgw_scorecards_admin_page() {
                         var sheet=r.data&&r.data.sheet?r.data.sheet:'';
                         var sheetLabel={'sheet_ok':' + sheet ✓','sheet_error':' (sheet error)',
                             'row_not_found':' (row not found)','auth_failed':' (auth failed)',
-                            'fetch_failed':' (sheet fetch failed)','no_tab':' (no tab mapped)'}[sheet]||'';
+                            'fetch_failed':' (sheet fetch failed)','no_tab':' (no tab mapped)',
+                            'no_spreadsheet_id':' (no spreadsheet ID)'}[sheet]||'';
                         status.textContent=clearing?'Cleared':('✓ Saved'+sheetLabel);
                         status.style.color=clearing?'#888':(sheet==='sheet_ok'||sheet==='sheets_disabled')?'#2a7a2a':'#c07000';
                         row.classList.toggle('lgw-overridden',!clearing);
@@ -900,8 +995,11 @@ function lgw_scorecards_admin_page() {
         }
         function bindClear(row,btn){
             btn.addEventListener('click',function(){
-                row.querySelectorAll('input').forEach(function(i){i.value='';});
-                saveRow(row,'','','','');
+                row.querySelector('.lgw-sh').value='0';
+                row.querySelector('.lgw-sa').value='0';
+                row.querySelector('.lgw-ph').value='0';
+                row.querySelector('.lgw-pa').value='0';
+                saveRow(row,'0','0','0','0');
             });
         }
         document.querySelectorAll('.lgw-score-row').forEach(function(row){
@@ -956,7 +1054,7 @@ function lgw_scorecards_admin_page() {
         </div>
         <div class="lgw-section-body">
         <?php if (empty($divisions)): ?>
-            <div class="notice notice-warning inline"><p>No divisions with CSV URLs configured. Go to <a href="<?php echo admin_url('admin.php?page=lgw-league-setup'); ?>">League Setup</a> and scroll down to <strong>Google Sheets Writeback</strong>.</p></div>
+            <div class="notice notice-warning inline"><p>No divisions with CSV URLs configured. Go to <a href="<?php echo admin_url('admin.php?page=' . LGW_SETUP_PAGE); ?>">League Setup</a> and scroll down to <strong>Google Sheets Writeback</strong>.</p></div>
         <?php else: ?>
             <p style="color:#666;font-size:13px;margin-top:0">Enter or correct scores before full scorecards are submitted. Saves directly to Google Sheets. Leave all fields blank to remove an override.</p>
             <div style="margin-bottom:12px">
@@ -1063,7 +1161,11 @@ function lgw_scorecards_admin_page() {
             $sub_by   = get_post_meta($p->ID, 'lgw_submitted_by',    true);
             $con_by   = get_post_meta($p->ID, 'lgw_confirmed_by',    true);
             $away_sc  = get_post_meta($p->ID, 'lgw_away_scorecard',  true);
-            $div_unresolved = get_post_meta($p->ID, 'lgw_division_unresolved', true);
+            // Re-evaluate live so stale flags don't persist after division is corrected
+            $drive_opts_list  = get_option('lgw_drive', array());
+            $resolved_tab_list = lgw_sheets_tab_for_division($sc['division'] ?? '', $drive_opts_list);
+            $div_unresolved   = empty($sc['division']) || !$resolved_tab_list;
+            if (!$div_unresolved) delete_post_meta($p->ID, 'lgw_division_unresolved');
             $result   = ($sc && isset($sc['home_total']))
                 ? $sc['home_total'].' ('.$sc['home_points'].'pts) – '.$sc['away_total'].' ('.$sc['away_points'].'pts)'
                 : '—';
@@ -1287,7 +1389,59 @@ function lgw_save_league_setup() {
 
     // Drive + Sheets (only save if Google Sheets is the data source)
     lgw_drive_save_settings();
-    lgw_sheets_save_settings();
+
+    // Merged divisions table — save to active season AND sheets_tabs simultaneously
+    $div_names          = isset($_POST['lgw_div_name'])           ? array_map('sanitize_text_field', $_POST['lgw_div_name'])           : array();
+    $div_urls           = isset($_POST['lgw_div_csv_url'])        ? array_map('esc_url_raw',         $_POST['lgw_div_csv_url'])        : array();
+    $div_tabs           = isset($_POST['lgw_div_tab'])            ? array_map('sanitize_text_field', $_POST['lgw_div_tab'])            : array();
+    $div_spreadsheet_ids = isset($_POST['lgw_div_spreadsheet_id']) ? array_map('sanitize_text_field', $_POST['lgw_div_spreadsheet_id']) : array();
+
+    $divisions  = array();
+    $sheets_tabs = array();
+    foreach ($div_names as $i => $name) {
+        $name           = trim($name);
+        $url            = trim($div_urls[$i]            ?? '');
+        $tab            = trim($div_tabs[$i]            ?? '');
+        $spreadsheet_id = trim($div_spreadsheet_ids[$i] ?? '');
+        if ($name !== '' && $url !== '') {
+            $divisions[]   = array('division' => $name, 'csv_url' => $url);
+            $sheets_tabs[] = array(
+                'division'       => $name,
+                'csv_url'        => $url,
+                'tab'            => $tab,
+                'spreadsheet_id' => $spreadsheet_id,
+            );
+        }
+    }
+
+    // Update active season divisions
+    $seasons = lgw_get_seasons();
+    $found   = false;
+    foreach ($seasons as &$s) {
+        if (!empty($s['active'])) {
+            $s['divisions'] = $divisions;
+            $found = true;
+            break;
+        }
+    }
+    unset($s);
+    if (!$found && !empty($divisions)) {
+        $year     = date('Y');
+        $seasons[] = array(
+            'id'        => $year,
+            'label'     => $year . ' Season',
+            'active'    => true,
+            'divisions' => $divisions,
+        );
+    }
+    update_option('lgw_seasons', $seasons);
+
+    // Update drive/sheets tabs
+    $opts_drive = get_option('lgw_drive', array());
+    $opts_drive['sheets_enabled'] = !empty($_POST['lgw_sheets_enabled']) ? 1 : 0;
+    $opts_drive['sheets_id']      = sanitize_text_field($_POST['lgw_sheets_id'] ?? '');
+    $opts_drive['sheets_tabs']    = $sheets_tabs;
+    update_option('lgw_drive', $opts_drive);
 
     // Points system
     $pts_rink    = isset($_POST['lgw_points_per_rink']) ? max(0, floatval($_POST['lgw_points_per_rink'])) : 1;
@@ -1295,7 +1449,7 @@ function lgw_save_league_setup() {
     update_option('lgw_points_per_rink',  $pts_rink);
     update_option('lgw_points_overall',   $pts_overall);
 
-    wp_redirect(admin_url('admin.php?page=lgw-league-setup&saved=1'));
+    wp_redirect(admin_url('admin.php?page=' . LGW_SETUP_PAGE . '&saved=1'));
     exit;
 }
 
@@ -1405,7 +1559,7 @@ function lgw_clear_cache() {
     check_admin_referer('lgw_clear_cache_nonce');
     global $wpdb;
     $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_lgw_csv_%' OR option_name LIKE '_transient_timeout_lgw_csv_%'");
-    wp_redirect(admin_url('admin.php?page=lgw-settings&saved=1&cleared=1'));
+    wp_redirect(admin_url('admin.php?page=' . LGW_SETUP_PAGE . '&cleared=1'));
     exit;
 }
 
@@ -1693,6 +1847,188 @@ function lgw_settings_page() {
 }
 
 // ── League Setup page ─────────────────────────────────────────────────────────
+
+/**
+ * Renders the unified Active Season Divisions table used in the League Setup form.
+ * Columns: Division name | Published CSV URL | Sheet tab name
+ * Replaces the separate Seasons active-divisions and Sheets tab-mapping tables.
+ */
+function lgw_league_setup_divisions_html() {
+    $opts         = get_option('lgw_drive', []);
+    $enabled      = !empty($opts['sheets_enabled']);
+    $nonce_test   = wp_create_nonce('lgw_sheets_test');
+
+    // Seed rows: merge active season divisions with existing tab/spreadsheet settings.
+    $active        = lgw_get_active_season();
+    $season_divs   = $active['divisions'] ?? [];
+    $existing_tabs = $opts['sheets_tabs'] ?? [];
+
+    // Build lookup by csv_url for existing tab config
+    $entry_by_url = [];
+    foreach ($existing_tabs as $t) {
+        $url = $t['csv_url'] ?? '';
+        if ($url) $entry_by_url[$url] = $t;
+    }
+    $entry_by_div = [];
+    foreach ($existing_tabs as $t) {
+        $div = strtolower(trim($t['division'] ?? ''));
+        if ($div) $entry_by_div[$div] = $t;
+    }
+
+    $rows = [];
+    foreach ($season_divs as $d) {
+        $url   = $d['csv_url']  ?? '';
+        $div   = $d['division'] ?? '';
+        $entry = $entry_by_url[$url] ?? $entry_by_div[strtolower(trim($div))] ?? [];
+        $rows[] = [
+            'division'       => $div,
+            'csv_url'        => $url,
+            'tab'            => $entry['tab']            ?? '',
+            'spreadsheet_id' => $entry['spreadsheet_id'] ?? '',
+        ];
+    }
+    if (empty($rows)) {
+        foreach ($existing_tabs as $t) {
+            $rows[] = [
+                'division'       => $t['division']       ?? '',
+                'csv_url'        => $t['csv_url']        ?? '',
+                'tab'            => $t['tab']             ?? '',
+                'spreadsheet_id' => $t['spreadsheet_id'] ?? '',
+            ];
+        }
+    }
+    if (empty($rows)) {
+        $rows = [['division' => '', 'csv_url' => '', 'tab' => '', 'spreadsheet_id' => '']];
+    }
+    ?>
+    <hr>
+    <h2>🏟 Active Season Divisions</h2>
+    <p>Each row defines one division for the current active season. The <strong>Spreadsheet ID</strong> is the editable sheet ID (from the URL between <code>/d/</code> and <code>/edit</code>) — used for writeback. The <strong>CSV URL</strong> is the published read-only URL — used by the front-end widget.</p>
+
+    <table id="lgw-divisions-table" style="border-collapse:collapse;margin-bottom:8px;width:100%">
+        <thead><tr>
+            <th style="padding:4px 8px;text-align:left;font-weight:600;font-size:12px;color:#666;width:130px">Division name</th>
+            <th style="padding:4px 8px;text-align:left;font-weight:600;font-size:12px;color:#666;width:200px">Spreadsheet ID <span style="font-weight:400">(for writeback)</span></th>
+            <th style="padding:4px 8px;text-align:left;font-weight:600;font-size:12px;color:#666;width:110px">Sheet tab</th>
+            <th style="padding:4px 8px;text-align:left;font-weight:600;font-size:12px;color:#666">Published CSV URL <span style="font-weight:400">(for widget)</span></th>
+            <th style="width:60px"></th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($rows as $row): ?>
+        <tr class="lgw-division-row">
+            <td style="padding:4px 8px">
+                <input type="text" name="lgw_div_name[]"
+                    value="<?php echo esc_attr($row['division']); ?>"
+                    placeholder="e.g. Division 1" style="width:120px">
+            </td>
+            <td style="padding:4px 8px">
+                <input type="text" name="lgw_div_spreadsheet_id[]"
+                    value="<?php echo esc_attr($row['spreadsheet_id']); ?>"
+                    placeholder="1aBcDeFgHiJkLmNo…" style="width:190px">
+            </td>
+            <td style="padding:4px 8px">
+                <input type="text" name="lgw_div_tab[]"
+                    value="<?php echo esc_attr($row['tab']); ?>"
+                    placeholder="e.g. Div 1" style="width:100px">
+            </td>
+            <td style="padding:4px 8px">
+                <input type="url" name="lgw_div_csv_url[]"
+                    value="<?php echo esc_attr($row['csv_url']); ?>"
+                    placeholder="https://docs.google.com/spreadsheets/…&output=csv"
+                    style="width:100%;min-width:180px">
+            </td>
+            <td style="padding:4px 8px">
+                <button type="button" class="button button-small lgw-remove-division-row"
+                    <?php echo count($rows) <= 1 ? 'style="display:none"' : ''; ?>>Remove</button>
+            </td>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <p><button type="button" class="button button-small" id="lgw-add-division-row">+ Add division</button></p>
+
+    <hr>
+    <h2>📋 Google Sheets Writeback</h2>
+    <p>When a scorecard is confirmed, the result is automatically written to the spreadsheet configured for that division above. Each division can point to a different spreadsheet — useful when seasons use separate files.</p>
+    <table class="form-table">
+    <tr>
+        <th>Enable writeback</th>
+        <td><label>
+            <input type="checkbox" name="lgw_sheets_enabled" value="1" <?php checked($enabled); ?>>
+            Write confirmed results to Google Sheets automatically
+        </label></td>
+    </tr>
+    <tr>
+        <th>Test connection</th>
+        <td>
+            <button type="button" class="button" id="lgw-sheets-test" data-nonce="<?php echo $nonce_test; ?>">
+                Test Sheets Access
+            </button>
+            <span id="lgw-sheets-test-result" style="margin-left:10px;font-size:13px"></span>
+            <p class="description">Tests auth against the first configured division's spreadsheet.</p>
+        </td>
+    </tr>
+    </table>
+    </table>
+
+    <script>
+    (function(){
+        // Add division row
+        document.getElementById('lgw-add-division-row').addEventListener('click', function() {
+            var tbody = document.querySelector('#lgw-divisions-table tbody');
+            var row = document.createElement('tr');
+            row.className = 'lgw-division-row';
+            row.innerHTML =
+                '<td style="padding:4px 8px"><input type="text" name="lgw_div_name[]" placeholder="e.g. Division 2" style="width:120px"></td>'
+                + '<td style="padding:4px 8px"><input type="text" name="lgw_div_spreadsheet_id[]" placeholder="1aBcDeFgHiJkLmNo…" style="width:190px"></td>'
+                + '<td style="padding:4px 8px"><input type="text" name="lgw_div_tab[]" placeholder="e.g. Div 2" style="width:100px"></td>'
+                + '<td style="padding:4px 8px"><input type="url" name="lgw_div_csv_url[]" placeholder="https://docs.google.com/spreadsheets/…&output=csv" style="width:100%;min-width:180px"></td>'
+                + '<td style="padding:4px 8px"><button type="button" class="button button-small lgw-remove-division-row">Remove</button></td>';
+            tbody.appendChild(row);
+            document.querySelectorAll('.lgw-remove-division-row').forEach(function(b){ b.style.display=''; });
+        });
+        // Remove division row
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('lgw-remove-division-row')) {
+                var tbody = document.querySelector('#lgw-divisions-table tbody');
+                if (tbody.querySelectorAll('.lgw-division-row').length > 1) {
+                    e.target.closest('.lgw-division-row').remove();
+                }
+            }
+        });
+        // Test Sheets connection — use first row's spreadsheet ID
+        var testBtn = document.getElementById('lgw-sheets-test');
+        if (testBtn) {
+            testBtn.addEventListener('click', function() {
+                var res = document.getElementById('lgw-sheets-test-result');
+                var sidInput = document.querySelector('[name="lgw_div_spreadsheet_id[]"]');
+                var sid = sidInput ? sidInput.value.trim() : '';
+                if (!sid) { res.textContent = '⚠️ Enter a Spreadsheet ID first'; res.style.color='#c07000'; return; }
+                testBtn.disabled = true;
+                res.textContent = 'Testing…'; res.style.color = '#333';
+                var fd = new FormData();
+                fd.append('action', 'lgw_sheets_test');
+                fd.append('nonce', testBtn.dataset.nonce);
+                fd.append('sheets_id', sid);
+                fetch(ajaxurl, {method:'POST', body:fd, credentials:'same-origin'})
+                    .then(function(r){ return r.json(); })
+                    .then(function(r){
+                        testBtn.disabled = false;
+                        res.textContent = r.success ? '✅ ' + r.data : '❌ ' + (r.data || 'Failed');
+                        res.style.color = r.success ? 'green' : 'red';
+                    })
+                    .catch(function(e){
+                        testBtn.disabled = false;
+                        res.textContent = '❌ Request failed: ' + e;
+                        res.style.color = 'red';
+                    });
+            });
+        }
+    })();
+    </script>
+    <?php
+}
+
 function lgw_league_setup_page() {
     $saved   = isset($_GET['saved']);
     $cleared = isset($_GET['cleared']);
@@ -1744,11 +2080,8 @@ function lgw_league_setup_page() {
                     </tr>
                 </table>
                 <p>
-                    <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" style="display:inline">
-                        <?php wp_nonce_field('lgw_clear_cache_nonce'); ?>
-                        <input type="hidden" name="action" value="lgw_clear_cache">
-                        <input type="submit" class="button button-secondary" value="🗑 Clear Cache Now">
-                    </form>
+                    <?php $clear_cache_url = wp_nonce_url(admin_url('admin-post.php?action=lgw_clear_cache'), 'lgw_clear_cache_nonce'); ?>
+                    <a href="<?php echo esc_url($clear_cache_url); ?>" class="button button-secondary">🗑 Clear Cache Now</a>
                     <span style="margin-left:8px;color:#666;font-size:13px">Force all divisions to fetch fresh data on next page load.</span>
                 </p>
             </div>
@@ -1936,7 +2269,7 @@ function lgw_league_setup_page() {
                     <span id="lgw-drive-test-result" style="font-size:13px"></span>
                 </p>
 
-                <?php lgw_sheets_settings_html(); ?>
+                <?php lgw_league_setup_divisions_html(); ?>
 
                 <h3 style="margin-top:24px;margin-bottom:4px">Service Account (Legacy)</h3>
                 <p class="description" style="margin-bottom:12px">
@@ -2257,7 +2590,142 @@ function lgw_import_passphrases_page() {
     <?php
 }
 
+// ── Sync score override from a confirmed/edited scorecard ────────────────────
+/**
+ * After a scorecard is confirmed or admin-edited, write the result into the
+ * lgw_score_overrides WP option so the front-end widget shows the updated
+ * score immediately — before the Google Sheets published CSV regenerates.
+ *
+ * Requires the division to be mapped to a csv_url in lgw_drive.sheets_tabs.
+ * The override key format mirrors lgw_scores_parse_fixtures:
+ *   {csv_url}||{sheet_date}||{home_team}||{away_team}
+ */
+function lgw_sync_override_from_scorecard($post_id, $sc = null) {
+    if (!$sc) $sc = get_post_meta($post_id, 'lgw_scorecard_data', true);
+    if (!$sc) return;
+
+    $home     = trim($sc['home_team']  ?? '');
+    $away     = trim($sc['away_team']  ?? '');
+    $date_raw = trim($sc['date']       ?? ''); // played date, dd/mm/yyyy
+    $division = trim($sc['division']   ?? '');
+
+    if (!$home || !$away || !$date_raw) {
+        lgw_sheets_log($post_id, 'warn', 'Override sync skipped — missing home, away, or date');
+        return;
+    }
+
+    // Find the csv_url for this division — try sheets_tabs first, then active season
+    $opts    = get_option('lgw_drive', []);
+    $entry   = $division ? lgw_sheets_entry_for_division($division, $opts) : null;
+    $csv_url = trim($entry['csv_url'] ?? '');
+
+    // Fallback: look up csv_url from the active season divisions
+    if (!$csv_url && $division && function_exists('lgw_get_active_season_id')) {
+        $active_id = lgw_get_active_season_id();
+        if ($active_id && function_exists('lgw_season_csv_for_division')) {
+            $csv_url = lgw_season_csv_for_division($active_id, $division);
+        }
+    }
+
+    if (!$csv_url) {
+        lgw_sheets_log($post_id, 'warn', 'Override sync skipped — no CSV URL found for division: ' . ($division ?: '(empty)'));
+        return;
+    }
+
+    // Determine the fixture date as it appears in the CSV.
+    // The override key MUST use the CSV's own date string for the fixture row —
+    // not the played date — because the widget builds keys from the CSV dates.
+    // Strategy: fetch the CSV and find the row for this home/away pair; use
+    // whatever date the CSV has for that row. Fall back to lgw_fixture_date meta,
+    // then finally to the scorecard played date.
+    $sheet_date = lgw_sync_get_fixture_date_from_csv($csv_url, $home, $away);
+
+    if (!$sheet_date) {
+        // Fallback 1: lgw_fixture_date meta (set by front-end fixture-click submissions)
+        $fixture_date_raw = trim(get_post_meta($post_id, 'lgw_fixture_date', true));
+        // Fallback 2: played date from scorecard
+        if (!$fixture_date_raw) $fixture_date_raw = $date_raw;
+        $sheet_date = lgw_sheets_format_date($fixture_date_raw);
+    }
+
+    if (!$sheet_date) {
+        lgw_sheets_log($post_id, 'warn', 'Override sync skipped — could not determine fixture date for: ' . $home . ' v ' . $away);
+        return;
+    }
+
+    $key = $csv_url . '||' . $sheet_date . '||' . $home . '||' . $away;
+
+    $overrides       = get_option('lgw_score_overrides', array());
+    $overrides[$key] = array(
+        'csv_url' => $csv_url,
+        'date'    => $sheet_date,
+        'home'    => $home,
+        'away'    => $away,
+        'sh'      => (string)($sc['home_total']  ?? 0),
+        'sa'      => (string)($sc['away_total']  ?? 0),
+        'ph'      => (string)($sc['home_points'] ?? 0),
+        'pa'      => (string)($sc['away_points'] ?? 0),
+    );
+    update_option('lgw_score_overrides', $overrides);
+
+    lgw_sheets_log($post_id, 'info', 'Override synced — key: ' . $sheet_date . ' | ' . $home . ' v ' . $away
+        . ' | ' . ($sc['home_total'] ?? 0) . '-' . ($sc['away_total'] ?? 0)
+        . ' (' . ($sc['home_points'] ?? 0) . 'pts-' . ($sc['away_points'] ?? 0) . 'pts)');
+}
+
+/**
+ * Fetch the CSV for a division and find the scheduled fixture date for a
+ * given home/away team pair.  Returns the date string as it appears in the
+ * CSV (e.g. "Sat 9-May-2026"), or empty string if not found.
+ */
+function lgw_sync_get_fixture_date_from_csv($csv_url, $home, $away) {
+    $cache_key = 'lgw_csv_' . md5($csv_url);
+    $body = get_transient($cache_key);
+    if ($body === false) {
+        $response = wp_remote_get($csv_url, ['timeout' => 10, 'user-agent' => 'Mozilla/5.0']);
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) return '';
+        $body = wp_remote_retrieve_body($response);
+        $cache_mins = intval(get_option('lgw_cache_mins', 5));
+        set_transient($cache_key, $body, $cache_mins * MINUTE_IN_SECONDS);
+    }
+
+    $rows     = array_map('str_getcsv', explode("\n", str_replace("\r", '', $body)));
+    $date_re  = '/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}-[A-Za-z]+-\d{4}$/';
+    $home_lc  = strtolower(trim($home));
+    $away_lc  = strtolower(trim($away));
+
+    // Detect team name column indices from the header row
+    $col_hteam = 2; $col_ateam = 10;
+    $in_fixtures = false;
+    $cur_date = '';
+
+    foreach ($rows as $row) {
+        $joined = implode('', $row);
+        if (!$in_fixtures) {
+            if (stripos($joined, 'FIXTURES') !== false) { $in_fixtures = true; }
+            continue;
+        }
+        // Header row
+        if (stripos($joined, 'HTeam') !== false || stripos($joined, 'HPts') !== false) {
+            foreach ($row as $c => $v) {
+                $v = trim($v);
+                if ($v === 'HTeam') $col_hteam = $c;
+                if ($v === 'ATeam') $col_ateam = $c;
+            }
+            continue;
+        }
+        $first = trim($row[0] ?? $row[1] ?? '');
+        if (preg_match($date_re, $first)) { $cur_date = $first; continue; }
+        $ht = strtolower(trim($row[$col_hteam] ?? ''));
+        $at = strtolower(trim($row[$col_ateam] ?? ''));
+        if ($ht === $home_lc && $at === $away_lc) return $cur_date;
+    }
+    return '';
+}
+
 // ── Quick Score Entry — AJAX: save a single fixture override ─────────────────
+add_action('lgw_scorecard_confirmed',    'lgw_sync_override_from_scorecard');
+add_action('lgw_scorecard_admin_edited', 'lgw_sync_override_from_scorecard');
 add_action('wp_ajax_lgw_save_score_override', 'lgw_ajax_save_score_override');
 function lgw_ajax_save_score_override() {
     if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
@@ -2289,16 +2757,19 @@ function lgw_ajax_save_score_override() {
     // 2. Write through to Google Sheet if Sheets writeback is configured
     $sheet_msg = 'sheets_disabled';
     $opts = get_option('lgw_drive', []);
-    if (!empty($opts['sheets_enabled']) && !empty($opts['sheets_id'])) {
-        $spreadsheet = trim($opts['sheets_id']);
-        $tab = '';
+    if (!empty($opts['sheets_enabled'])) {
+        // Find matching division entry by csv_url
+        $div_entry = null;
         foreach (($opts['sheets_tabs'] ?? []) as $entry) {
             if (esc_url_raw($entry['csv_url'] ?? '') === $csv_url) {
-                $tab = trim($entry['tab'] ?? '');
+                $div_entry = $entry;
                 break;
             }
         }
-        if ($tab) {
+        $tab         = trim($div_entry['tab']            ?? '');
+        $spreadsheet = trim($div_entry['spreadsheet_id'] ?? $opts['sheets_id'] ?? '');
+
+        if ($tab && $spreadsheet) {
             $token = lgw_drive_get_access_token();
             if ($token) {
                 $sheet_data = lgw_sheets_fetch($token, $spreadsheet, $tab);
@@ -2319,7 +2790,24 @@ function lgw_ajax_save_score_override() {
                             $sheet_msg = 'sheet_error';
                         }
                     } else {
+                        // Diagnostic: collect candidate team pairs from the sheet so the mismatch is visible
+                        $diag_teams = [];
+                        foreach ($sheet_data as $row) {
+                            $ht = trim($row[$cols['hteam']] ?? '');
+                            $at = trim($row[$cols['ateam']] ?? '');
+                            if ($ht && $at) $diag_teams[] = $ht . ' v ' . $at;
+                        }
                         $sheet_msg = 'row_not_found';
+                        wp_send_json_success([
+                            'sheet'       => $sheet_msg,
+                            'debug'       => [
+                                'looking_for' => $home . ' v ' . $away . ' on ' . $date,
+                                'tab'         => $tab,
+                                'col_hteam'   => $cols['hteam'],
+                                'col_ateam'   => $cols['ateam'],
+                                'sheet_teams' => array_slice(array_unique($diag_teams), 0, 20),
+                            ],
+                        ]);
                     }
                 } else {
                     $sheet_msg = 'fetch_failed';
@@ -2328,7 +2816,7 @@ function lgw_ajax_save_score_override() {
                 $sheet_msg = 'auth_failed';
             }
         } else {
-            $sheet_msg = 'no_tab';
+            $sheet_msg = !$tab ? 'no_tab' : 'no_spreadsheet_id';
         }
     }
 
