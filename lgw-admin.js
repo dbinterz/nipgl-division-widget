@@ -2,25 +2,6 @@
 (function($){
     'use strict';
 
-    // Row template for badges
-    function newRow() {
-        return '<tr class="lgw-badge-row">'
-            + '<td><input type="text" name="lgw_team[]" value="" placeholder="e.g. MALONE" class="regular-text"></td>'
-            + '<td>'
-            + '<select name="lgw_badge_type[]" class="lgw-badge-type">'
-            + '<option value="club">Club prefix</option>'
-            + '<option value="exact">Exact</option>'
-            + '</select>'
-            + '</td>'
-            + '<td>'
-            + '<input type="text" name="lgw_image[]" value="" placeholder="Image URL" class="regular-text lgw-image-url" readonly>'
-            + '<button type="button" class="button lgw-pick-image">Choose Image</button>'
-            + '</td>'
-            + '<td><img class="lgw-badge-preview" src="" style="display:none;width:48px;height:48px;object-fit:contain;"></td>'
-            + '<td><button type="button" class="button-link-delete lgw-remove-row">Remove</button></td>'
-            + '</tr>';
-    }
-
     // Row template for sponsors
     function newSponsorRow() {
         return '<tr class="lgw-sponsor-row">'
@@ -34,11 +15,6 @@
             + '<td><button type="button" class="button-link-delete lgw-remove-row">Remove</button></td>'
             + '</tr>';
     }
-
-    // Add badge row
-    $('#lgw-add-row').on('click', function(){
-        $('#lgw-badge-table tbody').append(newRow());
-    });
 
     // Add sponsor row
     $('#lgw-add-sponsor').on('click', function(){
@@ -82,15 +58,28 @@
 
 })(jQuery);
 
-// Club table add/remove rows
+// Club table add rows
 jQuery(function($){
-  $('#lgw-add-club').on('click', function(){
-    var row = '<tr class="lgw-club-row">'
-      + '<td><input type="text" name="lgw_club_name[]" placeholder="e.g. Ards" class="regular-text"></td>'
-      + '<td><input type="text" name="lgw_club_pin[]" placeholder="Set passphrase (word.word.word)" autocomplete="off" autocapitalize="none" spellcheck="false" class="regular-text"></td>'
+  function newClubRow() {
+    return '<tr class="lgw-club-row">'
+      + '<td><input type="text" name="lgw_club_name[]" placeholder="e.g. Ards" class="regular-text" style="width:120px"></td>'
+      + '<td><input type="text" name="lgw_club_pin[]" placeholder="word.word.word" autocomplete="off" autocapitalize="none" spellcheck="false" class="regular-text" style="width:180px"></td>'
+      + '<td>'
+      + '<select name="lgw_badge_type[]" class="lgw-badge-type">'
+      + '<option value="club">Club prefix</option>'
+      + '<option value="exact">Exact</option>'
+      + '</select>'
+      + '</td>'
+      + '<td>'
+      + '<input type="text" name="lgw_image[]" value="" placeholder="Image URL" class="regular-text lgw-image-url" readonly style="width:140px">'
+      + '<button type="button" class="button lgw-pick-image">Choose</button>'
+      + '</td>'
+      + '<td><img class="lgw-badge-preview" src="" style="display:none;width:40px;height:40px;object-fit:contain;"></td>'
       + '<td><button type="button" class="button-link-delete lgw-remove-row">Remove</button></td>'
       + '</tr>';
-    $('#lgw-club-table tbody').append(row);
+  }
+  $('#lgw-add-club').on('click', function(){
+    $('#lgw-club-table tbody').append(newClubRow());
   });
   $(document).on('click', '#lgw-club-table .lgw-remove-row', function(){
     $(this).closest('tr').remove();

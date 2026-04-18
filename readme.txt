@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.71
+Stable tag: 7.1.72
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -71,8 +71,8 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.71 =
-* Fix: Duplicate season switcher bar removed from Player Tracking admin — caused by a stale partial block left from a previous session
+= 7.1.72 =
+* Settings: Merged "Clubs & Passphrases" and "Club Badges" into a single "Clubs & Badges" table — passphrase and badge fields now on one row per club
 
 = 7.1.70 =
 * Feature: Archived seasons now support start/end date fields — set via the Seasons admin edit form or when adding a historical season

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.71
+ * Version: 7.1.72
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.71');
+define('LGW_VERSION', '7.1.72');
 define('LGW_SETUP_PAGE', 'lgw-league-setup'); // page slug for League Setup admin page
 
 
@@ -1280,21 +1280,21 @@ function lgw_save_settings() {
     if (!current_user_can('manage_options')) wp_die('Unauthorized');
     check_admin_referer('lgw_settings_nonce');
 
-    // Club badges
-    $teams  = isset($_POST['lgw_team'])       ? array_map('sanitize_text_field', $_POST['lgw_team'])       : array();
-    $images = isset($_POST['lgw_image'])      ? array_map('esc_url_raw',         $_POST['lgw_image'])      : array();
-    $types  = isset($_POST['lgw_badge_type']) ? array_map('sanitize_text_field', $_POST['lgw_badge_type']) : array();
+    // Club badges — now derived from the merged club rows (lgw_club_name + lgw_image + lgw_badge_type)
+    $club_names_for_badges = isset($_POST['lgw_club_name']) ? array_map('sanitize_text_field', $_POST['lgw_club_name']) : array();
+    $images                = isset($_POST['lgw_image'])      ? array_map('esc_url_raw',         $_POST['lgw_image'])      : array();
+    $types                 = isset($_POST['lgw_badge_type']) ? array_map('sanitize_text_field', $_POST['lgw_badge_type']) : array();
 
     $badges      = array();
     $club_badges = array();
-    foreach ($teams as $i => $team) {
+    foreach ($club_names_for_badges as $i => $team) {
         $team = trim($team);
         if ($team !== '' && !empty($images[$i])) {
-            $type = isset($types[$i]) ? $types[$i] : 'exact';
-            if ($type === 'club') {
-                $club_badges[$team] = $images[$i];
-            } else {
+            $type = isset($types[$i]) ? $types[$i] : 'club';
+            if ($type === 'exact') {
                 $badges[$team] = $images[$i];
+            } else {
+                $club_badges[$team] = $images[$i];
             }
         }
     }
@@ -1592,20 +1592,56 @@ function lgw_settings_page() {
             <?php wp_nonce_field('lgw_settings_nonce'); ?>
             <input type="hidden" name="action" value="lgw_save_settings">
 
-            <h2>Clubs &amp; Passphrases</h2>
+            <h2>Clubs &amp; Badges</h2>
             <p>Add clubs and set a passphrase for each one. Used across all features — scorecards, cups, and championships.<br>
-            <em>Tip: the <a href="https://what3words.com" target="_blank">what3words</a> address for your clubhouse makes a good passphrase (e.g. <code>filled.count.ripen</code>).</em><br>
-            Leave the passphrase blank when editing to keep the existing one.</p>
+            <em>Tip: the <a href="https://what3words.com" target="_blank">what3words</a> address for your clubhouse makes a good passphrase (e.g. <code>filled.count.ripen</code>).</em>
+            Leave the passphrase blank when editing to keep the existing one.<br>
+            Optionally assign a badge image per club. Set <strong>Type</strong> to <strong>Club prefix</strong> to match multiple teams (e.g. <code>MALONE</code> matches <code>MALONE A</code>, <code>MALONE B</code>); use <strong>Exact</strong> for a team-specific badge.</p>
+            <?php
+            $clubs       = get_option('lgw_clubs',       array());
+            $badges      = get_option('lgw_badges',      array());
+            $club_badges = get_option('lgw_club_badges', array());
+            if (empty($clubs)) $clubs = array(array('name'=>'','pin'=>''));
+            // Build a badge lookup keyed by club name (case-insensitive)
+            $badge_lookup = array(); // name_lc => ['image'=>'', 'type'=>'']
+            foreach ($badges as $team => $img) {
+                $badge_lookup[strtolower($team)] = array('image' => $img, 'type' => 'exact');
+            }
+            foreach ($club_badges as $team => $img) {
+                $badge_lookup[strtolower($team)] = array('image' => $img, 'type' => 'club');
+            }
+            ?>
             <table class="widefat lgw-badge-table" id="lgw-club-table">
-                <thead><tr><th>Club Name</th><th>Passphrase (leave blank to keep existing)</th><th></th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Club Name</th>
+                        <th>Passphrase <span style="font-weight:400;color:#666">(leave blank to keep existing)</span></th>
+                        <th>Badge Type</th>
+                        <th>Badge Image</th>
+                        <th>Preview</th>
+                        <th></th>
+                    </tr>
+                </thead>
                 <tbody>
-                <?php
-                $clubs = get_option('lgw_clubs', array());
-                if (empty($clubs)) $clubs = array(array('name'=>'','pin'=>''));
-                foreach ($clubs as $club): ?>
+                <?php foreach ($clubs as $club):
+                    $b     = $badge_lookup[strtolower($club['name'])] ?? array('image'=>'','type'=>'club');
+                    $bimg  = $b['image'];
+                    $btype = $b['type'];
+                ?>
                 <tr class="lgw-club-row">
-                    <td><input type="text" name="lgw_club_name[]" value="<?php echo esc_attr($club['name']); ?>" placeholder="e.g. Ards" class="regular-text"></td>
-                    <td><input type="text" name="lgw_club_pin[]" value="" placeholder="<?php echo $club['pin'] ? '(passphrase set — enter new to change)' : 'Set passphrase (word.word.word)'; ?>" autocomplete="off" autocapitalize="none" spellcheck="false" class="regular-text" style="width:240px"></td>
+                    <td><input type="text" name="lgw_club_name[]" value="<?php echo esc_attr($club['name']); ?>" placeholder="e.g. Ards" class="regular-text" style="width:120px"></td>
+                    <td><input type="text" name="lgw_club_pin[]" value="" placeholder="<?php echo $club['pin'] ? '(set — enter new to change)' : 'word.word.word'; ?>" autocomplete="off" autocapitalize="none" spellcheck="false" class="regular-text" style="width:180px"></td>
+                    <td>
+                        <select name="lgw_badge_type[]" class="lgw-badge-type">
+                            <option value="club"  <?php selected($btype,'club');  ?>>Club prefix</option>
+                            <option value="exact" <?php selected($btype,'exact'); ?>>Exact</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" name="lgw_image[]" value="<?php echo esc_url($bimg); ?>" placeholder="Image URL" class="regular-text lgw-image-url" readonly style="width:140px">
+                        <button type="button" class="button lgw-pick-image">Choose</button>
+                    </td>
+                    <td><img class="lgw-badge-preview" src="<?php echo esc_url($bimg); ?>" style="width:40px;height:40px;object-fit:contain;<?php echo $bimg ? '' : 'display:none;'; ?>"></td>
                     <td><button type="button" class="button-link-delete lgw-remove-row">Remove</button></td>
                 </tr>
                 <?php endforeach; ?>
@@ -1644,48 +1680,6 @@ function lgw_settings_page() {
                 </tr>
             </table>
             <p style="margin-top:0"><a href="<?php echo wp_nonce_url(admin_url('admin.php?page=lgw-settings&lgw_reset_theme=1'), 'lgw_reset_theme_nonce'); ?>" class="button" onclick="return confirm('Reset theme colours to defaults?')">Reset to defaults</a></p>
-
-            <hr>
-            <h2>Club Badges</h2>
-            <p>Assign badge images to clubs. Used across league tables, cup brackets, and championship draws.<br>
-            Set <strong>Type</strong> to <strong>Club prefix</strong> for clubs with multiple teams — e.g. enter <code>MALONE</code> to match <code>MALONE A</code>, <code>MALONE B</code>, etc. Use <strong>Exact</strong> for a team-specific badge. Exact matches take priority.</p>
-            <table class="widefat lgw-badge-table" id="lgw-badge-table">
-                <thead>
-                    <tr><th>Club / Team Name</th><th>Type</th><th>Badge Image</th><th>Preview</th><th></th></tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $club_badges    = get_option('lgw_club_badges', array());
-                    $all_badge_rows = array();
-                    foreach ($badges as $team => $img) {
-                        $all_badge_rows[] = array('name' => $team, 'image' => $img, 'type' => 'exact');
-                    }
-                    foreach ($club_badges as $team => $img) {
-                        $all_badge_rows[] = array('name' => $team, 'image' => $img, 'type' => 'club');
-                    }
-                    if (empty($all_badge_rows)) {
-                        $all_badge_rows = array(array('name' => '', 'image' => '', 'type' => 'club'));
-                    }
-                    foreach ($all_badge_rows as $row): ?>
-                    <tr class="lgw-badge-row">
-                        <td><input type="text" name="lgw_team[]" value="<?php echo esc_attr($row['name']); ?>" placeholder="e.g. MALONE" class="regular-text"></td>
-                        <td>
-                            <select name="lgw_badge_type[]" class="lgw-badge-type">
-                                <option value="club"  <?php selected($row['type'], 'club');  ?>>Club prefix</option>
-                                <option value="exact" <?php selected($row['type'], 'exact'); ?>>Exact</option>
-                            </select>
-                        </td>
-                        <td>
-                            <input type="text" name="lgw_image[]" value="<?php echo esc_url($row['image']); ?>" placeholder="Image URL" class="regular-text lgw-image-url" readonly>
-                            <button type="button" class="button lgw-pick-image">Choose Image</button>
-                        </td>
-                        <td><img class="lgw-badge-preview" src="<?php echo esc_url($row['image']); ?>" style="width:48px;height:48px;object-fit:contain;<?php echo $row['image'] ? '' : 'display:none;'; ?>"></td>
-                        <td><button type="button" class="button-link-delete lgw-remove-row">Remove</button></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            <p><button type="button" class="button" id="lgw-add-row">+ Add Badge</button></p>
 
             <hr>
             <h2>Sponsors</h2>
