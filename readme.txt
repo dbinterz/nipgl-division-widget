@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.68
+Stable tag: 7.1.71
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,22 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.71 =
+* Fix: Duplicate season switcher bar removed from Player Tracking admin — caused by a stale partial block left from a previous session
+
+= 7.1.70 =
+* Feature: Archived seasons now support start/end date fields — set via the Seasons admin edit form or when adding a historical season
+* Feature: Each archived season row in Seasons admin now has a "👥 Players" link (opens Player Tracking filtered to that season) and a "🔄 Backfill Players" button (re-runs appearance logging for all confirmed scorecards tagged to that season)
+* Feature: Player Tracking admin now accepts a ?season=ID URL param — loads that season's date range for all appearance counts, the export, and the Season Settings tab summary
+* Feature: Season switcher bar added above the tabs in Player Tracking — pill buttons for every season; active season marked with ●
+* Feature: Page title reflects the archived season being viewed (e.g. "Player Tracking — 2025 Season")
+* Feature: Export to Excel respects the currently viewed season and passes the season ID through so the downloaded file matches what is on screen
+
+= 7.1.69 =
+* Feature: Season start/end dates moved from Player Tracking admin to Seasons admin — one place to manage season label, dates, and divisions
+* Change: lgw_get_season() in lgw-players.php now reads label/start/end from the active season in lgw_seasons; falls back to legacy lgw_season option for existing installs
+* Change: Player Tracking "Season Settings" tab replaced with a read-only summary and a link to Seasons admin
 
 = 7.1.68 =
 * Fix: Sheets writeback now finds the fixture row even when the match was played on a different date to scheduled — tries the fixture date first, then falls back to team-name-only search

@@ -146,6 +146,8 @@ function lgw_seasons_handle_posts() {
     if (isset($_POST['lgw_save_active_season']) && check_admin_referer('lgw_seasons_nonce')) {
         $seasons  = lgw_get_seasons();
         $label    = sanitize_text_field($_POST['lgw_active_label'] ?? '');
+        $start    = sanitize_text_field($_POST['lgw_active_start'] ?? '');
+        $end      = sanitize_text_field($_POST['lgw_active_end']   ?? '');
         $div_names = isset($_POST['lgw_div_name'])   ? array_map('sanitize_text_field', $_POST['lgw_div_name'])   : array();
         $div_urls  = isset($_POST['lgw_div_csv_url']) ? array_map('esc_url_raw',         $_POST['lgw_div_csv_url']) : array();
 
@@ -163,6 +165,8 @@ function lgw_seasons_handle_posts() {
         foreach ($seasons as &$s) {
             if (!empty($s['active'])) {
                 if ($label) $s['label'] = $label;
+                $s['start']     = $start;
+                $s['end']       = $end;
                 $s['divisions'] = $divisions;
                 $found = true;
                 break;
@@ -177,6 +181,8 @@ function lgw_seasons_handle_posts() {
                 'id'        => $year,
                 'label'     => $label ?: $year . ' Season',
                 'active'    => true,
+                'start'     => $start,
+                'end'       => $end,
                 'divisions' => $divisions,
             );
         }
@@ -260,6 +266,8 @@ function lgw_seasons_handle_posts() {
             foreach ($seasons as &$s) {
                 if ($s['id'] === $editing_id && empty($s['active'])) {
                     $s['label']     = $label ?: ($id . ' Season');
+                    $s['start']     = sanitize_text_field($_POST['lgw_backload_start'] ?? '');
+                    $s['end']       = sanitize_text_field($_POST['lgw_backload_end']   ?? '');
                     $s['divisions'] = $divisions;
                     $found = true;
                     break;
@@ -285,6 +293,8 @@ function lgw_seasons_handle_posts() {
             'id'        => $id,
             'label'     => $label ?: ($id . ' Season'),
             'active'    => false,
+            'start'     => sanitize_text_field($_POST['lgw_backload_start'] ?? ''),
+            'end'       => sanitize_text_field($_POST['lgw_backload_end']   ?? ''),
             'divisions' => $divisions,
         );
         // Sort: active first, then descending by ID
@@ -415,6 +425,19 @@ function lgw_seasons_admin_page() {
                                value="<?php echo esc_attr($active['label']); ?>"
                                class="regular-text" placeholder="e.g. 2026 Season"></td>
                     </tr>
+                    <tr>
+                        <th><label for="lgw_active_start">Season start date</label></th>
+                        <td>
+                            <input type="date" id="lgw_active_start" name="lgw_active_start"
+                                   value="<?php echo esc_attr($active['start'] ?? ''); ?>">
+                            <p class="description">Used by Player Tracking to filter appearances to this season. Leave blank for all-time totals.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="lgw_active_end">Season end date</label></th>
+                        <td><input type="date" id="lgw_active_end" name="lgw_active_end"
+                               value="<?php echo esc_attr($active['end'] ?? ''); ?>"></td>
+                    </tr>
                 </table>
             <?php else: ?>
                 <p style="color:#666;margin-bottom:12px">No active season yet. Add your first season below — the season ID should be the year (e.g. <strong>2026</strong>).</p>
@@ -423,6 +446,17 @@ function lgw_seasons_admin_page() {
                         <th style="width:160px"><label for="lgw_active_label">Season label</label></th>
                         <td><input type="text" id="lgw_active_label" name="lgw_active_label"
                                value="" class="regular-text" placeholder="e.g. 2026 Season"></td>
+                    </tr>
+                    <tr>
+                        <th><label for="lgw_active_start">Season start date</label></th>
+                        <td>
+                            <input type="date" id="lgw_active_start" name="lgw_active_start" value="">
+                            <p class="description">Used by Player Tracking to filter appearances to this season. Leave blank for all-time totals.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="lgw_active_end">Season end date</label></th>
+                        <td><input type="date" id="lgw_active_end" name="lgw_active_end" value=""></td>
                     </tr>
                 </table>
             <?php endif; ?>
@@ -522,12 +556,26 @@ function lgw_seasons_admin_page() {
             <div>
                 <strong><?php echo esc_html($s['label']); ?></strong>
                 <span style="margin-left:8px;font-size:11px;color:#888;font-family:monospace"><?php echo esc_html($s['id']); ?></span>
+                <?php if (!empty($s['start']) || !empty($s['end'])): ?>
+                <span style="margin-left:10px;font-size:11px;color:#555">
+                    <?php echo esc_html(($s['start'] ?? '?') . ' – ' . ($s['end'] ?? '?')); ?>
+                </span>
+                <?php endif; ?>
                 <div class="lgw-archived-divs">
                     <?php echo $div_summary ? esc_html($div_summary) : '<em>No divisions</em>'; ?>
                     (<?php echo count($s['divisions'] ?? array()); ?> division<?php echo count($s['divisions'] ?? array()) !== 1 ? 's' : ''; ?>)
                 </div>
             </div>
             <div class="lgw-archived-actions">
+                <a href="<?php echo esc_url(admin_url('admin.php?page=lgw-players&season=' . urlencode($s['id']))); ?>"
+                   class="button button-small">👥 Players</a>
+                <?php
+                $bf_nonce = wp_create_nonce('lgw_backfill_players_' . $s['id']);
+                ?>
+                <button type="button" class="button button-small lgw-backfill-btn"
+                        data-id="<?php echo esc_attr($s['id']); ?>"
+                        data-label="<?php echo esc_attr($s['label']); ?>"
+                        data-nonce="<?php echo esc_attr($bf_nonce); ?>">🔄 Backfill Players</button>
                 <button type="button" class="button button-small lgw-edit-archived-btn"
                         data-id="<?php echo esc_attr($s['id']); ?>">Edit</button>
                 <?php
@@ -552,6 +600,19 @@ function lgw_seasons_admin_page() {
                         <th style="width:140px">Label</th>
                         <td><input type="text" name="lgw_backload_label"
                                value="<?php echo esc_attr($s['label']); ?>" class="regular-text"></td>
+                    </tr>
+                    <tr>
+                        <th>Season start</th>
+                        <td>
+                            <input type="date" name="lgw_backload_start"
+                                   value="<?php echo esc_attr($s['start'] ?? ''); ?>">
+                            <p class="description">Used to filter Player Tracking to this season.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Season end</th>
+                        <td><input type="date" name="lgw_backload_end"
+                               value="<?php echo esc_attr($s['end'] ?? ''); ?>"></td>
                     </tr>
                 </table>
                 <p style="font-weight:600;margin-bottom:6px;font-size:13px">Divisions</p>
@@ -607,6 +668,17 @@ function lgw_seasons_admin_page() {
                         <input type="text" id="lgw_backload_label" name="lgw_backload_label"
                                class="regular-text" placeholder="e.g. 2025 Season">
                     </td>
+                </tr>
+                <tr>
+                    <th><label for="lgw_backload_start">Season start date</label></th>
+                    <td>
+                        <input type="date" id="lgw_backload_start" name="lgw_backload_start">
+                        <p class="description">Used to filter Player Tracking to this season.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="lgw_backload_end">Season end date</label></th>
+                    <td><input type="date" id="lgw_backload_end" name="lgw_backload_end"></td>
                 </tr>
             </table>
             <p style="font-weight:600;margin-bottom:8px;font-size:13px">Divisions</p>
@@ -705,6 +777,39 @@ function lgw_seasons_admin_page() {
                 var id = btn.getAttribute('data-season');
                 var panel = document.getElementById('lgw-edit-archived-' + id);
                 if (panel) panel.style.display = 'none';
+            });
+        });
+
+        // ── Backfill players for a season ──────────────────────────────────────
+        document.querySelectorAll('.lgw-backfill-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id    = btn.getAttribute('data-id');
+                var label = btn.getAttribute('data-label');
+                var nonce = btn.getAttribute('data-nonce');
+                if (!confirm('Re-run player appearance logging for all scorecards tagged as ' + label + '?\n\nThis is safe to run multiple times — existing records for each scorecard are replaced.')) return;
+                btn.disabled = true;
+                btn.textContent = '⏳ Backfilling…';
+                fetch(ajaxurl, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'action=lgw_backfill_season_players&season_id=' + encodeURIComponent(id) + '&nonce=' + encodeURIComponent(nonce)
+                })
+                .then(function(r){ return r.json(); })
+                .then(function(data) {
+                    btn.disabled = false;
+                    if (data.success) {
+                        btn.textContent = '✅ Done (' + data.data.count + ' scorecards)';
+                        setTimeout(function(){ btn.textContent = '🔄 Backfill Players'; }, 4000);
+                    } else {
+                        btn.textContent = '❌ ' + (data.data || 'Error');
+                        setTimeout(function(){ btn.textContent = '🔄 Backfill Players'; }, 4000);
+                    }
+                })
+                .catch(function() {
+                    btn.disabled = false;
+                    btn.textContent = '❌ Request failed';
+                    setTimeout(function(){ btn.textContent = '🔄 Backfill Players'; }, 4000);
+                });
             });
         });
     })();

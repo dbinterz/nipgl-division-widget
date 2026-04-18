@@ -64,7 +64,21 @@ function lgw_maybe_create_player_tables() {
 }
 
 // ── Season helpers ────────────────────────────────────────────────────────────
+/**
+ * Returns the current season date range and label.
+ * Reads from the active season in lgw_seasons (managed via Seasons admin).
+ * Falls back to the legacy lgw_season option for backwards compatibility.
+ */
 function lgw_get_season() {
+    $active = lgw_get_active_season();
+    if ($active) {
+        return array(
+            'start' => $active['start'] ?? '',
+            'end'   => $active['end']   ?? '',
+            'label' => $active['label'] ?? '',
+        );
+    }
+    // Legacy fallback — pre-seasons-integration installs
     return get_option('lgw_season', array(
         'start' => '',
         'end'   => '',
@@ -292,31 +306,90 @@ function lgw_ajax_check_new_players() {
     wp_send_json_success($new);
 }
 
+// ── AJAX: Backfill player appearances for a given season ─────────────────────
+add_action('wp_ajax_lgw_backfill_season_players', 'lgw_ajax_backfill_season_players');
+function lgw_ajax_backfill_season_players() {
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    $season_id = sanitize_text_field($_POST['season_id'] ?? '');
+    if (!$season_id) wp_send_json_error('Missing season ID');
+    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'lgw_backfill_players_' . $season_id)) {
+        wp_send_json_error('Nonce invalid');
+    }
+
+    // Find all scorecards tagged with this season
+    $posts = get_posts(array(
+        'post_type'      => 'lgw_scorecard',
+        'posts_per_page' => -1,
+        'post_status'    => array('publish', 'draft'),
+        'meta_query'     => array(
+            array(
+                'key'   => 'lgw_sc_season',
+                'value' => $season_id,
+            ),
+        ),
+    ));
+
+    $count = 0;
+    foreach ($posts as $p) {
+        // Only log appearances from confirmed or admin-resolved scorecards
+        $status = get_post_meta($p->ID, 'lgw_sc_status', true);
+        if (in_array($status, array('confirmed', 'admin_resolved', 'auto_confirmed'), true)) {
+            lgw_log_appearances($p->ID);
+            $count++;
+        }
+    }
+
+    wp_send_json_success(array(
+        'count'     => $count,
+        'total'     => count($posts),
+        'season_id' => $season_id,
+    ));
+}
+
 // ── Admin menu ────────────────────────────────────────────────────────────────
 // ── Admin page ────────────────────────────────────────────────────────────────
 function lgw_players_admin_page() {
     global $wpdb;
     $pt  = lgw_players_table();
     $at  = lgw_appearances_table();
-    $season = lgw_get_season();
     $nonce  = wp_create_nonce('lgw_players_nonce');
-    $season_where = lgw_season_where();
+
+    // ── Season context: URL param ?season=ID overrides active season ─────────
+    $all_seasons    = lgw_get_seasons();
+    $viewing_season_id = sanitize_text_field($_GET['season'] ?? '');
+    if ($viewing_season_id) {
+        $viewing_season = lgw_get_season_by_id($viewing_season_id);
+    } else {
+        $viewing_season = lgw_get_active_season();
+        $viewing_season_id = $viewing_season ? $viewing_season['id'] : '';
+    }
+
+    if ($viewing_season) {
+        $season = array(
+            'start' => $viewing_season['start'] ?? '',
+            'end'   => $viewing_season['end']   ?? '',
+            'label' => $viewing_season['label'] ?? '',
+        );
+    } else {
+        $season = lgw_get_season(); // fallback
+    }
+
+    // Build season_where from the resolved season
+    $season_where = '';
+    if (!empty($season['start']) && !empty($season['end'])) {
+        $season_where = $wpdb->prepare(
+            "AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') >= %s AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') <= %s",
+            $season['start'],
+            $season['end']
+        );
+    }
 
     // Handle POST actions
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['lgw_players_action'])) {
         check_admin_referer('lgw_players_nonce', 'lgw_players_nonce_field');
         $action = $_POST['lgw_players_action'];
 
-        if ($action === 'save_season') {
-            update_option('lgw_season', array(
-                'start' => sanitize_text_field($_POST['season_start'] ?? ''),
-                'end'   => sanitize_text_field($_POST['season_end']   ?? ''),
-                'label' => sanitize_text_field($_POST['season_label'] ?? ''),
-            ));
-            echo '<div class="notice notice-success"><p>Season settings saved.</p></div>';
-            $season = lgw_get_season();
-            $season_where = lgw_season_where();
-        }
+        // save_season action removed — season dates now managed via Seasons admin (lgw-seasons.php)
 
         if ($action === 'merge') {
             $keep_id    = intval($_POST['keep_id']   ?? 0);
@@ -398,7 +471,7 @@ function lgw_players_admin_page() {
 
     ?>
     <div class="wrap">
-    <h1>Player Tracking</h1>
+    <h1>Player Tracking<?php if ($viewing_season && empty($viewing_season['active'])): ?> <span style="font-size:18px;color:#666;font-weight:400">— <?php echo esc_html($viewing_season['label']); ?></span><?php endif; ?></h1>
 
     <style>
     .lgw-pt-tabs{display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #1a2e5a}
@@ -440,6 +513,42 @@ function lgw_players_admin_page() {
     .lgw-sc-pending{background:#fff3cd;color:#856404}
     .lgw-sc-disputed{background:#f8d7da;color:#721c24}
     </style>
+
+    <?php
+    // ── Season switcher bar ───────────────────────────────────────────────────
+    $base_url = admin_url('admin.php?page=lgw-players');
+    if (!empty($all_seasons)):
+    ?>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <label style="font-weight:600;font-size:13px;margin:0">Viewing season:</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <?php foreach ($all_seasons as $sw_s):
+            $is_active_s = !empty($sw_s['active']);
+            $is_viewing  = ($sw_s['id'] === $viewing_season_id);
+            $sw_url = $is_active_s
+                ? $base_url
+                : esc_url(add_query_arg('season', $sw_s['id'], $base_url));
+            $btn_style = $is_viewing
+                ? 'background:#1a2e5a;color:#fff;border-color:#1a2e5a'
+                : 'background:#f0f2f8;color:#1a2e5a;border-color:#ccc';
+        ?>
+        <a href="<?php echo $sw_url; ?>"
+           class="button button-small"
+           style="<?php echo $btn_style; ?>;font-weight:600">
+            <?php echo esc_html($sw_s['label']); ?>
+            <?php if ($is_active_s): ?><span style="font-size:10px;opacity:.8"> ●</span><?php endif; ?>
+        </a>
+        <?php endforeach; ?>
+        </div>
+        <?php if (!empty($season['start']) || !empty($season['end'])): ?>
+        <span style="font-size:12px;color:#666;margin-left:4px">
+            <?php echo esc_html(($season['start'] ?: '?') . ' – ' . ($season['end'] ?: '?')); ?>
+        </span>
+        <?php elseif ($viewing_season): ?>
+        <span style="font-size:12px;color:#aaa;margin-left:4px">no date range — all-time</span>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
 
     <div class="lgw-pt-tabs">
         <div class="lgw-pt-tab active" onclick="lgwTab('players')">Players</div>
@@ -654,7 +763,13 @@ function lgw_players_admin_page() {
             <?php endforeach; ?>
 
             <p style="margin-top:16px">
-                <a href="<?php echo admin_url('admin-post.php?action=lgw_export_players&_wpnonce='.wp_create_nonce('lgw_export_players')); ?>" class="button button-primary">⬇ Export to Excel</a>
+                <?php
+                $export_url = admin_url('admin-post.php?action=lgw_export_players&_wpnonce=' . wp_create_nonce('lgw_export_players'));
+                if ($viewing_season_id && $viewing_season && empty($viewing_season['active'])) {
+                    $export_url = add_query_arg('season', $viewing_season_id, $export_url);
+                }
+                ?>
+                <a href="<?php echo esc_url($export_url); ?>" class="button button-primary">⬇ Export to Excel</a>
             </p>
         <?php endif; ?>
     </div>
@@ -734,18 +849,31 @@ function lgw_players_admin_page() {
     <?php // ── Tab 4: Season settings ── ?>
     <div class="lgw-pt-panel" id="lgw-panel-season">
         <h2>Season Settings</h2>
-        <p>Set the current season date range. Appearance counts on the Players tab will only count matches within this range. Leave blank to show all-time totals.</p>
-        <form method="post" class="lgw-season-form">
-            <?php wp_nonce_field('lgw_players_nonce','lgw_players_nonce_field'); ?>
-            <input type="hidden" name="lgw_players_action" value="save_season">
-            <label>Season label (e.g. "2025/26")</label>
-            <input type="text" name="season_label" value="<?php echo esc_attr($season['label'] ?? ''); ?>" placeholder="2025/26">
-            <label>Season start date</label>
-            <input type="date" name="season_start" value="<?php echo esc_attr($season['start'] ?? ''); ?>">
-            <label>Season end date</label>
-            <input type="date" name="season_end" value="<?php echo esc_attr($season['end'] ?? ''); ?>">
-            <button type="submit" class="button button-primary">Save Season</button>
-        </form>
+        <?php $disp_s = $viewing_season ?: lgw_get_active_season(); ?>
+        <?php if ($disp_s): ?>
+        <div style="background:#f0f6fc;border:1px solid #b8d4f0;border-radius:6px;padding:16px 20px;margin-bottom:16px">
+            <p style="margin:0 0 8px;font-weight:600">
+                <?php echo !empty($disp_s['active']) ? 'Active season' : 'Archived season'; ?>:
+                <?php echo esc_html($disp_s['label']); ?>
+            </p>
+            <?php if (!empty($disp_s['start']) || !empty($disp_s['end'])): ?>
+            <p style="margin:0 0 4px;font-size:13px;color:#555">
+                <strong>Start:</strong> <?php echo esc_html($disp_s['start'] ?: '—'); ?>
+                &nbsp;&nbsp;
+                <strong>End:</strong> <?php echo esc_html($disp_s['end'] ?: '—'); ?>
+            </p>
+            <p style="margin:8px 0 0;font-size:13px;color:#555">Appearance counts are filtered to matches within this date range.</p>
+            <?php else: ?>
+            <p style="margin:0;font-size:13px;color:#888">No date range set — showing all-time totals. Add start/end dates in Seasons admin to filter by season.</p>
+            <?php endif; ?>
+        </div>
+        <?php else: ?>
+        <div style="background:#fff8e5;border:1px solid #e8b400;border-radius:6px;padding:16px 20px;margin-bottom:16px">
+            <p style="margin:0;font-size:13px;color:#555">No season configured — showing all-time totals.</p>
+        </div>
+        <?php endif; ?>
+        <p>Season dates are managed in the <strong>Seasons</strong> admin page alongside your divisions.</p>
+        <a href="<?php echo esc_url(admin_url('admin.php?page=lgw-seasons')); ?>" class="button button-primary">Go to Seasons Admin →</a>
     </div>
 
     </div><!-- .wrap -->
@@ -761,8 +889,30 @@ function lgw_export_players_xlsx() {
     global $wpdb;
     $pt = lgw_players_table();
     $at = lgw_appearances_table();
-    $season_where = lgw_season_where();
-    $season = lgw_get_season();
+
+    // Respect ?season=ID param so export matches what user is viewing
+    $export_season_id = sanitize_text_field($_GET['season'] ?? '');
+    if ($export_season_id) {
+        $export_season_obj = lgw_get_season_by_id($export_season_id);
+    } else {
+        $export_season_obj = lgw_get_active_season();
+    }
+    if ($export_season_obj) {
+        $season = array(
+            'start' => $export_season_obj['start'] ?? '',
+            'end'   => $export_season_obj['end']   ?? '',
+            'label' => $export_season_obj['label'] ?? '',
+        );
+    } else {
+        $season = lgw_get_season();
+    }
+    $season_where = '';
+    if (!empty($season['start']) && !empty($season['end'])) {
+        $season_where = $wpdb->prepare(
+            "AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') >= %s AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') <= %s",
+            $season['start'], $season['end']
+        );
+    }
     $label  = !empty($season['label']) ? ' - ' . $season['label'] : '';
     $filename = 'lgw-players' . str_replace('/', '-', $label) . '.xls';
 

@@ -108,6 +108,22 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### v7.1.71
+- **Fix:** Duplicate season switcher bar removed from Player Tracking admin
+
+### v7.1.70
+- **Feature:** Archived seasons now support start/end date fields — set via the Seasons admin edit or Add Historical Season forms
+- **Feature:** Each archived season row has a **👥 Players** link (opens Player Tracking filtered to that season) and a **🔄 Backfill Players** button (re-logs appearances for all confirmed scorecards tagged to that season)
+- **Feature:** Player Tracking admin accepts `?season=ID` URL param — all appearance counts, the export, and the Season Settings tab reflect that season's date range
+- **Feature:** Season switcher bar added above the Players tabs — pill buttons for every season, active season marked with ●
+- **Feature:** Page title shows the archived season name when viewing one (e.g. "Player Tracking — 2025 Season")
+- **Feature:** Export to Excel passes the season ID through so the downloaded file matches what is on screen
+
+### v7.1.69
+- **Feature:** Season start/end dates moved to Seasons admin — label, dates, and divisions now all managed in one place
+- **Change:** `lgw_get_season()` reads from the active season in `lgw_seasons`; legacy `lgw_season` option used as fallback for existing installs
+- **Change:** Player Tracking "Season Settings" tab is now a read-only summary with a link to Seasons admin
+
 ### v7.1.68
 - **Fix:** Sheets writeback (`lgw_sheets_write_result`) now finds the fixture row even when the match was played on a rescheduled date — tries the fixture date first, then falls back to matching by team names only; logs a note when the fallback is used
 - **Fix:** Same fix applied to the override sync path so both the spreadsheet write and the `lgw_score_overrides` key use the correct row
