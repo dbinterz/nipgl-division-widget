@@ -1012,6 +1012,30 @@
 
   .lgw-champ-champion { font-size: 10pt !important; padding: 6px !important; }
   .lgw-champ-score    { font-size: 8.5pt !important; }
+
+  /* Sponsor footer: fixed bottom-right */
+  .lgw-print-footer {
+    display: block !important;
+    visibility: visible !important;
+    position: fixed !important;
+    bottom: 12px !important;
+    right: 16px !important;
+    text-align: right !important;
+    opacity: 0.85 !important;
+  }
+  .lgw-print-footer img {
+    max-height: 48px !important;
+    max-width: 160px !important;
+    object-fit: contain !important;
+    display: block !important;
+  }
+  .lgw-print-footer-label {
+    font-size: 7pt !important;
+    color: #888 !important;
+    letter-spacing: .05em !important;
+    text-transform: uppercase !important;
+    margin-bottom: 3px !important;
+  }
 }
 
 

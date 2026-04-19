@@ -2211,6 +2211,16 @@ function lgw_champ_shortcode($atts) {
               <?php endif; ?>
             </span>
           </div>
+
+          <?php if ($primary_sponsor && !empty($primary_sponsor['image'])): ?>
+          <div class="lgw-print-footer" style="display:none">
+            <?php if (!empty($primary_sponsor['name'])): ?>
+              <div class="lgw-print-footer-label">Sponsored by</div>
+            <?php endif; ?>
+            <img src="<?php echo esc_url($primary_sponsor['image']); ?>" alt="<?php echo esc_attr($primary_sponsor['name'] ?: 'Sponsor'); ?>">
+          </div>
+          <?php endif; ?>
+
         </div>
       </div>
       <?php endforeach; ?>
@@ -2250,6 +2260,16 @@ function lgw_champ_shortcode($atts) {
             <span class="lgw-champ-status-dot"></span>
             <span class="lgw-champ-status-text">Final Stage</span>
           </div>
+
+          <?php if ($primary_sponsor && !empty($primary_sponsor['image'])): ?>
+          <div class="lgw-print-footer" style="display:none">
+            <?php if (!empty($primary_sponsor['name'])): ?>
+              <div class="lgw-print-footer-label">Sponsored by</div>
+            <?php endif; ?>
+            <img src="<?php echo esc_url($primary_sponsor['image']); ?>" alt="<?php echo esc_attr($primary_sponsor['name'] ?: 'Sponsor'); ?>">
+          </div>
+          <?php endif; ?>
+
         </div>
       </div>
       <?php endif; ?>

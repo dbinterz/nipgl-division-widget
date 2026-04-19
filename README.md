@@ -108,6 +108,10 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### 7.1.79
+- **Feature:** Sponsor logo now appears bottom-right in the print/PDF output for both cup and championship draws
+- **Fix:** Cup print layout on desktop Chrome/Chromebook now uses the same spreadsheet-style layout as championship — R0/R1 as side-by-side columns, later rounds compact below — eliminating clipped or missing matches in Chrome print preview
+
 ### 7.1.78
 - **Feature:** Cup and Championship bracket draws on mobile now support horizontal swipe scrolling — all rounds sit side-by-side with `scroll-snap` for smooth swiping between them
 - **Feature:** Tapping a round header in the bracket scrolls forward to the next round (wraps to first); the tab bar stays in sync as you swipe via `IntersectionObserver`

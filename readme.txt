@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.78
+Stable tag: 7.1.79
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,10 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.79 =
+* Feature: Sponsor logo now appears bottom-right in the print/PDF output for both cup and championship draws
+* Fix: Cup print layout on desktop (Chrome/Chromebook) now uses the same spreadsheet-style layout as championship — R0/R1 rendered as side-by-side columns, later rounds compact below — eliminating clipped or missing matches in Chrome print preview
 
 = 7.1.78 =
 * Feature: Cup and Championship bracket draws on mobile now support horizontal swipe scrolling — all rounds are visible side-by-side with scroll-snap for clean swiping between them

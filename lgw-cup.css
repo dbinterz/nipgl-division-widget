@@ -825,17 +825,144 @@
     width: 100% !important;
     box-shadow: none !important;
   }
-  .lgw-cup-header-actions { display: none !important; }
-  .lgw-cup-tabs { display: none !important; }
-  .lgw-cup-round { display: flex !important; }
-  .lgw-cup-round.mobile-active,
-  .lgw-cup-round:not(.mobile-active) { display: flex !important; }
-  .lgw-cup-bracket-outer { overflow: visible !important; padding: 8px !important; }
-  .lgw-cup-bracket { flex-wrap: wrap !important; min-width: 0 !important; }
-  .lgw-cup-match { break-inside: avoid; }
+
+  /* Hide UI chrome */
+  .lgw-cup-header-actions,
+  .lgw-cup-tabs,
   .lgw-cup-draw-overlay,
   .lgw-cup-sc-modal,
   .lgw-cup-score-popover { display: none !important; }
+
+  /* Show all rounds */
+  .lgw-cup-round { display: flex !important; }
+
+  /* Bracket: wrap into rows, no horizontal scroll */
+  .lgw-cup-bracket-outer {
+    overflow: visible !important;
+    padding: 4px 8px !important;
+  }
+  .lgw-cup-bracket {
+    flex-wrap: wrap !important;
+    min-width: 0 !important;
+    align-items: flex-start !important;
+    gap: 0 !important;
+  }
+
+  /* Connector columns hidden in print */
+  .lgw-cup-connector-col { display: none !important; }
+
+  /* R0 and R1: side-by-side at ~half-width */
+  .lgw-cup-round[data-round="0"],
+  .lgw-cup-round[data-round="1"] {
+    min-width: 0 !important;
+    width: 48% !important;
+    flex: 0 0 48% !important;
+  }
+
+  /* Later rounds: flexible, sit below */
+  .lgw-cup-round:not([data-round="0"]):not([data-round="1"]) {
+    min-width: 100px !important;
+    flex: 1 !important;
+  }
+
+  /* R0 / R1: horizontal match rows (home | away side-by-side) */
+  .lgw-cup-round[data-round="0"] .lgw-cup-match,
+  .lgw-cup-round[data-round="1"] .lgw-cup-match {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    margin: 1px 4px !important;
+    padding: 0 !important;
+    border: 1px solid #ccc !important;
+    border-radius: 2px !important;
+    min-height: 0 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+  .lgw-cup-round[data-round="0"] .lgw-cup-team,
+  .lgw-cup-round[data-round="1"] .lgw-cup-team {
+    flex: 1 !important;
+    padding: 2px 5px !important;
+    min-height: 0 !important;
+    border-top: none !important;
+    font-size: 8.5pt !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.25 !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+  .lgw-cup-round[data-round="0"] .lgw-cup-team + .lgw-cup-team,
+  .lgw-cup-round[data-round="1"] .lgw-cup-team + .lgw-cup-team {
+    border-left: 1px solid #ccc !important;
+    border-top: none !important;
+  }
+  .lgw-cup-round[data-round="0"] .lgw-cup-team-name,
+  .lgw-cup-round[data-round="1"] .lgw-cup-team-name {
+    font-size: 8.5pt !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  /* Round headers */
+  .lgw-cup-round-header {
+    font-size: 8pt !important;
+    padding: 3px 8px !important;
+    margin: 0 4px 3px !important;
+  }
+  .lgw-cup-game-num {
+    font-size: 7pt !important;
+    padding: 1px 5px !important;
+  }
+
+  /* Later-round match cards: compact stacked */
+  .lgw-cup-round:not([data-round="0"]):not([data-round="1"]) .lgw-cup-match {
+    margin: 3px 4px !important;
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+  .lgw-cup-round:not([data-round="0"]):not([data-round="1"]) .lgw-cup-team {
+    padding: 3px 6px !important;
+    font-size: 8.5pt !important;
+    min-height: 0 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .lgw-cup-round:not([data-round="0"]):not([data-round="1"]) .lgw-cup-team-name {
+    font-size: 8.5pt !important;
+    white-space: normal !important;
+    overflow: visible !important;
+  }
+
+  /* Scores and champion */
+  .lgw-cup-champion { font-size: 10pt !important; padding: 6px !important; }
+  .lgw-cup-score    { font-size: 8.5pt !important; }
+  .lgw-cup-team-badge { display: none !important; }
+
+  /* Sponsor footer: fixed bottom-right */
+  .lgw-print-footer {
+    display: block !important;
+    visibility: visible !important;
+    position: fixed !important;
+    bottom: 12px !important;
+    right: 16px !important;
+    text-align: right !important;
+    opacity: 0.85 !important;
+  }
+  .lgw-print-footer img {
+    max-height: 48px !important;
+    max-width: 160px !important;
+    object-fit: contain !important;
+    display: block !important;
+  }
+  .lgw-print-footer-label {
+    font-size: 7pt !important;
+    color: #888 !important;
+    letter-spacing: .05em !important;
+    text-transform: uppercase !important;
+    margin-bottom: 3px !important;
+  }
 }
 
 /* ── Mobile: horizontal-scroll bracket with tab navigation ──────────────────── */
