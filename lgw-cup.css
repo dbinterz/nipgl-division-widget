@@ -838,28 +838,73 @@
   .lgw-cup-score-popover { display: none !important; }
 }
 
-/* ── Mobile: tab-based round view ────────────────────────────────────────────── */
+/* ── Mobile: horizontal-scroll bracket with tab navigation ──────────────────── */
 @media (max-width: 700px) {
+  /* Show tab bar */
   .lgw-cup-tabs { display: block; }
-  .lgw-cup-bracket-outer { padding: 12px; }
+
+  /* Bracket outer: horizontal scroll with snap */
+  .lgw-cup-bracket-outer {
+    padding: 12px 0 12px 12px;
+    overflow-x: scroll;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  .lgw-cup-bracket-outer::-webkit-scrollbar { display: none; }
+
+  /* Bracket: horizontal flex row (not column), no wrapping */
   .lgw-cup-bracket {
-    flex-direction: column;
-    min-width: unset;
-  }
-  .lgw-cup-round {
-    display: none;
-    width: 100%;
-    min-width: unset;
-  }
-  .lgw-cup-round.mobile-active { display: flex; }
-  .lgw-cup-connector-col { display: none; }
-  .lgw-cup-round-header { text-align: left; padding: 0 4px 10px; }
-  .lgw-cup-match { margin: 6px 0; }
-  .lgw-cup-champion {
     flex-direction: row;
-    justify-content: flex-start;
-    padding: 10px 4px;
-    gap: 12px;
+    min-width: unset;
+    width: max-content;
+    align-items: flex-start;
+  }
+
+  /* Every round: fixed snap-scroll column, always visible */
+  .lgw-cup-round {
+    display: flex !important;
+    width: 82vw;
+    min-width: 220px;
+    max-width: 340px;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
+
+  /* Connector columns hidden on mobile */
+  .lgw-cup-connector-col { display: none; }
+
+  /* Round header: tappable, shows a visual affordance */
+  .lgw-cup-round-header {
+    cursor: pointer;
+    text-align: left;
+    padding: 8px 10px 8px;
+    user-select: none;
+  }
+  .lgw-cup-round-header::after {
+    content: ' ›';
+    opacity: .5;
+    font-size: 13px;
+  }
+
+  /* Active round header highlight */
+  .lgw-cup-round.mobile-active .lgw-cup-round-header {
+    background: var(--lgw-navy, #1a2e5a);
+    color: var(--lgw-gold, #e8b400);
+  }
+
+  .lgw-cup-match { margin: 6px 4px; }
+
+  /* Champion card: horizontal layout */
+  .lgw-cup-champion {
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    width: 70vw;
+    min-width: 160px;
+    max-width: 260px;
+    flex-shrink: 0;
+    scroll-snap-align: start;
   }
 }
 

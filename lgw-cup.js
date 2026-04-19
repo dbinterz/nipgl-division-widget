@@ -260,17 +260,68 @@
       bracketEl.appendChild(champEl);
     }
 
-    // ── Mobile tab switching
+    // ── Mobile: scroll-based navigation
     if (tabsInner) {
-      tabsInner.addEventListener('click', function (e) {
-        var tab = e.target.closest('.lgw-cup-tab');
-        if (!tab) return;
-        var ri2 = parseInt(tab.dataset.round);
-        qsa('.lgw-cup-tab', tabsInner).forEach(function (t) { t.classList.toggle('active', t === tab); });
+      var bracketOuter = qs('.lgw-cup-bracket-outer', wrap);
+
+      // Helper: scroll bracket to show a round column
+      function scrollToRound(ri2) {
+        var target = qs('.lgw-cup-round[data-round="' + ri2 + '"]', bracketEl);
+        if (!target || !bracketOuter) return;
+        // Activate tab
+        qsa('.lgw-cup-tab', tabsInner).forEach(function (t) {
+          t.classList.toggle('active', parseInt(t.dataset.round) === ri2);
+        });
+        // Highlight round header
         qsa('.lgw-cup-round', bracketEl).forEach(function (r) {
           r.classList.toggle('mobile-active', parseInt(r.dataset.round) === ri2);
         });
+        // Scroll active tab into view in the tab bar
+        var activeTab = qs('.lgw-cup-tab[data-round="' + ri2 + '"]', tabsInner);
+        if (activeTab) activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        // Scroll bracket to that round
+        bracketOuter.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
+      }
+
+      // Tab click → scroll to round
+      tabsInner.addEventListener('click', function (e) {
+        var tab = e.target.closest('.lgw-cup-tab');
+        if (!tab) return;
+        scrollToRound(parseInt(tab.dataset.round));
       });
+
+      // Round header click → scroll to that round
+      qsa('.lgw-cup-round-header', bracketEl).forEach(function (hdr) {
+        var roundEl2 = hdr.closest('.lgw-cup-round');
+        if (!roundEl2) return;
+        hdr.addEventListener('click', function () {
+          var ri3 = parseInt(roundEl2.dataset.round);
+          // Tap: advance to next round, or go to round 0 if already on last
+          var totalRounds = rounds.length;
+          var next = (ri3 + 1) < totalRounds ? ri3 + 1 : 0;
+          scrollToRound(next);
+        });
+      });
+
+      // IntersectionObserver: keep active tab in sync as user swipes
+      if (bracketOuter && window.IntersectionObserver) {
+        var observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+              var ri4 = parseInt(entry.target.dataset.round);
+              qsa('.lgw-cup-tab', tabsInner).forEach(function (t) {
+                t.classList.toggle('active', parseInt(t.dataset.round) === ri4);
+              });
+              qsa('.lgw-cup-round', bracketEl).forEach(function (r) {
+                r.classList.toggle('mobile-active', parseInt(r.dataset.round) === ri4);
+              });
+              var activeTab2 = qs('.lgw-cup-tab[data-round="' + ri4 + '"]', tabsInner);
+              if (activeTab2) activeTab2.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+          });
+        }, { root: bracketOuter, threshold: 0.5 });
+        qsa('.lgw-cup-round', bracketEl).forEach(function (r) { observer.observe(r); });
+      }
     }
   }
 

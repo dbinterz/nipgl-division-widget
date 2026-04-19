@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.77
+Stable tag: 7.1.78
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,10 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.78 =
+* Feature: Cup and Championship bracket draws on mobile now support horizontal swipe scrolling — all rounds are visible side-by-side with scroll-snap for clean swiping between them
+* Feature: Tapping a round header in the bracket scrolls forward to the next round (wraps to first), and the tab bar stays in sync as you swipe via IntersectionObserver
 
 = 7.1.77 =
 * Feature: Championship bracket draws now show potential opponents in TBD slots — displays the last player's surname and abbreviated club name (e.g. "Hinds, Sha/Maxwell, Nor") matching the cup bracket style
