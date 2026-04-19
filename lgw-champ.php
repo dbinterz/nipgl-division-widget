@@ -208,6 +208,113 @@ function lgw_champ_cascade_reset(&$bracket, $round_idx, $match_idx) {
     }
 }
 
+// ── AJAX: admin manual draw edit ──────────────────────────────────────────────
+add_action('wp_ajax_lgw_champ_edit_match', 'lgw_ajax_champ_edit_match');
+/**
+ * Admin-only: swap one or both participants in a drawn match.
+ *
+ * POST params:
+ *   champ_id    – championship slug
+ *   section     – section index (int) or 'final'
+ *   round_idx   – 0-based round index within the bracket
+ *   match_idx   – 0-based match index within the round
+ *   new_home    – new home entry string (or empty to leave unchanged)
+ *   new_away    – new away entry string (or empty to leave unchanged)
+ *   nonce       – lgw_champ_score nonce (re-uses same nonce key)
+ *
+ * Behaviour:
+ *   1. Replace the specified participant(s) in the target match.
+ *   2. Clear scores for the edited match.
+ *   3. Cascade-reset all downstream rounds so winner placeholders
+ *      that depended on this match's result are nulled out — those
+ *      rounds must be scored again.
+ *   4. If the changed match is in a section bracket, unseed the
+ *      final_bracket so it can be re-drawn once section finals complete.
+ *   5. Persist and return the updated bracket + final_bracket.
+ */
+function lgw_ajax_champ_edit_match() {
+    check_ajax_referer('lgw_champ_score', 'nonce');
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorised');
+
+    $champ_id  = sanitize_key($_POST['champ_id']  ?? '');
+    $section   = sanitize_key($_POST['section']   ?? '0');
+    $round_idx = intval($_POST['round_idx']        ?? -1);
+    $match_idx = intval($_POST['match_idx']        ?? -1);
+    $new_home  = sanitize_text_field(wp_unslash($_POST['new_home'] ?? ''));
+    $new_away  = sanitize_text_field(wp_unslash($_POST['new_away'] ?? ''));
+
+    if (!$champ_id || $round_idx < 0 || $match_idx < 0) {
+        wp_send_json_error('Invalid parameters');
+    }
+    if ($new_home === '' && $new_away === '') {
+        wp_send_json_error('No changes supplied');
+    }
+
+    $champ = get_option('lgw_champ_' . $champ_id, array());
+    if (empty($champ)) wp_send_json_error('Championship not found');
+
+    $bracket_key = ($section === 'final') ? 'final_bracket' : 'section_' . $section . '_bracket';
+    $bracket = &$champ[$bracket_key];
+
+    if (!isset($bracket['matches'][$round_idx][$match_idx])) {
+        wp_send_json_error('Match not found');
+    }
+
+    $match = &$bracket['matches'][$round_idx][$match_idx];
+
+    // Apply changes
+    if ($new_home !== '') $match['home'] = $new_home;
+    if ($new_away !== '') $match['away'] = $new_away;
+
+    // Clear this match's scores — result is now unknown
+    $match['home_score'] = null;
+    $match['away_score'] = null;
+
+    // Cascade-reset all downstream rounds that depended on this result
+    lgw_champ_cascade_reset($bracket, $round_idx, $match_idx);
+
+    // If a section bracket was changed, unseed the final stage
+    if ($section !== 'final' && isset($champ['final_bracket'])) {
+        unset($champ['final_bracket']);
+        unset($champ['final_draw_pairs']);
+        unset($champ['final_draw_version']);
+        unset($champ['final_pairs_cursor']);
+        unset($champ['final_draw_in_progress']);
+    }
+
+    update_option('lgw_champ_' . $champ_id, $champ);
+
+    wp_send_json_success(array(
+        'bracket'       => $bracket,
+        'final_bracket' => $champ['final_bracket'] ?? null,
+        'message'       => 'Match updated — downstream rounds have been cleared.',
+    ));
+}
+
+// ── AJAX: get draw entry list for edit dropdown ────────────────────────────────
+add_action('wp_ajax_lgw_champ_get_entries', 'lgw_ajax_champ_get_entries');
+/**
+ * Returns the full entries list for a given championship section so the
+ * admin edit UI can populate dropdowns without a page reload.
+ */
+function lgw_ajax_champ_get_entries() {
+    check_ajax_referer('lgw_champ_score', 'nonce');
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorised');
+
+    $champ_id    = sanitize_key($_POST['champ_id'] ?? '');
+    $section_idx = intval($_POST['section'] ?? 0);
+
+    $champ = get_option('lgw_champ_' . $champ_id, array());
+    if (empty($champ)) wp_send_json_error('Championship not found');
+
+    $sections = $champ['sections'] ?? array();
+    if (!isset($sections[$section_idx])) wp_send_json_error('Section not found');
+
+    wp_send_json_success(array(
+        'entries' => $sections[$section_idx]['entries'] ?? array(),
+    ));
+}
+
 /**
  * Extract qualifiers from a section bracket.
  * $q_per_section controls how many players qualify from this section:
@@ -415,60 +522,112 @@ function lgw_champ_home_limit($club, $multi_green) {
 }
 
 /**
- * Try to separate same-club pairs in a list of numbered entries.
- * After the initial shuffle, scans for consecutive pairs where both entries
- * share a club and swaps one of them with a later entry from a different club.
- * Best-effort: if separation is impossible (e.g. all entries from same club)
- * it leaves the draw as-is rather than looping indefinitely.
+ * Separate same-club pairs in a list of numbered entries using a multi-pass
+ * approach. Repeats until no same-club pairing remains or no further progress
+ * can be made (impossible case, e.g. all entries from one club).
+ *
+ * Each pass scans all consecutive pairs; if a conflict is found it tries to
+ * swap the second member with the best candidate from any later position —
+ * preferring a swap that does not introduce a new conflict at the target pair.
  *
  * @param array $entries  Array of ['name'=>..., 'draw_num'=>...] — modified in place.
  */
 function lgw_champ_separate_clubs(&$entries) {
-    $n = count($entries);
-    for ($i = 0; $i < $n - 1; $i += 2) {
-        $ca = lgw_champ_entry_club($entries[$i]['name']);
-        $cb = lgw_champ_entry_club($entries[$i + 1]['name']);
-        if ($ca !== $cb) continue; // already different clubs, fine
-        // Find the nearest later entry with a different club to swap with
-        $swapped = false;
-        for ($j = $i + 2; $j < $n; $j++) {
-            $cj = lgw_champ_entry_club($entries[$j]['name']);
-            if ($cj !== $ca) {
-                // Swap entries[$i+1] with entries[$j]
-                list($entries[$i + 1], $entries[$j]) = array($entries[$j], $entries[$i + 1]);
-                $swapped = true;
-                break;
+    $n          = count($entries);
+    $max_passes = $n * 2 + 2;
+
+    for ($pass = 0; $pass < $max_passes; $pass++) {
+        $conflict_found = false;
+
+        for ($i = 0; $i < $n - 1; $i += 2) {
+            $ca = lgw_champ_entry_club($entries[$i]['name']);
+            $cb = lgw_champ_entry_club($entries[$i + 1]['name']);
+            if ($ca !== $cb) continue;
+
+            $conflict_found = true;
+
+            // Search ALL positions (forward first, then backward) for the best swap.
+            // Prefer a "clean" swap — one that won't create a conflict at the target's
+            // current pair. Fall back to any different-club entry if no clean swap exists.
+            $best_clean    = -1;
+            $best_fallback = -1;
+
+            $candidates = array();
+            for ($j = $i + 2; $j < $n; $j++) $candidates[] = $j;
+            for ($j = $i - 1; $j >= 0;  $j--) $candidates[] = $j;
+
+            foreach ($candidates as $j) {
+                $cj = lgw_champ_entry_club($entries[$j]['name']);
+                if ($cj === $ca) continue;
+                $pp = ($j % 2 === 0) ? $j + 1 : $j - 1;
+                $creates_conflict = ($pp >= 0 && $pp < $n)
+                    && lgw_champ_entry_club($entries[$pp]['name']) === $cb;
+                if (!$creates_conflict && $best_clean === -1) $best_clean = $j;
+                if ($best_fallback === -1)                    $best_fallback = $j;
+                if ($best_clean !== -1) break;
+            }
+
+            $best = $best_clean !== -1 ? $best_clean : $best_fallback;
+            if ($best !== -1) {
+                list($entries[$i + 1], $entries[$best]) = array($entries[$best], $entries[$i + 1]);
             }
         }
-        // If no swap possible, leave it — unavoidable same-club pairing
+
+        if (!$conflict_found) break;
     }
 }
 
 /**
- * Try to separate same-club adjacent pairs in $r2_slots (bye entries only).
- * Null slots (prelim winner placeholders) are ignored — those pairings are
- * acceptable as per requirements.
+ * Separate same-club adjacent pairs in $r2_slots (bye entries only) using
+ * multi-pass logic matching lgw_champ_separate_clubs.
+ * Null slots (prelim winner placeholders) are skipped — those pairings are
+ * determined at play time and cannot be pre-separated.
  */
 function lgw_champ_separate_r2_slots(&$slots, &$from_game) {
-    $n = count($slots);
-    for ($i = 0; $i < $n - 1; $i += 2) {
-        $a = $slots[$i];
-        $b = $slots[$i + 1];
-        // Only check pairs where both are known bye entries (not null placeholders)
-        if (!$a || !$b) continue;
-        $ca = lgw_champ_entry_club($a['name']);
-        $cb = lgw_champ_entry_club($b['name']);
-        if ($ca !== $cb) continue;
-        // Same club — try to swap $b with a later known bye entry from different club
-        for ($j = $i + 2; $j < $n; $j++) {
-            if (!$slots[$j]) continue; // skip null slots
-            $cj = lgw_champ_entry_club($slots[$j]['name']);
-            if ($cj !== $ca) {
-                list($slots[$i + 1], $slots[$j])       = array($slots[$j], $slots[$i + 1]);
-                list($from_game[$i + 1], $from_game[$j]) = array($from_game[$j], $from_game[$i + 1]);
-                break;
+    $n          = count($slots);
+    $max_passes = $n * 2 + 2;
+
+    for ($pass = 0; $pass < $max_passes; $pass++) {
+        $conflict_found = false;
+
+        for ($i = 0; $i < $n - 1; $i += 2) {
+            $a = $slots[$i];
+            $b = $slots[$i + 1];
+            if (!$a || !$b) continue; // null = prelim winner placeholder — skip
+
+            $ca = lgw_champ_entry_club($a['name']);
+            $cb = lgw_champ_entry_club($b['name']);
+            if ($ca !== $cb) continue;
+
+            $conflict_found = true;
+            $best_clean    = -1;
+            $best_fallback = -1;
+
+            // Search forward then backward for the best swap candidate among filled slots
+            $candidates = array();
+            for ($j = $i + 2; $j < $n; $j++) $candidates[] = $j;
+            for ($j = $i - 1; $j >= 0;  $j--) $candidates[] = $j;
+
+            foreach ($candidates as $j) {
+                if (!$slots[$j]) continue; // skip null placeholders
+                $cj = lgw_champ_entry_club($slots[$j]['name']);
+                if ($cj === $ca) continue;
+                $pp = ($j % 2 === 0) ? $j + 1 : $j - 1;
+                $creates_conflict = ($pp >= 0 && $pp < $n && $slots[$pp])
+                    && lgw_champ_entry_club($slots[$pp]['name']) === $cb;
+                if (!$creates_conflict && $best_clean === -1) $best_clean = $j;
+                if ($best_fallback === -1)                    $best_fallback = $j;
+                if ($best_clean !== -1) break;
+            }
+
+            $best = $best_clean !== -1 ? $best_clean : $best_fallback;
+            if ($best !== -1) {
+                list($slots[$i + 1],     $slots[$best])     = array($slots[$best],     $slots[$i + 1]);
+                list($from_game[$i + 1], $from_game[$best]) = array($from_game[$best], $from_game[$i + 1]);
             }
         }
+
+        if (!$conflict_found) break;
     }
 }
 
@@ -1654,10 +1813,81 @@ function lgw_champ_edit_page($champ_id) {
     <h2>Draw</h2>
 
     <?php foreach ($sections as $idx => $sec):
-        $sec_drawn = !empty($champ['section_' . $idx . '_draw_version']);
+        $sec_drawn    = !empty($champ['section_' . $idx . '_draw_version']);
+        $sec_bracket  = $champ['section_' . $idx . '_bracket'] ?? null;
+        $sec_entries  = $sec['entries'] ?? array();
     ?>
     <h3>Section <?php echo esc_html($sec['label']); ?></h3>
-    <?php if ($sec_drawn): ?>
+    <?php if ($sec_drawn && $sec_bracket): ?>
+      <p>✅ Draw performed.
+        <button type="button"
+                class="button button-small lgw-champ-edit-draw-toggle"
+                data-section="<?php echo $idx; ?>"
+                style="margin-left:10px">
+          ✏️ Edit Draw
+        </button>
+      </p>
+
+      <?php /* ── Editable bracket table ── */ ?>
+      <div id="lgw-edit-draw-<?php echo $idx; ?>" style="display:none;margin:0 0 18px">
+        <p style="font-size:13px;color:#666;margin-bottom:8px">
+          Adjust the participants in any first-round match below. Changing a match will clear its score
+          and all downstream results so they can be re-entered. Only the drawn round (Round 1 / Preliminary Round)
+          can be directly edited — later rounds propagate automatically from scores.
+        </p>
+        <?php
+        $all_rounds  = $sec_bracket['matches'];
+        $round_names_arr = $sec_bracket['rounds'] ?? array();
+
+        // Show only the first two rounds (prelim + R1, or just R1 if no prelims)
+        $editable_rounds = array_slice($all_rounds, 0, 2, true);
+        $entries_json    = wp_json_encode($sec_entries);
+        ?>
+        <div class="lgw-edit-draw-section"
+             data-champ-id="<?php echo esc_attr($champ_id); ?>"
+             data-section="<?php echo $idx; ?>"
+             data-nonce="<?php echo esc_attr(wp_create_nonce('lgw_champ_score')); ?>"
+             data-entries="<?php echo esc_attr($entries_json); ?>">
+          <?php foreach ($editable_rounds as $ri => $round_matches): ?>
+          <h4 style="margin:12px 0 6px;font-size:13px;font-weight:600;color:#444">
+            <?php echo esc_html($round_names_arr[$ri] ?? ('Round ' . ($ri + 1))); ?>
+            <?php if ($ri === 0 && count($all_rounds) > 1): ?><em style="font-weight:400;color:#888">(Preliminary)</em><?php endif; ?>
+          </h4>
+          <table class="widefat" style="max-width:720px;font-size:13px;margin-bottom:6px">
+            <thead>
+              <tr>
+                <th style="width:30px">#</th>
+                <th>Home</th>
+                <th style="width:30px;text-align:center">vs</th>
+                <th>Away</th>
+                <th style="width:80px"></th>
+              </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($round_matches as $mi => $m): ?>
+            <tr data-round="<?php echo $ri; ?>" data-match="<?php echo $mi; ?>">
+              <td><?php echo esc_html($m['game_num'] ?? ($mi + 1)); ?></td>
+              <td class="lgw-em-home"><?php echo esc_html($m['home'] ?? '—'); ?></td>
+              <td style="text-align:center;color:#888">vs</td>
+              <td class="lgw-em-away"><?php echo esc_html($m['away'] ?? '—'); ?></td>
+              <td>
+                <button type="button" class="button button-small lgw-em-edit-btn"
+                        data-round="<?php echo $ri; ?>"
+                        data-match="<?php echo $mi; ?>"
+                        data-home="<?php echo esc_attr($m['home'] ?? ''); ?>"
+                        data-away="<?php echo esc_attr($m['away'] ?? ''); ?>">
+                  Edit
+                </button>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+          <?php endforeach; ?>
+          <p class="lgw-em-status" style="font-size:13px;margin:6px 0;min-height:20px"></p>
+        </div><!-- .lgw-edit-draw-section -->
+      </div><!-- #lgw-edit-draw-N -->
+    <?php elseif ($sec_drawn): ?>
       <p>✅ Draw performed.</p>
     <?php else: ?>
       <p>No draw yet.</p>
@@ -1735,7 +1965,65 @@ function lgw_champ_edit_page($champ_id) {
     <hr>
     <h3>Final Stage</h3>
     <?php if ($final_drawn): ?>
-      <p>✅ Final Stage draw performed.</p>
+      <?php $final_bracket_data = $champ['final_bracket'] ?? null;
+            $final_entries_flat = array();
+            foreach ($sections as $sidx => $sec) {
+                foreach (($sec['entries'] ?? array()) as $e) { $final_entries_flat[] = $e; }
+            }
+      ?>
+      <p>✅ Final Stage draw performed.
+        <button type="button"
+                class="button button-small lgw-champ-edit-draw-toggle"
+                data-section="final"
+                style="margin-left:10px">
+          ✏️ Edit Draw
+        </button>
+      </p>
+      <?php if ($final_bracket_data): ?>
+      <div id="lgw-edit-draw-final" style="display:none;margin:0 0 18px">
+        <p style="font-size:13px;color:#666;margin-bottom:8px">
+          Adjust participants in any first-round Final Stage match. Changing a match clears its score and all downstream results.
+        </p>
+        <?php $final_editable = array_slice($final_bracket_data['matches'], 0, 2, true);
+              $final_rounds   = $final_bracket_data['rounds'] ?? array();
+              $final_entries_json = wp_json_encode($final_entries_flat);
+        ?>
+        <div class="lgw-edit-draw-section"
+             data-champ-id="<?php echo esc_attr($champ_id); ?>"
+             data-section="final"
+             data-nonce="<?php echo esc_attr(wp_create_nonce('lgw_champ_score')); ?>"
+             data-entries="<?php echo esc_attr($final_entries_json); ?>">
+          <?php foreach ($final_editable as $ri => $round_matches): ?>
+          <h4 style="margin:12px 0 6px;font-size:13px;font-weight:600;color:#444">
+            <?php echo esc_html($final_rounds[$ri] ?? ('Round ' . ($ri + 1))); ?>
+          </h4>
+          <table class="widefat" style="max-width:720px;font-size:13px;margin-bottom:6px">
+            <thead><tr><th style="width:30px">#</th><th>Home</th><th style="width:30px;text-align:center">vs</th><th>Away</th><th style="width:80px"></th></tr></thead>
+            <tbody>
+            <?php foreach ($round_matches as $mi => $m): ?>
+            <tr data-round="<?php echo $ri; ?>" data-match="<?php echo $mi; ?>">
+              <td><?php echo esc_html($m['game_num'] ?? ($mi + 1)); ?></td>
+              <td class="lgw-em-home"><?php echo esc_html($m['home'] ?? '—'); ?></td>
+              <td style="text-align:center;color:#888">vs</td>
+              <td class="lgw-em-away"><?php echo esc_html($m['away'] ?? '—'); ?></td>
+              <td>
+                <button type="button" class="button button-small lgw-em-edit-btn"
+                        data-round="<?php echo $ri; ?>"
+                        data-match="<?php echo $mi; ?>"
+                        data-home="<?php echo esc_attr($m['home'] ?? ''); ?>"
+                        data-away="<?php echo esc_attr($m['away'] ?? ''); ?>">
+                  Edit
+                </button>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+          <?php endforeach; ?>
+          <p class="lgw-em-status" style="font-size:13px;margin:6px 0;min-height:20px"></p>
+        </div>
+      </div>
+      <?php endif; ?>
     <?php elseif ($all_drawn): ?>
       <p>All sections complete — ready for Final Stage draw.</p>
       <button class="button button-primary lgw-champ-admin-draw-btn"

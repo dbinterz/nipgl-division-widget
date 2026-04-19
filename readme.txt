@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.74
+Stable tag: 7.1.75
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -71,7 +71,11 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.74 =
+= 7.1.75 =
+* Feature: Championship draws now enforce strict same-club separation using a multi-pass algorithm — players from the same club are guaranteed not to be drawn against each other in the first round wherever mathematically possible (graceful fallback only when all entries are from a single club)
+* Feature: Admin draw editor — after a championship section is drawn, an "✏️ Edit Draw" button appears on the admin edit page; clicking it reveals a bracket table where any first-round match participant can be swapped via dropdown; saving an edit clears that match's score and cascades resets through all downstream rounds, and unseeds the Final Stage if applicable so it can be redrawn once corrected results are entered
+
+= 7.1.75 =
 * Fix: scorecard photo camera option on Chromium browsers (Chrome, Brave etc) now uses the browser's native camera API (getUserMedia) instead of a capture="environment" file input — which Chromium locks to camera-only with no way to switch to gallery/files; both options now work correctly across all browsers
 
 = 7.1.73 =

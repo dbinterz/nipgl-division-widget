@@ -171,4 +171,129 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
         });
     });
+
+    // ── Champ admin: Edit Draw UI ─────────────────────────────────────────────────
+
+    // ── Toggle edit panel visibility ─────────────────────────────────────────
+    document.querySelectorAll('.lgw-champ-edit-draw-toggle').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var section = btn.dataset.section;
+            var panel   = document.getElementById('lgw-edit-draw-' + section);
+            if (!panel) return;
+            var visible = panel.style.display !== 'none';
+            panel.style.display = visible ? 'none' : 'block';
+            btn.textContent = visible ? '✏️ Edit Draw' : '✖ Close Editor';
+        });
+    });
+
+    // ── Edit button opens inline edit row ────────────────────────────────────
+    document.querySelectorAll('.lgw-em-edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var section = btn.closest('.lgw-edit-draw-section');
+            var entries = JSON.parse(section.dataset.entries || '[]');
+            var tr      = btn.closest('tr');
+            var round   = btn.dataset.round;
+            var match   = btn.dataset.match;
+            var curHome = btn.dataset.home;
+            var curAway = btn.dataset.away;
+
+            // Remove any existing edit row
+            var existing = section.querySelector('.lgw-em-edit-row');
+            if (existing) existing.remove();
+
+            // Build select options
+            function buildSelect(name, current) {
+                var sel = '<select class="' + name + '" style="max-width:280px;font-size:12px">';
+                entries.forEach(function(e) {
+                    var sel_attr = e === current ? ' selected' : '';
+                    sel += '<option value="' + escHtml(e) + '"' + sel_attr + '>' + escHtml(e) + '</option>';
+                });
+                sel += '</select>';
+                return sel;
+            }
+
+            function escHtml(s) {
+                return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            }
+
+            var numCols = tr.cells.length;
+            var editRow = document.createElement('tr');
+            editRow.className = 'lgw-em-edit-row';
+            editRow.style.background = '#fffbea';
+            editRow.innerHTML = '<td colspan="' + numCols + '" style="padding:10px 12px">'
+                + '<strong style="font-size:12px;display:block;margin-bottom:6px">Edit match — Round index ' + round + ', Match ' + (parseInt(match)+1) + '</strong>'
+                + '<label style="font-size:12px;margin-right:8px">Home: ' + buildSelect('lgw-em-sel-home', curHome) + '</label>'
+                + '<label style="font-size:12px;margin-right:8px">Away: ' + buildSelect('lgw-em-sel-away', curAway) + '</label>'
+                + '<button type="button" class="button button-primary lgw-em-save-btn" '
+                +   'data-round="' + round + '" data-match="' + match + '" style="margin-right:6px">Save</button>'
+                + '<button type="button" class="button lgw-em-cancel-btn">Cancel</button>'
+                + '<span class="lgw-em-row-msg" style="margin-left:10px;font-size:12px"></span>'
+                + '</td>';
+
+            tr.insertAdjacentElement('afterend', editRow);
+
+            editRow.querySelector('.lgw-em-cancel-btn').addEventListener('click', function() {
+                editRow.remove();
+            });
+
+            editRow.querySelector('.lgw-em-save-btn').addEventListener('click', function() {
+                var saveBtn  = this;
+                var newHome  = editRow.querySelector('.lgw-em-sel-home').value;
+                var newAway  = editRow.querySelector('.lgw-em-sel-away').value;
+                var rowMsg   = editRow.querySelector('.lgw-em-row-msg');
+                var statMsg  = section.querySelector('.lgw-em-status');
+
+                if (newHome === newAway) {
+                    rowMsg.style.color = '#c0202a';
+                    rowMsg.textContent = 'Home and Away cannot be the same player.';
+                    return;
+                }
+
+                saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+
+                var fd = new FormData();
+                fd.append('action',    'lgw_champ_edit_match');
+                fd.append('champ_id',  section.dataset.champId);
+                fd.append('section',   section.dataset.section);
+                fd.append('round_idx', round);
+                fd.append('match_idx', match);
+                fd.append('new_home',  newHome);
+                fd.append('new_away',  newAway);
+                fd.append('nonce',     section.dataset.nonce);
+
+                fetch(ajaxurl, {method:'POST', body:fd, credentials:'same-origin'})
+                    .then(function(r){ return r.json(); })
+                    .then(function(res) {
+                        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+                        if (res.success) {
+                            // Update displayed cells in the source row
+                            tr.querySelector('.lgw-em-home').textContent = newHome;
+                            tr.querySelector('.lgw-em-away').textContent = newAway;
+                            // Update btn data attrs so re-edit shows current values
+                            btn.dataset.home = newHome;
+                            btn.dataset.away = newAway;
+
+                            rowMsg.style.color = '#0a3622';
+                            rowMsg.textContent = '✅ Saved';
+
+                            if (statMsg) {
+                                statMsg.style.color = '#0a3622';
+                                statMsg.textContent = '✅ ' + (res.data.message || 'Match updated — reload the public page to see changes.');
+                            }
+
+                            setTimeout(function(){ editRow.remove(); }, 1200);
+                        } else {
+                            rowMsg.style.color = '#c0202a';
+                            rowMsg.textContent = '❌ ' + (res.data || 'Error saving match');
+                        }
+                    })
+                    .catch(function() {
+                        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+                        rowMsg.style.color = '#c0202a';
+                        rowMsg.textContent = '❌ Network error';
+                    });
+            });
+        });
+    });
 });
+
