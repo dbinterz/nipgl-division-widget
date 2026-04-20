@@ -108,6 +108,9 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### 7.1.85
+- **Fix:** Clear override button now removes the override entirely — inputs are blanked and empty strings sent so the server-side `unset()` path is triggered; previously sent `0,0,0,0` which saved a 0–0 override instead of clearing it
+
 ### 7.1.84
 - **Feature:** Championship — Rename Entry tool on the edit page lets you correct spelling mistakes in entries after a draw has been done, without resetting the draw or any scores
 
