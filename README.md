@@ -108,8 +108,10 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
-### 7.1.85
-- **Fix:** Clear override button now removes the override entirely — inputs are blanked and empty strings sent so the server-side `unset()` path is triggered; previously sent `0,0,0,0` which saved a 0–0 override instead of clearing it
+### 7.1.86
+- **Fix:** Player tracking — female status from confirmed scorecards (asterisk-marked players) now correctly saved to player record; new `lgw_ensure_female_flag()` upgrades `false→true` only, never resets manual edits
+- **Fix:** Player tracking — toggling the female checkbox no longer incorrectly sets the starred flag; `update_flags` handler now reads actual submitted field values instead of `isset()` check
+- **Feature:** Player tracking — new **Club Summary** tab with per-club player count, appearances, ladies, and admin-editable Players Paid field with balance (paid − played); exportable as XLS spreadsheet or print-ready PDF
 
 ### 7.1.84
 - **Feature:** Championship — Rename Entry tool on the edit page lets you correct spelling mistakes in entries after a draw has been done, without resetting the draw or any scores

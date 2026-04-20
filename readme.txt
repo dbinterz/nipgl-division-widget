@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.85
+Stable tag: 7.1.86
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -71,8 +71,10 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.85 =
-* Fix: Clear override button now removes the override entirely instead of saving a 0-0 score — inputs are blanked and empty strings sent so the server-side clearing path (unset) is triggered correctly
+= 7.1.86 =
+* Fix: Player tracking — female status from confirmed scorecards (asterisk-marked players) now correctly saved to player record; lgw_ensure_female_flag() upgrades false→true only, never resets manual edits
+* Fix: Player tracking — toggling the female checkbox no longer incorrectly sets the starred flag; update_flags handler now reads actual field values instead of using isset()
+* Feature: Player tracking — new Club Summary tab showing per-club player count, appearances, ladies count, and admin-editable Players Paid field with balance column; exportable as spreadsheet (XLS) or print-ready PDF
 
 = 7.1.84 =
 * Feature: Championship — Rename Entry tool on the edit page lets you correct spelling mistakes in entries after a draw has been done, without resetting the draw or any scores

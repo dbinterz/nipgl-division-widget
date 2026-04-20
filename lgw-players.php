@@ -122,10 +122,12 @@ function lgw_log_appearances($scorecard_post_id) {
         $rink_num = intval($rink['rink'] ?? 0);
 
         // Home players
-        foreach (($rink['home_players'] ?? array()) as $name) {
-            $name = lgw_clean_player_name($name);
+        foreach (($rink['home_players'] ?? array()) as $raw_name) {
+            $is_female = (strpos($raw_name, '*') !== false);
+            $name = lgw_clean_player_name($raw_name);
             if (!$name) continue;
             $player_id = lgw_get_or_create_player($home_club ?: $home_team, $name);
+            if ($is_female) lgw_ensure_female_flag($player_id);
             $wpdb->insert(lgw_appearances_table(), array(
                 'player_id'   => $player_id,
                 'team'        => $home_team,
@@ -138,10 +140,12 @@ function lgw_log_appearances($scorecard_post_id) {
         }
 
         // Away players
-        foreach (($rink['away_players'] ?? array()) as $name) {
-            $name = lgw_clean_player_name($name);
+        foreach (($rink['away_players'] ?? array()) as $raw_name) {
+            $is_female = (strpos($raw_name, '*') !== false);
+            $name = lgw_clean_player_name($raw_name);
             if (!$name) continue;
             $player_id = lgw_get_or_create_player($away_club ?: $away_team, $name);
+            if ($is_female) lgw_ensure_female_flag($player_id);
             $wpdb->insert(lgw_appearances_table(), array(
                 'player_id'   => $player_id,
                 'team'        => $away_team,
@@ -179,6 +183,17 @@ function lgw_get_or_create_player($club, $name) {
     if ($existing) return intval($existing);
     $wpdb->insert($tbl, array('club' => $club, 'name' => $name), array('%s','%s'));
     return intval($wpdb->insert_id);
+}
+
+// ── Ensure female flag is set (only ever upgrades false→true, never resets) ──
+function lgw_ensure_female_flag($player_id) {
+    global $wpdb;
+    $wpdb->update(
+        lgw_players_table(),
+        array('female' => 1),
+        array('id' => $player_id, 'female' => 0),
+        array('%d'), array('%d','%d')
+    );
 }
 
 // ── Clean up appearances when a scorecard is deleted or trashed ───────────────
@@ -391,6 +406,19 @@ function lgw_players_admin_page() {
 
         // save_season action removed — season dates now managed via Seasons admin (lgw-seasons.php)
 
+        if ($action === 'save_paid_counts') {
+            $paid_data = get_option('lgw_club_paid_counts', array());
+            $season_key = sanitize_key($season['label'] ?? 'default');
+            if (!isset($paid_data[$season_key])) $paid_data[$season_key] = array();
+            $posted = $_POST['paid'] ?? array();
+            foreach ($posted as $club_enc => $count) {
+                $club_name = sanitize_text_field(base64_decode($club_enc));
+                $paid_data[$season_key][$club_name] = max(0, intval($count));
+            }
+            update_option('lgw_club_paid_counts', $paid_data);
+            echo '<div class="notice notice-success"><p>Paid player counts saved.</p></div>';
+        }
+
         if ($action === 'merge') {
             $keep_id    = intval($_POST['keep_id']   ?? 0);
             $remove_id  = intval($_POST['remove_id'] ?? 0);
@@ -430,8 +458,8 @@ function lgw_players_admin_page() {
 
         if ($action === 'update_flags') {
             $pid     = intval($_POST['player_id'] ?? 0);
-            $starred = isset($_POST['starred']) ? 1 : 0;
-            $female  = isset($_POST['female'])  ? 1 : 0;
+            $starred = intval($_POST['starred'] ?? 0) ? 1 : 0;
+            $female  = intval($_POST['female']  ?? 0) ? 1 : 0;
             if ($pid) {
                 $wpdb->update($pt,
                     array('starred' => $starred, 'female' => $female),
@@ -468,6 +496,30 @@ function lgw_players_admin_page() {
     );
     $clubs = array_unique($clubs);
     sort($clubs);
+
+    // ── Club summary data ─────────────────────────────────────────────────────
+    // Load paid counts for this season
+    $paid_data   = get_option('lgw_club_paid_counts', array());
+    $season_key  = sanitize_key($season['label'] ?? 'default');
+    $paid_counts = $paid_data[$season_key] ?? array();
+
+    // Build per-club appearance counts (season-filtered)
+    $club_summary = array();
+    foreach ($clubs as $cname) {
+        $club_players = $by_club[$cname] ?? array();
+        $unique_players = count($club_players);
+        $total_apps = 0;
+        foreach ($club_players as $pl) {
+            $total_apps += intval($pl->appearances);
+        }
+        $ladies = count(array_filter($club_players, function($p){ return $p->female; }));
+        $club_summary[$cname] = array(
+            'players'  => $unique_players,
+            'apps'     => $total_apps,
+            'ladies'   => $ladies,
+            'paid'     => $paid_counts[$cname] ?? 0,
+        );
+    }
 
     ?>
     <div class="wrap">
@@ -552,6 +604,7 @@ function lgw_players_admin_page() {
 
     <div class="lgw-pt-tabs">
         <div class="lgw-pt-tab active" onclick="lgwTab('players')">Players</div>
+        <div class="lgw-pt-tab" onclick="lgwTab('clubs')">Club Summary</div>
         <div class="lgw-pt-tab" onclick="lgwTab('merge')">Merge Duplicates</div>
         <div class="lgw-pt-tab" onclick="lgwTab('add')">Add Player</div>
         <div class="lgw-pt-tab" onclick="lgwTab('season')">Season Settings</div>
@@ -560,7 +613,7 @@ function lgw_players_admin_page() {
     <script>
     function lgwTab(tab) {
         document.querySelectorAll('.lgw-pt-tab').forEach(function(t,i){
-            t.classList.toggle('active', ['players','merge','add','season'][i]===tab);
+            t.classList.toggle('active', ['players','clubs','merge','add','season'][i]===tab);
         });
         document.querySelectorAll('.lgw-pt-panel').forEach(function(p){
             p.classList.toggle('active', p.id==='lgw-panel-'+tab);
@@ -774,7 +827,91 @@ function lgw_players_admin_page() {
         <?php endif; ?>
     </div>
 
-    <?php // ── Tab 2: Merge ── ?>
+    <?php // ── Tab 2: Club Summary ── ?>
+    <div class="lgw-pt-panel" id="lgw-panel-clubs">
+        <h2>Club Summary<?php echo $season_key !== 'default' ? ' — ' . esc_html($season['label'] ?? '') : ''; ?></h2>
+
+        <?php if (empty($clubs)): ?>
+        <p>No player data available yet.</p>
+        <?php else: ?>
+
+        <form method="post" id="lgw-paid-form">
+            <?php wp_nonce_field('lgw_players_nonce','lgw_players_nonce_field'); ?>
+            <input type="hidden" name="lgw_players_action" value="save_paid_counts">
+
+        <table class="widefat striped" style="margin-bottom:16px">
+            <thead>
+                <tr>
+                    <th>Club</th>
+                    <th style="text-align:center">Players<br><small style="font-weight:400">in tracker</small></th>
+                    <th style="text-align:center">Appearances<br><small style="font-weight:400"><?php echo $season_where ? 'this season' : 'all-time'; ?></small></th>
+                    <th style="text-align:center">Ladies</th>
+                    <th style="text-align:center" title="Number of players the club has paid for">Players Paid<br><small style="font-weight:400">enter below</small></th>
+                    <th style="text-align:center">Balance<br><small style="font-weight:400">paid − played</small></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php
+            $grand_players = 0; $grand_apps = 0; $grand_ladies = 0; $grand_paid = 0;
+            foreach ($club_summary as $cname => $cs):
+                $balance = $cs['paid'] - $cs['players'];
+                $bal_col = $balance < 0 ? '#c0392b' : ($balance > 0 ? '#1a6e1a' : '#555');
+                $grand_players += $cs['players']; $grand_apps += $cs['apps'];
+                $grand_ladies  += $cs['ladies'];  $grand_paid += $cs['paid'];
+                $enc = base64_encode($cname);
+            ?>
+                <tr>
+                    <td><strong><?php echo esc_html($cname); ?></strong></td>
+                    <td style="text-align:center"><?php echo $cs['players']; ?></td>
+                    <td style="text-align:center"><?php echo $cs['apps']; ?></td>
+                    <td style="text-align:center"><?php echo $cs['ladies']; ?></td>
+                    <td style="text-align:center">
+                        <input type="number" name="paid[<?php echo esc_attr($enc); ?>]"
+                            value="<?php echo intval($cs['paid']); ?>"
+                            min="0" style="width:70px;text-align:center">
+                    </td>
+                    <td style="text-align:center;font-weight:700;color:<?php echo $bal_col; ?>">
+                        <?php echo ($balance > 0 ? '+' : '') . $balance; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+                <tr style="background:#1a2e5a;color:#fff;font-weight:700">
+                    <td>TOTAL</td>
+                    <td style="text-align:center"><?php echo $grand_players; ?></td>
+                    <td style="text-align:center"><?php echo $grand_apps; ?></td>
+                    <td style="text-align:center"><?php echo $grand_ladies; ?></td>
+                    <td style="text-align:center"><?php echo $grand_paid; ?></td>
+                    <td style="text-align:center"><?php
+                        $grand_bal = $grand_paid - $grand_players;
+                        echo ($grand_bal > 0 ? '+' : '') . $grand_bal;
+                    ?></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <button type="submit" class="button button-primary">💾 Save Paid Counts</button>
+
+            <?php
+            $export_qs = '?action=lgw_export_club_summary&_wpnonce=' . wp_create_nonce('lgw_export_club_summary');
+            if (!empty($viewing_season['id'])) $export_qs .= '&season=' . urlencode($viewing_season['id']);
+            ?>
+            <a href="<?php echo esc_url(admin_url('admin-post.php') . $export_qs); ?>"
+               class="button button-secondary" title="Download as spreadsheet">
+                📊 Export as Spreadsheet
+            </a>
+            <a href="<?php echo esc_url(admin_url('admin-post.php') . str_replace('lgw_export_club_summary','lgw_export_club_summary_pdf', $export_qs) . '&_wpnonce=' . wp_create_nonce('lgw_export_club_summary_pdf')); ?>"
+               class="button button-secondary" title="Download as PDF">
+                🖨 Export as PDF
+            </a>
+        </div>
+        </form>
+        <?php endif; ?>
+    </div>
+
+    <?php // ── Tab 3: Merge ── ?>
     <div class="lgw-pt-panel" id="lgw-panel-merge">
         <h2>Merge Duplicate Players</h2>
         <p>Use this when the same person appears under two different spellings (e.g. "J Smith" and "John Smith"). All appearances will be moved to the player you keep, and the other record deleted.</p>
@@ -1208,6 +1345,227 @@ function lgw_export_players_xlsx() {
         echo '</table>';
     }
 
+    echo '</body></html>';
+    exit;
+}
+
+// ── Club Summary: XLSX export ────────────────────────────────────────────────
+add_action('admin_post_lgw_export_club_summary', 'lgw_export_club_summary_xlsx');
+function lgw_export_club_summary_xlsx() {
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+    check_admin_referer('lgw_export_club_summary');
+
+    global $wpdb;
+    $pt = lgw_players_table();
+    $at = lgw_appearances_table();
+
+    $sid = sanitize_text_field($_GET['season'] ?? '');
+    $season_obj = $sid ? lgw_get_season_by_id($sid) : lgw_get_active_season();
+    if ($season_obj) {
+        $season = array('start' => $season_obj['start'] ?? '', 'end' => $season_obj['end'] ?? '', 'label' => $season_obj['label'] ?? '');
+    } else {
+        $season = lgw_get_season();
+    }
+    $season_key = sanitize_key($season['label'] ?? 'default');
+    $label = !empty($season['label']) ? $season['label'] : 'All Time';
+
+    $season_where = '';
+    if (!empty($season['start']) && !empty($season['end'])) {
+        $season_where = $wpdb->prepare(
+            "AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') >= %s AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') <= %s",
+            $season['start'], $season['end']
+        );
+    }
+
+    $players = $wpdb->get_results(
+        "SELECT p.id, p.club, p.name, p.female,
+                COUNT(DISTINCT a.id) as appearances
+         FROM $pt p
+         LEFT JOIN $at a ON a.player_id = p.id " .
+        ($season_where ? "WHERE 1=1 $season_where " : "") . "
+         GROUP BY p.id ORDER BY p.club, p.name"
+    );
+
+    $by_club = array();
+    foreach ($players as $pl) { $by_club[$pl->club][] = $pl; }
+
+    $paid_data   = get_option('lgw_club_paid_counts', array());
+    $paid_counts = $paid_data[$season_key] ?? array();
+
+    $all_clubs = array_unique(array_merge(
+        array_map(function($c){ return $c['name']; }, lgw_get_clubs()),
+        array_keys($by_club)
+    ));
+    sort($all_clubs);
+
+    $filename = 'lgw-club-summary-' . str_replace('/', '-', $label) . '.xls';
+    header('Content-Type: application/vnd.ms-excel');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-cache');
+
+    echo '<?xml version="1.0" encoding="UTF-8"?>' . "
+";
+    echo '<?mso-application progid="Excel.Sheet"?>' . "
+";
+    echo '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+                   xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+    <Styles>
+        <Style ss:ID="h1"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1A2E5A" ss:Pattern="Solid"/></Style>
+        <Style ss:ID="h2"><Font ss:Bold="1"/><Interior ss:Color="#D0D8EE" ss:Pattern="Solid"/></Style>
+        <Style ss:ID="bold"><Font ss:Bold="1"/></Style>
+        <Style ss:ID="ctr"><Alignment ss:Horizontal="Center"/></Style>
+        <Style ss:ID="ctr_bold"><Alignment ss:Horizontal="Center"/><Font ss:Bold="1"/></Style>
+        <Style ss:ID="red"><Alignment ss:Horizontal="Center"/><Font ss:Bold="1" ss:Color="#C0392B"/></Style>
+        <Style ss:ID="grn"><Alignment ss:Horizontal="Center"/><Font ss:Bold="1" ss:Color="#1A6E1A"/></Style>
+        <Style ss:ID="tot"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1A2E5A" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
+    </Styles>
+    <Worksheet ss:Name="Club Summary">
+    <Table>';
+
+    $row = function($cells) { echo '<Row>' . implode('', $cells) . '</Row>' . "
+"; };
+    $c   = function($val, $style='', $type='String') {
+        $s = $style ? ' ss:StyleID="'.$style.'"' : '';
+        return '<Cell'.$s.'><Data ss:Type="'.$type.'">'.esc_html($val).'</Data></Cell>';
+    };
+
+    $row(array($c('LGW Club Summary — ' . $label, 'h1'), '<Cell/><Cell/><Cell/><Cell/><Cell/>'));
+    $row(array($c('Club','h2'), $c('Players in Tracker','h2'), $c('Appearances','h2'), $c('Ladies','h2'), $c('Players Paid','h2'), $c('Balance','h2')));
+
+    $g_pl = $g_ap = $g_la = $g_pd = 0;
+    foreach ($all_clubs as $cname) {
+        $cps  = $by_club[$cname] ?? array();
+        $n_pl = count($cps);
+        $n_ap = array_sum(array_column($cps, 'appearances'));
+        $n_la = count(array_filter($cps, function($p){ return $p->female; }));
+        $n_pd = intval($paid_counts[$cname] ?? 0);
+        $bal  = $n_pd - $n_pl;
+        $bal_style = $bal < 0 ? 'red' : ($bal > 0 ? 'grn' : 'ctr_bold');
+        $g_pl += $n_pl; $g_ap += $n_ap; $g_la += $n_la; $g_pd += $n_pd;
+        $row(array($c($cname,'bold'), $c($n_pl,'ctr','Number'), $c($n_ap,'ctr','Number'), $c($n_la,'ctr','Number'), $c($n_pd,'ctr','Number'), $c(($bal>0?'+':'').$bal, $bal_style)));
+    }
+    $g_bal = $g_pd - $g_pl;
+    $row(array($c('TOTAL','tot'), $c($g_pl,'tot','Number'), $c($g_ap,'tot','Number'), $c($g_la,'tot','Number'), $c($g_pd,'tot','Number'), $c(($g_bal>0?'+':'').$g_bal,'tot')));
+
+    echo '</Table></Worksheet></Workbook>';
+    exit;
+}
+
+// ── Club Summary: PDF export ──────────────────────────────────────────────────
+add_action('admin_post_lgw_export_club_summary_pdf', 'lgw_export_club_summary_pdf');
+function lgw_export_club_summary_pdf() {
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+    check_admin_referer('lgw_export_club_summary_pdf');
+
+    global $wpdb;
+    $pt = lgw_players_table();
+    $at = lgw_appearances_table();
+
+    $sid = sanitize_text_field($_GET['season'] ?? '');
+    $season_obj = $sid ? lgw_get_season_by_id($sid) : lgw_get_active_season();
+    if ($season_obj) {
+        $season = array('start' => $season_obj['start'] ?? '', 'end' => $season_obj['end'] ?? '', 'label' => $season_obj['label'] ?? '');
+    } else {
+        $season = lgw_get_season();
+    }
+    $season_key = sanitize_key($season['label'] ?? 'default');
+    $label = !empty($season['label']) ? $season['label'] : 'All Time';
+
+    $season_where = '';
+    if (!empty($season['start']) && !empty($season['end'])) {
+        $season_where = $wpdb->prepare(
+            "AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') >= %s AND STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') <= %s",
+            $season['start'], $season['end']
+        );
+    }
+
+    $players = $wpdb->get_results(
+        "SELECT p.id, p.club, p.name, p.female,
+                COUNT(DISTINCT a.id) as appearances
+         FROM $pt p
+         LEFT JOIN $at a ON a.player_id = p.id " .
+        ($season_where ? "WHERE 1=1 $season_where " : "") . "
+         GROUP BY p.id ORDER BY p.club, p.name"
+    );
+
+    $by_club = array();
+    foreach ($players as $pl) { $by_club[$pl->club][] = $pl; }
+
+    $paid_data   = get_option('lgw_club_paid_counts', array());
+    $paid_counts = $paid_data[$season_key] ?? array();
+
+    $all_clubs = array_unique(array_merge(
+        array_map(function($c){ return $c['name']; }, lgw_get_clubs()),
+        array_keys($by_club)
+    ));
+    sort($all_clubs);
+
+    header('Content-Type: text/html; charset=utf-8');
+    header('Content-Disposition: attachment; filename="lgw-club-summary.html"');
+    // Print-ready HTML that opens as PDF via browser print dialog
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>LGW Club Summary — ' . esc_html($label) . '</title>
+    <style>
+        @media print { body { margin: 10mm; } .no-print { display:none; } }
+        body { font-family: Arial, sans-serif; font-size: 11pt; color: #222; }
+        h1 { color: #1a2e5a; font-size: 16pt; margin-bottom: 4px; }
+        h2 { color: #555; font-size: 11pt; font-weight: normal; margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th { background: #1a2e5a; color: #fff; padding: 8px 10px; text-align: center; font-size: 10pt; }
+        th:first-child { text-align: left; }
+        td { padding: 7px 10px; border-bottom: 1px solid #ddd; font-size: 10pt; text-align: center; }
+        td:first-child { text-align: left; font-weight: 600; }
+        tr:nth-child(even) { background: #f5f7fb; }
+        .total-row { background: #1a2e5a !important; color: #fff; font-weight: 700; }
+        .total-row td { color: #fff; border: none; }
+        .neg { color: #c0392b; font-weight: 700; }
+        .pos { color: #1a6e1a; font-weight: 700; }
+        .btn { display:inline-block;margin-top:12px;padding:8px 18px;background:#1a2e5a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11pt; }
+    </style>
+    </head><body>
+    <button class="btn no-print" onclick="window.print()">🖨 Print / Save as PDF</button>
+    <h1>LGW Club Summary</h1>
+    <h2>' . esc_html($label) . ($season_where ? ' &nbsp;|&nbsp; ' . esc_html($season['start'] . ' – ' . $season['end']) : '') . '</h2>
+    <table>
+        <thead><tr>
+            <th>Club</th>
+            <th>Players in Tracker</th>
+            <th>Appearances</th>
+            <th>Ladies</th>
+            <th>Players Paid</th>
+            <th>Balance</th>
+        </tr></thead><tbody>';
+
+    $g_pl = $g_ap = $g_la = $g_pd = 0;
+    foreach ($all_clubs as $cname) {
+        $cps  = $by_club[$cname] ?? array();
+        $n_pl = count($cps);
+        $n_ap = array_sum(array_column($cps, 'appearances'));
+        $n_la = count(array_filter($cps, function($p){ return $p->female; }));
+        $n_pd = intval($paid_counts[$cname] ?? 0);
+        $bal  = $n_pd - $n_pl;
+        $g_pl += $n_pl; $g_ap += $n_ap; $g_la += $n_la; $g_pd += $n_pd;
+        $bal_cls = $bal < 0 ? 'neg' : ($bal > 0 ? 'pos' : '');
+        echo '<tr>'
+           . '<td>' . esc_html($cname) . '</td>'
+           . '<td>' . $n_pl . '</td>'
+           . '<td>' . $n_ap . '</td>'
+           . '<td>' . $n_la . '</td>'
+           . '<td>' . $n_pd . '</td>'
+           . '<td class="' . $bal_cls . '">' . ($bal > 0 ? '+' : '') . $bal . '</td>'
+           . '</tr>';
+    }
+    $g_bal = $g_pd - $g_pl;
+    echo '<tr class="total-row">'
+       . '<td>TOTAL</td>'
+       . '<td>' . $g_pl . '</td>'
+       . '<td>' . $g_ap . '</td>'
+       . '<td>' . $g_la . '</td>'
+       . '<td>' . $g_pd . '</td>'
+       . '<td>' . ($g_bal > 0 ? '+' : '') . $g_bal . '</td>'
+       . '</tr>';
+    echo '</tbody></table>';
+    echo '<p style="margin-top:20px;font-size:9pt;color:#999">Generated by LGW v' . LGW_VERSION . ' on ' . date('d/m/Y H:i') . '</p>';
     echo '</body></html>';
     exit;
 }
