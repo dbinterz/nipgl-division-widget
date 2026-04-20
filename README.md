@@ -108,8 +108,8 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
-### 7.1.83
-- **Feature:** Scorecard modal now shows a compact login gate when a pending scorecard is open and no club is authenticated — the opposing club can log in directly in the modal and immediately confirm or amend, without needing the `[lgw_submit]` shortcode page
+### 7.1.84
+- **Feature:** Championship — Rename Entry tool on the edit page lets you correct spelling mistakes in entries after a draw has been done, without resetting the draw or any scores
 
 ### 7.1.82
 - **Fix:** Live points hint in scorecard modal used `parseInt` — half-point values (e.g. 2.5 + 4.5) showed total as 6 instead of 7; fixed to `parseFloat` with tolerance comparison

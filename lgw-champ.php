@@ -291,6 +291,89 @@ function lgw_ajax_champ_edit_match() {
     ));
 }
 
+// ── AJAX: rename an entry everywhere (entries list + all bracket slots) ────────
+add_action('wp_ajax_lgw_champ_rename_entry', 'lgw_ajax_champ_rename_entry');
+/**
+ * Admin-only: rename an entry across the entries list and every bracket slot.
+ *
+ * POST params:
+ *   champ_id  – championship slug
+ *   old_name  – exact current entry string
+ *   new_name  – corrected entry string
+ *   nonce     – lgw_champ_score nonce
+ *
+ * Replaces all occurrences in:
+ *   - champ['entries'] array
+ *   - every section bracket (home/away in every match)
+ *   - final_bracket (home/away in every match)
+ * Does NOT reset any scores or cascade — this is a spelling-correction only.
+ */
+function lgw_ajax_champ_rename_entry() {
+    check_ajax_referer('lgw_champ_score', 'nonce');
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorised');
+
+    $champ_id = sanitize_key($_POST['champ_id']  ?? '');
+    $old_name = sanitize_text_field(wp_unslash($_POST['old_name'] ?? ''));
+    $new_name = sanitize_text_field(wp_unslash($_POST['new_name'] ?? ''));
+
+    if (!$champ_id || $old_name === '' || $new_name === '') {
+        wp_send_json_error('Missing parameters');
+    }
+    if ($old_name === $new_name) {
+        wp_send_json_error('New name is identical to old name');
+    }
+
+    $champ = get_option('lgw_champ_' . $champ_id, array());
+    if (empty($champ)) wp_send_json_error('Championship not found');
+
+    $replaced = 0;
+
+    // 1. Update the entries list
+    foreach ($champ['entries'] as $i => $entry) {
+        if ($entry === $old_name) {
+            $champ['entries'][$i] = $new_name;
+            $replaced++;
+        }
+    }
+
+    // 2. Helper to rename in a bracket
+    $rename_in_bracket = function(&$bracket) use ($old_name, $new_name, &$replaced) {
+        if (empty($bracket['matches'])) return;
+        foreach ($bracket['matches'] as $ri => &$round) {
+            foreach ($round as $mi => &$match) {
+                if (($match['home'] ?? '') === $old_name) { $match['home'] = $new_name; $replaced++; }
+                if (($match['away'] ?? '') === $old_name) { $match['away'] = $new_name; $replaced++; }
+            }
+            unset($match);
+        }
+        unset($round);
+    };
+
+    // 3. Section brackets
+    foreach (($champ['sections'] ?? array()) as $idx => $sec) {
+        $key = 'section_' . $idx . '_bracket';
+        if (!empty($champ[$key])) {
+            $rename_in_bracket($champ[$key]);
+        }
+    }
+
+    // 4. Final bracket
+    if (!empty($champ['final_bracket'])) {
+        $rename_in_bracket($champ['final_bracket']);
+    }
+
+    if ($replaced === 0) {
+        wp_send_json_error('Entry "' . esc_html($old_name) . '" not found');
+    }
+
+    update_option('lgw_champ_' . $champ_id, $champ);
+
+    wp_send_json_success(array(
+        'message'  => 'Renamed "' . esc_html($old_name) . '" → "' . esc_html($new_name) . '" (' . $replaced . ' occurrences updated).',
+        'replaced' => $replaced,
+    ));
+}
+
 // ── AJAX: get draw entry list for edit dropdown ────────────────────────────────
 add_action('wp_ajax_lgw_champ_get_entries', 'lgw_ajax_champ_get_entries');
 /**
@@ -1530,10 +1613,80 @@ function lgw_champ_edit_page($champ_id) {
               Format: <code>Player Name(s), Club</code> — the club is used for the 6-per-green draw constraint.<br>
               For pairs/triples/fours separate players with <code>/</code>: <code>Smith / Jones, Salisbury</code><br>
               Currently: <strong><?php echo count($champ['entries'] ?? array()); ?></strong> entries.
-              <?php if ($drawn): ?><br><strong>Draw in progress — entries cannot be changed without resetting.</strong><?php endif; ?>
+              <?php if ($drawn): ?><br><strong>Draw in progress — to correct spelling mistakes use the Rename Entry tool below.</strong><?php endif; ?>
             </p>
           </td>
         </tr>
+        <?php if ($drawn && !$is_new): ?>
+        <tr>
+          <th><label for="lgw_rename_old">Rename Entry</label></th>
+          <td>
+            <div id="lgw-rename-entry-wrap">
+              <select id="lgw_rename_old" style="width:400px;max-width:100%;font-size:13px">
+                <option value="">— select entry to rename —</option>
+                <?php foreach (($champ['entries'] ?? array()) as $entry): ?>
+                <option value="<?php echo esc_attr($entry); ?>"><?php echo esc_html($entry); ?></option>
+                <?php endforeach; ?>
+              </select>
+              <br style="margin-bottom:6px">
+              <input type="text" id="lgw_rename_new" placeholder="Corrected name" style="width:400px;max-width:100%;font-size:13px;margin-top:6px">
+              <br>
+              <button type="button" id="lgw_rename_btn" class="button button-secondary" style="margin-top:8px">Rename Entry</button>
+              <span id="lgw_rename_msg" style="margin-left:10px;font-size:13px"></span>
+            </div>
+            <p class="description">Corrects spelling in the entries list and throughout all drawn brackets. Does not affect scores or reset the draw.</p>
+            <script>
+            (function(){
+              document.getElementById('lgw_rename_btn').addEventListener('click', function(){
+                var oldVal = document.getElementById('lgw_rename_old').value.trim();
+                var newVal = document.getElementById('lgw_rename_new').value.trim();
+                var msg    = document.getElementById('lgw_rename_msg');
+                if (!oldVal) { msg.style.color='#c00'; msg.textContent='Please select an entry.'; return; }
+                if (!newVal) { msg.style.color='#c00'; msg.textContent='Please enter the corrected name.'; return; }
+                if (oldVal === newVal) { msg.style.color='#c00'; msg.textContent='Names are identical.'; return; }
+                this.disabled = true;
+                msg.style.color='#555'; msg.textContent='Saving...';
+                var fd = new FormData();
+                fd.append('action',   'lgw_champ_rename_entry');
+                fd.append('nonce',    '<?php echo esc_js(wp_create_nonce("lgw_champ_score")); ?>');
+                fd.append('champ_id', '<?php echo esc_js($champ_id); ?>');
+                fd.append('old_name', oldVal);
+                fd.append('new_name', newVal);
+                fetch('<?php echo esc_url(admin_url("admin-ajax.php")); ?>', {method:'POST', body:fd})
+                  .then(function(r){ return r.json(); })
+                  .then(function(data){
+                    if (data.success) {
+                      msg.style.color='#197319';
+                      msg.textContent = data.data.message;
+                      var sel = document.getElementById('lgw_rename_old');
+                      for (var i=0; i<sel.options.length; i++) {
+                        if (sel.options[i].value === oldVal) {
+                          sel.options[i].value = newVal;
+                          sel.options[i].text  = newVal;
+                          sel.options[i].selected = true;
+                          break;
+                        }
+                      }
+                      document.getElementById('lgw_rename_new').value = '';
+                      var ta = document.getElementById('lgw_champ_entries');
+                      if (ta) {
+                        ta.value = ta.value.split('\n').map(function(line){
+                          return line.trim() === oldVal ? newVal : line;
+                        }).join('\n');
+                      }
+                    } else {
+                      msg.style.color='#c00';
+                      msg.textContent = data.data || 'Error.';
+                    }
+                  })
+                  .catch(function(){ msg.style.color='#c00'; msg.textContent='Network error.'; })
+                  .finally(function(){ document.getElementById('lgw_rename_btn').disabled = false; });
+              });
+            })();
+            </script>
+          </td>
+        </tr>
+        <?php endif; ?>
         <tr>
           <th><label for="lgw_champ_dates">Default Round Dates</label></th>
           <td>
