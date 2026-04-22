@@ -195,11 +195,20 @@ function lgw_ajax_admin_edit_scorecard() {
 
     // Fire action — triggers Drive upload (versioned) and sheets writeback
     // Wrapped separately so a Drive/Sheets failure doesn't 500 the whole request
+    $skip_sheets_edit = !empty($_POST['skip_sheets']) && current_user_can('manage_options');
+    if ($skip_sheets_edit) {
+        remove_action('lgw_scorecard_admin_edited', 'lgw_sheets_on_confirmed');
+        update_post_meta($post_id, 'lgw_skip_google', 1);
+    }
     try {
         do_action('lgw_scorecard_admin_edited', $post_id);
     } catch (\Throwable $e) {
         // Log but don't fail the save
         lgw_audit_log($post_id, 'error', 'Post-save action failed: ' . $e->getMessage());
+    }
+    if ($skip_sheets_edit) {
+        add_action('lgw_scorecard_admin_edited', 'lgw_sheets_on_confirmed');
+        delete_post_meta($post_id, 'lgw_skip_google');
     }
 
     wp_send_json_success(array('message' => 'Scorecard updated. ✅'));

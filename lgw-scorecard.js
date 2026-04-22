@@ -1442,6 +1442,12 @@
           +'<label style="display:flex;align-items:center;gap:4px"><input type="radio" name="lgw_modal_submitted_for" value="both"> '
             +'Both teams <span style="color:#0a5a0a">(auto-confirms)</span></label>'
           +'</div>'
+          +'<div style="margin-top:10px">'
+          +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">'
+          +'<input type="checkbox" name="lgw_modal_skip_sheets" value="1"> '
+          +'Skip Google Drive &amp; Sheets writeback <span style="color:#888">(use when backfilling historical scorecards)</span>'
+          +'</label>'
+          +'</div>'
           +'</div>';
       }
 
@@ -2192,6 +2198,10 @@
         fd.append('nonce',          nonce);
         fd.append('scorecard',      JSON.stringify(sc));
         fd.append('submitted_for',  submittedFor);
+        if (isAdm) {
+          var skipSheetsEl = el.querySelector('input[name="lgw_modal_skip_sheets"]');
+          if (skipSheetsEl && skipSheetsEl.checked) fd.append('skip_sheets', '1');
+        }
         var xhr2 = new XMLHttpRequest();
         xhr2.open('POST', ajaxUrl);
         xhr2.onload = function(){

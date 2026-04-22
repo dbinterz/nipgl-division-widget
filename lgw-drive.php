@@ -117,6 +117,12 @@ function lgw_safe_filename($str) {
 function lgw_drive_save_scorecard($post_id, $is_edit = false) {
     if (!lgw_drive_enabled()) return;
 
+    // Skip if admin explicitly requested no Google writeback (e.g. backfilling historical scorecards)
+    if (get_post_meta($post_id, 'lgw_skip_google', true)) {
+        lgw_drive_log($post_id, 'info', 'Skipped — Google Drive upload suppressed by admin (skip_google flag set).');
+        return;
+    }
+
     // Skip writeback for scorecards from archived seasons
     if (function_exists('lgw_scorecard_is_active_season') && !lgw_scorecard_is_active_season($post_id)) {
         $sc_season = get_post_meta($post_id, 'lgw_sc_season', true);

@@ -348,18 +348,46 @@ function lgw_ajax_parse_excel() {
     $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, array('xlsx','xls'))) wp_send_json_error('Please upload an .xlsx or .xls file');
 
-    $data = lgw_parse_xlsx_basic($file['tmp_name']);
-    if (!$data) wp_send_json_error('Could not read spreadsheet. Please check the file is a valid .xlsx and try again.');
+    $parse_result = lgw_parse_xlsx_basic($file['tmp_name']);
+    if (is_string($parse_result)) wp_send_json_error($parse_result);
+    if (!$parse_result) wp_send_json_error('Could not read spreadsheet — unknown error. Please check the file is a valid .xlsx and try again.');
 
-    $parsed = lgw_map_xlsx_to_scorecard($data);
-    if (!$parsed) wp_send_json_error('Could not map spreadsheet to scorecard format. Please check the file uses the standard LGW scorecard template.');
-    wp_send_json_success($parsed);
+    $map_result = lgw_map_xlsx_to_scorecard($parse_result);
+    if (is_string($map_result)) wp_send_json_error($map_result);
+    if (!$map_result) wp_send_json_error('Could not map spreadsheet to scorecard format. Please check the file uses the standard LGW scorecard template.');
+    wp_send_json_success($map_result);
 }
 
 function lgw_parse_xlsx_basic($filepath) {
-    if (!class_exists('ZipArchive')) return false;
+    if (!class_exists('ZipArchive')) {
+        return 'Could not read spreadsheet: ZipArchive PHP extension is not available on this server (install php-zip).';
+    }
+
+    if (!file_exists($filepath)) {
+        return 'Could not read spreadsheet: uploaded file not found on server.';
+    }
+
     $zip = new ZipArchive();
-    if ($zip->open($filepath) !== true) return false;
+    $open_result = $zip->open($filepath);
+    if ($open_result !== true) {
+        $zip_errors = array(
+            ZipArchive::ER_NOZIP  => 'file is not a valid zip/xlsx archive',
+            ZipArchive::ER_INCONS => 'zip archive is inconsistent or corrupt',
+            ZipArchive::ER_CRC    => 'CRC checksum mismatch — file may be corrupt',
+            ZipArchive::ER_NOENT  => 'file not found',
+            ZipArchive::ER_OPEN   => 'cannot open file for reading',
+            ZipArchive::ER_READ   => 'read error',
+            ZipArchive::ER_MEMORY => 'memory allocation failed',
+        );
+        $reason = $zip_errors[$open_result] ?? 'ZipArchive error code ' . $open_result;
+        return 'Could not read spreadsheet: ' . $reason . '. Please ensure the file is a valid .xlsx (not .xls or .csv).';
+    }
+
+    // List all internal entries for debug — capture sheet names found
+    $all_entries = array();
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $all_entries[] = $zip->getNameIndex($i);
+    }
 
     $strings = array();
     $ss = $zip->getFromName('xl/sharedStrings.xml');
@@ -369,18 +397,33 @@ function lgw_parse_xlsx_basic($filepath) {
     }
 
     // Find the first sheet — try sheet1.xml, then scan for any sheet
-    $sheet_xml = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $sheet_xml      = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $sheet_used_name = 'xl/worksheets/sheet1.xml';
     if ($sheet_xml === false) {
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $name = $zip->getNameIndex($i);
+        $sheet_used_name = null;
+        foreach ($all_entries as $name) {
             if (strpos($name, 'xl/worksheets/sheet') !== false && substr($name, -4) === '.xml') {
                 $sheet_xml = $zip->getFromName($name);
-                if ($sheet_xml !== false) break;
+                if ($sheet_xml !== false) {
+                    $sheet_used_name = $name;
+                    break;
+                }
             }
         }
     }
     $zip->close();
-    if (!$sheet_xml) return false;
+
+    if (!$sheet_xml) {
+        $worksheet_entries = array_filter($all_entries, function($e) {
+            return strpos($e, 'xl/worksheets/') !== false;
+        });
+        if (empty($worksheet_entries)) {
+            return 'Could not read spreadsheet: no worksheet XML found in the file. '
+                 . 'The archive contains: ' . implode(', ', array_slice($all_entries, 0, 20)) . '.';
+        }
+        return 'Could not read spreadsheet: worksheet XML found but could not be read '
+             . '(entries checked: ' . implode(', ', array_values($worksheet_entries)) . ').';
+    }
 
     // Parse cells by splitting on </c> — avoids PCRE inconsistencies across PHP versions.
     // Each chunk contains at most one real cell. Self-closing empty cells have no <v> tag and are skipped.
@@ -401,7 +444,14 @@ function lgw_parse_xlsx_basic($filepath) {
         $grid[$row_num][$col] = $resolved;
     }
 
-    if (empty($grid)) return false;
+    if (empty($grid)) {
+        $sheet_kb = round(strlen($sheet_xml) / 1024, 1);
+        $shared_count = count($strings);
+        return 'Could not read spreadsheet: the worksheet XML was found (sheet: ' . ($sheet_used_name ?? 'unknown')
+             . ', ' . $sheet_kb . ' KB) but contained no readable cell data. '
+             . 'Shared strings loaded: ' . $shared_count . '. '
+             . 'The file may be empty, use unsupported features (e.g. tables/pivot), or the scorecard template may not match the expected layout.';
+    }
     ksort($grid);
     $data = array();
     foreach ($grid as $row_num => $row) {
@@ -512,7 +562,25 @@ function lgw_map_xlsx_to_scorecard($data) {
         }
     }
 
-    if (empty($sc['rinks'])) return null;
+    if (empty($sc['rinks'])) {
+        // Build a diagnostic snapshot of what WAS found, to help identify template mismatches
+        $found = array();
+        if ($sc['home_team'])  $found[] = 'home team: ' . $sc['home_team'];
+        if ($sc['away_team'])  $found[] = 'away team: ' . $sc['away_team'];
+        if ($sc['division'])   $found[] = 'division: ' . $sc['division'];
+        if ($sc['date'])       $found[] = 'date: ' . $sc['date'];
+        if ($sc['venue'])      $found[] = 'venue: ' . $sc['venue'];
+        $row_sample = array();
+        foreach (array_slice($data, 0, 10) as $ri => $rrow) {
+            $nonempty = array_filter(array_map('trim', $rrow));
+            if (!empty($nonempty)) $row_sample[] = 'row ' . ($ri+1) . ': [' . implode(' | ', array_slice($nonempty, 0, 5)) . ']';
+        }
+        $detail = empty($found) ? 'No recognised fields found.' : 'Found: ' . implode(', ', $found) . '.';
+        $sample = empty($row_sample) ? 'No data rows found.' : 'First rows: ' . implode('; ', $row_sample) . '.';
+        return 'Could not map spreadsheet to scorecard format: no rink data found. '
+             . $detail . ' ' . $sample . ' '
+             . 'Please check the file uses the standard LGW scorecard template and that rink rows are labelled "Rink 1", "Rink 2" etc.';
+    }
 
     // Fallback: if totals are null (e.g. unresolved formula), sum from rink scores
     if ($sc['home_total'] === null) {
@@ -745,7 +813,16 @@ function lgw_save_scorecard_admin_both($sc) {
 
     lgw_log_appearances($post_id);
     lgw_audit_log($post_id, 'confirmed', 'Admin submitted for both teams (' . $admin_login . ') — auto-confirmed');
+    $skip_sheets = $is_admin && !empty($_POST['skip_sheets']);
+    if ($skip_sheets) {
+        remove_action('lgw_scorecard_confirmed', 'lgw_sheets_on_confirmed');
+        update_post_meta($post_id, 'lgw_skip_google', 1);
+    }
     do_action('lgw_scorecard_confirmed', $post_id);
+    if ($skip_sheets) {
+        add_action('lgw_scorecard_confirmed', 'lgw_sheets_on_confirmed');
+        delete_post_meta($post_id, 'lgw_skip_google');
+    }
 
     wp_send_json_success(array(
         'message'             => 'Scorecard submitted and confirmed for both teams. ✅',

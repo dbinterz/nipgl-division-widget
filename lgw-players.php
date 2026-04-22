@@ -245,8 +245,25 @@ function lgw_team_to_club($team) {
     return ''; // unknown club — caller falls back to team name
 }
 
+/**
+ * Normalise a player name for consistent storage.
+ * Strips trailing dots from initials so "D. Bintley" and "D Bintley" are treated as the same person.
+ * Rule: a dot is removed only when it immediately follows a single letter (the initial), optionally
+ * preceded/followed by a space — so "St. Helens" (multi-char prefix) is left alone.
+ * Examples: "D. Bintley" → "D Bintley", "J.P. Smith" → "JP Smith", "D Bintley" → "D Bintley" (no-op)
+ */
+function lgw_normalise_player_name($name) {
+    // Remove dots that follow a single capital/lowercase letter at a word boundary
+    // e.g. "D." → "D", "J.P." → "JP"
+    $name = preg_replace('/\b([A-Za-z])\./', '$1', trim($name));
+    // Collapse any double spaces that may result
+    $name = preg_replace('/ {2,}/', ' ', $name);
+    return trim($name);
+}
+
 function lgw_get_or_create_player($club, $name) {
     global $wpdb;
+    $name = lgw_normalise_player_name($name);
     $tbl = lgw_players_table();
     $existing = $wpdb->get_var($wpdb->prepare(
         "SELECT id FROM $tbl WHERE club = %s AND name = %s",
@@ -286,6 +303,63 @@ function lgw_prune_orphaned_players() {
          LEFT JOIN $at a ON a.player_id = p.id
          WHERE a.id IS NULL AND p.starred = 0"
     );
+}
+
+/**
+ * Find all player pairs within the same club where one name is a dotted-initial
+ * variant of the other (e.g. "D. Bintley" vs "D Bintley").
+ * Returns array of ['keep_id', 'keep_name', 'remove_id', 'remove_name', 'club', 'appearances_moved']
+ * Keep rule: prefer the record with more appearances; on a tie, keep the one without dots (normalised form).
+ */
+function lgw_find_dotted_initial_duplicates() {
+    global $wpdb;
+    $pt = lgw_players_table();
+    $at = lgw_appearances_table();
+
+    $players = $wpdb->get_results(
+        "SELECT p.id, p.club, p.name,
+                COUNT(a.id) AS appearances
+         FROM $pt p
+         LEFT JOIN $at a ON a.player_id = p.id
+         GROUP BY p.id
+         ORDER BY p.club, p.name"
+    );
+
+    // Build a lookup: club -> normalised_name -> [player rows]
+    $by_club_norm = array();
+    foreach ($players as $pl) {
+        $norm = lgw_normalise_player_name($pl->name);
+        $by_club_norm[$pl->club][$norm][] = $pl;
+    }
+
+    $pairs = array();
+    foreach ($by_club_norm as $club => $norm_groups) {
+        foreach ($norm_groups as $norm => $group) {
+            if (count($group) < 2) continue;
+            // Sort: most appearances first; on tie, normalised (no-dot) name first
+            usort($group, function($a, $b) use ($norm) {
+                if ($b->appearances !== $a->appearances) return $b->appearances - $a->appearances;
+                // Prefer already-normalised name (no dots) as canonical
+                $a_is_norm = (lgw_normalise_player_name($a->name) === $a->name) ? 0 : 1;
+                $b_is_norm = (lgw_normalise_player_name($b->name) === $b->name) ? 0 : 1;
+                return $a_is_norm - $b_is_norm;
+            });
+            $keep = $group[0];
+            // All others in the group are duplicates to remove
+            for ($i = 1; $i < count($group); $i++) {
+                $remove = $group[$i];
+                $pairs[] = array(
+                    'keep_id'         => intval($keep->id),
+                    'keep_name'       => $keep->name,
+                    'remove_id'       => intval($remove->id),
+                    'remove_name'     => $remove->name,
+                    'club'            => $club,
+                    'appearances_moved' => intval($remove->appearances),
+                );
+            }
+        }
+    }
+    return $pairs;
 }
 
 // ── AJAX: Get player game history ────────────────────────────────────────────
@@ -535,6 +609,21 @@ function lgw_players_admin_page() {
                 $wpdb->delete($pt, array('id' => $remove_id), array('%d'));
                 echo '<div class="notice notice-success"><p>Players merged.</p></div>';
             }
+        }
+
+        if ($action === 'auto_merge_initials') {
+            $pairs  = lgw_find_dotted_initial_duplicates();
+            $merged = 0;
+            foreach ($pairs as $pair) {
+                $keep_id   = $pair['keep_id'];
+                $remove_id = $pair['remove_id'];
+                $wpdb->update($at, array('player_id' => $keep_id), array('player_id' => $remove_id), array('%d'), array('%d'));
+                $wpdb->delete($pt, array('id' => $remove_id), array('%d'));
+                $merged++;
+            }
+            lgw_prune_orphaned_players();
+            $msg = $merged > 0 ? "Auto-merged $merged duplicate player" . ($merged !== 1 ? 's' : '') . '.' : 'No dotted-initial duplicates found.';
+            echo '<div class="notice notice-success"><p>' . esc_html($msg) . '</p></div>';
         }
 
         if ($action === 'add_player') {
@@ -1123,6 +1212,37 @@ function lgw_players_admin_page() {
     <div class="lgw-pt-panel" id="lgw-panel-merge">
         <h2>Merge Duplicate Players</h2>
         <p>Use this when the same person appears under two different spellings (e.g. "J Smith" and "John Smith"). All appearances will be moved to the player you keep, and the other record deleted.</p>
+
+        <?php
+        // ── Auto-merge: dotted initial duplicates ──
+        $auto_pairs = lgw_find_dotted_initial_duplicates();
+        if (!empty($auto_pairs)): ?>
+        <div style="background:#fff8e1;border:1px solid #f0c040;border-radius:6px;padding:16px 20px;margin-bottom:20px">
+            <h3 style="margin:0 0 8px">⚡ Auto-merge: dotted initial variants found</h3>
+            <p style="margin:0 0 12px;font-size:13px">The following players appear to be the same person with/without dotted initials (e.g. "D. Bintley" vs "D Bintley"). The record with <em>more appearances</em> will be kept; all appearances from the other will be merged into it.</p>
+            <table class="widefat striped" style="max-width:700px;margin-bottom:12px;font-size:13px">
+                <thead><tr><th>Club</th><th>Keep (canonical)</th><th>Remove (duplicate)</th><th>Apps moved</th></tr></thead>
+                <tbody>
+                <?php foreach ($auto_pairs as $ap): ?>
+                <tr>
+                    <td><?php echo esc_html($ap['club']); ?></td>
+                    <td><strong><?php echo esc_html($ap['keep_name']); ?></strong></td>
+                    <td style="color:#a00"><?php echo esc_html($ap['remove_name']); ?></td>
+                    <td><?php echo intval($ap['appearances_moved']); ?></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <form method="post" onsubmit="return confirm('Merge <?php echo count($auto_pairs); ?> duplicate pair(s)? This cannot be undone.')">
+                <?php wp_nonce_field('lgw_players_nonce','lgw_players_nonce_field'); ?>
+                <input type="hidden" name="lgw_players_action" value="auto_merge_initials">
+                <button type="submit" class="button button-primary">⚡ Merge <?php echo count($auto_pairs); ?> duplicate<?php echo count($auto_pairs) !== 1 ? 's' : ''; ?></button>
+            </form>
+        </div>
+        <?php else: ?>
+        <p style="color:#0a5a0a;font-size:13px">✅ No dotted-initial duplicates detected.</p>
+        <?php endif; ?>
+
 
         <?php if (count($players) < 2): ?>
             <p>Not enough players to merge yet.</p>
