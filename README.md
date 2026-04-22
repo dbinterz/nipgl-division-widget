@@ -108,9 +108,27 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
-### 7.1.88
-- **Fix:** Fixture time note (e.g. 5:30) now correctly displayed for all divisions; column scan extended past APts, `HH:MM:SS` and Excel time-serial formats handled, plain `HH:MM` no longer truncated to hours-only
-- **Feature:** Fixture time note rendered as a styled navy/gold pill — centred below fixture on main panel, next to date in team modal and print output (wraps below date on small screens)
+### 7.1.94
+- **Feature:** Player history modal — each appearance row now shows the scorecard ID as a `#NNN ↗` link directly to the WP admin edit screen (opens in new tab), making it easy to inspect, edit or trash test/duplicate scorecards
+
+### 7.1.93
+- **Fix:** Backfill missed scorecards tagged to a different/wrong season ID — date-range strategy now scans ALL scorecards (not just untagged ones); match date is the authority, season tag is supplementary
+
+### 7.1.92
+- **Fix:** Backfill not picking up untagged scorecards for previous seasons — added date-range fallback scanning scorecards with no `lgw_sc_season` meta against the season's start/end dates
+
+### 7.1.91
+- **Fix:** Player stats not recorded when re-saving a scorecard via admin edit — rink scores were stored as `0.0` (not `null`) for empty fields, causing false 0–0 draws; now stored as `null` when blank
+- **Fix:** `lgw_log_appearances()` zero-guard — legacy scorecards where all rink scores were `0` (floatval artifact) are treated as score-absent; real 0-scores still honoured when match totals are non-zero
+- **Fix:** `lgw_sc_context` (league/cup) now preserved correctly on admin scorecard edits; missing context defaulted to `league` rather than empty string
+
+### 7.1.90
+- **Feature:** Player statistics — Wins, Draws, Losses, Shots For and Shots Against now tracked per appearance (rink level) for both League and Cup games
+- **Feature:** Admin player list table gains W/D/L, SF–SA, League W/D/L and Cup W/D/L columns per player for the current season view
+- **Feature:** Player history modal upgraded — stats summary table (Total / League / Cup) at top; per-game rows show rink score, coloured W/D/L badge, Cup label badge, and full match score
+- **Feature:** Excel export gains a new **Stats** sheet with full per-player breakdown; per-club matrix sheets gain W/D/L, SF and SA columns
+- **Improvement:** DB migration auto-adds `shots_for`, `shots_against`, `result`, `game_type` columns to existing installations; `game_type` back-filled from scorecard context meta
+- **Improvement:** `lgw_log_appearances()` now reads rink-level scores and `lgw_sc_context` meta to store all stats atomically with each appearance row
 
 ### 7.1.87
 - **Fix:** Fixture time note (e.g. 5:30) now correctly displayed for all divisions; scan range extended past APts column and `HH:MM:SS` format normalised to `HH:MM`

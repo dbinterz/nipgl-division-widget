@@ -26,14 +26,18 @@ function lgw_create_player_tables() {
     ) $charset;";
 
     $sql2 = "CREATE TABLE IF NOT EXISTS " . lgw_appearances_table() . " (
-        id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
-        player_id   INT UNSIGNED NOT NULL,
-        team        VARCHAR(150) NOT NULL,
-        match_title VARCHAR(255) NOT NULL,
-        match_date  VARCHAR(50)  NOT NULL,
-        rink        TINYINT      NOT NULL DEFAULT 0,
+        id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        player_id    INT UNSIGNED NOT NULL,
+        team         VARCHAR(150) NOT NULL,
+        match_title  VARCHAR(255) NOT NULL,
+        match_date   VARCHAR(50)  NOT NULL,
+        rink         TINYINT      NOT NULL DEFAULT 0,
         scorecard_id INT UNSIGNED NOT NULL DEFAULT 0,
-        played_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        played_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        shots_for    SMALLINT     NULL DEFAULT NULL,
+        shots_against SMALLINT    NULL DEFAULT NULL,
+        result       CHAR(1)      NULL DEFAULT NULL COMMENT 'W, D, or L',
+        game_type    VARCHAR(20)  NOT NULL DEFAULT 'league' COMMENT 'league or cup',
         PRIMARY KEY (id),
         KEY player_id (player_id),
         KEY scorecard_id (scorecard_id)
@@ -60,6 +64,28 @@ function lgw_maybe_create_player_tables() {
     }
     if (!in_array('female', $cols)) {
         $wpdb->query("ALTER TABLE $tbl ADD COLUMN female TINYINT(1) NOT NULL DEFAULT 0");
+    }
+    // Migrate appearances table: add stats columns if missing
+    $at    = lgw_appearances_table();
+    $acols = $wpdb->get_col("SHOW COLUMNS FROM $at");
+    if (!in_array('shots_for', $acols)) {
+        $wpdb->query("ALTER TABLE $at ADD COLUMN shots_for SMALLINT NULL DEFAULT NULL");
+    }
+    if (!in_array('shots_against', $acols)) {
+        $wpdb->query("ALTER TABLE $at ADD COLUMN shots_against SMALLINT NULL DEFAULT NULL");
+    }
+    if (!in_array('result', $acols)) {
+        $wpdb->query("ALTER TABLE $at ADD COLUMN result CHAR(1) NULL DEFAULT NULL COMMENT 'W D L'");
+    }
+    if (!in_array('game_type', $acols)) {
+        $wpdb->query("ALTER TABLE $at ADD COLUMN game_type VARCHAR(20) NOT NULL DEFAULT 'league'");
+        // Back-fill game_type for existing rows from scorecard context meta
+        $wpdb->query("
+            UPDATE {$at} a
+            JOIN {$wpdb->postmeta} pm ON pm.post_id = a.scorecard_id AND pm.meta_key = 'lgw_sc_context'
+            SET a.game_type = pm.meta_value
+            WHERE a.scorecard_id > 0
+        ");
     }
 }
 
@@ -111,6 +137,9 @@ function lgw_log_appearances($scorecard_post_id) {
     $match_date = $sc['date']      ?? '';
     $match_title = $home_team . ' v ' . $away_team;
 
+    // Determine game type from scorecard context meta
+    $game_type = get_post_meta($scorecard_post_id, 'lgw_sc_context', true) ?: 'league';
+
     // Resolve clubs from team names using existing prefix-matching
     $home_club = lgw_team_to_club($home_team);
     $away_club = lgw_team_to_club($away_team);
@@ -118,8 +147,43 @@ function lgw_log_appearances($scorecard_post_id) {
     // Clear any existing appearances for this scorecard (idempotent re-log)
     $wpdb->delete(lgw_appearances_table(), array('scorecard_id' => $scorecard_post_id), array('%d'));
 
+    // Guard against legacy scorecards where empty rink scores were stored as 0 by floatval().
+    // A scorecard has real scores if: at least one rink has a non-zero score, OR the match totals
+    // are non-zero. If everything is 0/null we treat scores as absent.
+    $has_real_scores = false;
+    $home_total = floatval($sc['home_total'] ?? 0);
+    $away_total = floatval($sc['away_total'] ?? 0);
+    if ($home_total > 0 || $away_total > 0) {
+        $has_real_scores = true;
+    } else {
+        foreach ($sc['rinks'] as $rk) {
+            if (floatval($rk['home_score'] ?? 0) > 0 || floatval($rk['away_score'] ?? 0) > 0) {
+                $has_real_scores = true;
+                break;
+            }
+        }
+    }
+
     foreach ($sc['rinks'] as $rink) {
-        $rink_num = intval($rink['rink'] ?? 0);
+        $rink_num    = intval($rink['rink'] ?? 0);
+        // Only store scores/result if this scorecard has real score data
+        if ($has_real_scores && isset($rink['home_score']) && is_numeric($rink['home_score'])
+                             && isset($rink['away_score']) && is_numeric($rink['away_score'])) {
+            $home_shots = intval($rink['home_score']);
+            $away_shots = intval($rink['away_score']);
+        } else {
+            $home_shots = null;
+            $away_shots = null;
+        }
+
+        // Determine per-rink result
+        $home_result = null;
+        $away_result = null;
+        if ($home_shots !== null && $away_shots !== null) {
+            if ($home_shots > $away_shots)      { $home_result = 'W'; $away_result = 'L'; }
+            elseif ($home_shots < $away_shots)  { $home_result = 'L'; $away_result = 'W'; }
+            else                                { $home_result = 'D'; $away_result = 'D'; }
+        }
 
         // Home players
         foreach (($rink['home_players'] ?? array()) as $raw_name) {
@@ -129,14 +193,18 @@ function lgw_log_appearances($scorecard_post_id) {
             $player_id = lgw_get_or_create_player($home_club ?: $home_team, $name);
             if ($is_female) lgw_ensure_female_flag($player_id);
             $wpdb->insert(lgw_appearances_table(), array(
-                'player_id'   => $player_id,
-                'team'        => $home_team,
-                'match_title' => $match_title,
-                'match_date'  => $match_date,
-                'rink'        => $rink_num,
-                'scorecard_id'=> $scorecard_post_id,
-                'played_at'   => current_time('mysql'),
-            ), array('%d','%s','%s','%s','%d','%d','%s'));
+                'player_id'    => $player_id,
+                'team'         => $home_team,
+                'match_title'  => $match_title,
+                'match_date'   => $match_date,
+                'rink'         => $rink_num,
+                'scorecard_id' => $scorecard_post_id,
+                'played_at'    => current_time('mysql'),
+                'shots_for'    => $home_shots,
+                'shots_against'=> $away_shots,
+                'result'       => $home_result,
+                'game_type'    => $game_type,
+            ), array('%d','%s','%s','%s','%d','%d','%s','%d','%d','%s','%s'));
         }
 
         // Away players
@@ -147,14 +215,18 @@ function lgw_log_appearances($scorecard_post_id) {
             $player_id = lgw_get_or_create_player($away_club ?: $away_team, $name);
             if ($is_female) lgw_ensure_female_flag($player_id);
             $wpdb->insert(lgw_appearances_table(), array(
-                'player_id'   => $player_id,
-                'team'        => $away_team,
-                'match_title' => $match_title,
-                'match_date'  => $match_date,
-                'rink'        => $rink_num,
-                'scorecard_id'=> $scorecard_post_id,
-                'played_at'   => current_time('mysql'),
-            ), array('%d','%s','%s','%s','%d','%d','%s'));
+                'player_id'    => $player_id,
+                'team'         => $away_team,
+                'match_title'  => $match_title,
+                'match_date'   => $match_date,
+                'rink'         => $rink_num,
+                'scorecard_id' => $scorecard_post_id,
+                'played_at'    => current_time('mysql'),
+                'shots_for'    => $away_shots,
+                'shots_against'=> $home_shots,
+                'result'       => $away_result,
+                'game_type'    => $game_type,
+            ), array('%d','%s','%s','%s','%d','%d','%s','%d','%d','%s','%s'));
         }
     }
 }
@@ -233,7 +305,8 @@ function lgw_ajax_get_player_history() {
     if (!$player) wp_send_json_error('Player not found');
 
     $appearances = $wpdb->get_results($wpdb->prepare(
-        "SELECT a.id, a.team, a.match_title, a.match_date, a.rink, a.scorecard_id, a.played_at
+        "SELECT a.id, a.team, a.match_title, a.match_date, a.rink, a.scorecard_id, a.played_at,
+                a.shots_for, a.shots_against, a.result, a.game_type
          FROM $at a
          WHERE a.player_id = %d
          ORDER BY STR_TO_DATE(a.match_date, '%%d/%%m/%%Y') DESC, a.played_at DESC",
@@ -246,15 +319,19 @@ function lgw_ajax_get_player_history() {
         $sc_data   = $app->scorecard_id ? get_post_meta($app->scorecard_id, 'lgw_scorecard_data', true) : null;
         $sc_status = $app->scorecard_id ? get_post_meta($app->scorecard_id, 'lgw_sc_status', true) : '';
         $enriched[] = array(
-            'match_title' => $app->match_title,
-            'match_date'  => $app->match_date,
-            'team'        => $app->team,
-            'rink'        => $app->rink,
-            'division'    => $sc_data['division'] ?? '',
-            'home_score'  => $sc_data['home_total'] ?? '',
-            'away_score'  => $sc_data['away_total'] ?? '',
-            'status'      => $sc_status,
-            'scorecard_id'=> $app->scorecard_id,
+            'match_title'   => $app->match_title,
+            'match_date'    => $app->match_date,
+            'team'          => $app->team,
+            'rink'          => $app->rink,
+            'division'      => $sc_data['division'] ?? '',
+            'home_score'    => $sc_data['home_total'] ?? '',
+            'away_score'    => $sc_data['away_total'] ?? '',
+            'shots_for'     => $app->shots_for,
+            'shots_against' => $app->shots_against,
+            'result'        => $app->result,
+            'game_type'     => $app->game_type ?: 'league',
+            'status'        => $sc_status,
+            'scorecard_id'  => $app->scorecard_id,
         );
     }
 
@@ -331,11 +408,12 @@ function lgw_ajax_backfill_season_players() {
         wp_send_json_error('Nonce invalid');
     }
 
-    // Find all scorecards tagged with this season
-    $posts = get_posts(array(
+    // Strategy 1: scorecards explicitly tagged with this season ID
+    $posts_by_tag = get_posts(array(
         'post_type'      => 'lgw_scorecard',
         'posts_per_page' => -1,
         'post_status'    => array('publish', 'draft'),
+        'fields'         => 'ids',
         'meta_query'     => array(
             array(
                 'key'   => 'lgw_sc_season',
@@ -344,19 +422,49 @@ function lgw_ajax_backfill_season_players() {
         ),
     ));
 
+    // Strategy 2: match ALL scorecards by date range (catches tagged-to-wrong-season and untagged)
+    $posts_by_date = array();
+    $season_obj = lgw_get_season_by_id($season_id);
+    if ($season_obj && !empty($season_obj['start']) && !empty($season_obj['end'])) {
+        $start = $season_obj['start']; // Y-m-d
+        $end   = $season_obj['end'];
+        $all_scorecards = get_posts(array(
+            'post_type'      => 'lgw_scorecard',
+            'posts_per_page' => -1,
+            'post_status'    => array('publish', 'draft'),
+            'fields'         => 'ids',
+        ));
+        foreach ($all_scorecards as $pid) {
+            // Skip if already found by tag — avoid redundant meta reads
+            if (in_array($pid, $posts_by_tag)) continue;
+            $sc_data  = get_post_meta($pid, 'lgw_scorecard_data', true);
+            $raw_date = $sc_data['date'] ?? '';
+            if (!$raw_date) continue;
+            $parts = explode('/', $raw_date);
+            if (count($parts) === 3) {
+                $ymd = $parts[2] . '-' . $parts[1] . '-' . $parts[0];
+                if ($ymd >= $start && $ymd <= $end) {
+                    $posts_by_date[] = $pid;
+                }
+            }
+        }
+    }
+
+    // Merge, dedupe
+    $all_ids = array_unique(array_merge($posts_by_tag, $posts_by_date));
+
     $count = 0;
-    foreach ($posts as $p) {
-        // Only log appearances from confirmed or admin-resolved scorecards
-        $status = get_post_meta($p->ID, 'lgw_sc_status', true);
+    foreach ($all_ids as $pid) {
+        $status = get_post_meta($pid, 'lgw_sc_status', true);
         if (in_array($status, array('confirmed', 'admin_resolved', 'auto_confirmed'), true)) {
-            lgw_log_appearances($p->ID);
+            lgw_log_appearances($pid);
             $count++;
         }
     }
 
     wp_send_json_success(array(
         'count'     => $count,
-        'total'     => count($posts),
+        'total'     => count($all_ids),
         'season_id' => $season_id,
     ));
 }
@@ -471,11 +579,26 @@ function lgw_players_admin_page() {
         }
     }
 
-    // Fetch all players with appearance counts
+    // Fetch all players with appearance counts and aggregated stats
     $players = $wpdb->get_results("
         SELECT p.id, p.club, p.name, p.starred, p.female,
                COUNT(DISTINCT a.id) as appearances,
-               GROUP_CONCAT(DISTINCT a.team ORDER BY a.team SEPARATOR ', ') as teams
+               GROUP_CONCAT(DISTINCT a.team ORDER BY a.team SEPARATOR ', ') as teams,
+               SUM(CASE WHEN a.result='W' THEN 1 ELSE 0 END) as wins,
+               SUM(CASE WHEN a.result='D' THEN 1 ELSE 0 END) as draws,
+               SUM(CASE WHEN a.result='L' THEN 1 ELSE 0 END) as losses,
+               SUM(CASE WHEN a.shots_for IS NOT NULL THEN a.shots_for ELSE 0 END) as shots_for,
+               SUM(CASE WHEN a.shots_against IS NOT NULL THEN a.shots_against ELSE 0 END) as shots_against,
+               SUM(CASE WHEN a.game_type='league' AND a.result='W' THEN 1 ELSE 0 END) as lge_wins,
+               SUM(CASE WHEN a.game_type='league' AND a.result='D' THEN 1 ELSE 0 END) as lge_draws,
+               SUM(CASE WHEN a.game_type='league' AND a.result='L' THEN 1 ELSE 0 END) as lge_losses,
+               SUM(CASE WHEN a.game_type='league' AND a.shots_for IS NOT NULL THEN a.shots_for ELSE 0 END) as lge_sf,
+               SUM(CASE WHEN a.game_type='league' AND a.shots_against IS NOT NULL THEN a.shots_against ELSE 0 END) as lge_sa,
+               SUM(CASE WHEN a.game_type='cup' AND a.result='W' THEN 1 ELSE 0 END) as cup_wins,
+               SUM(CASE WHEN a.game_type='cup' AND a.result='D' THEN 1 ELSE 0 END) as cup_draws,
+               SUM(CASE WHEN a.game_type='cup' AND a.result='L' THEN 1 ELSE 0 END) as cup_losses,
+               SUM(CASE WHEN a.game_type='cup' AND a.shots_for IS NOT NULL THEN a.shots_for ELSE 0 END) as cup_sf,
+               SUM(CASE WHEN a.game_type='cup' AND a.shots_against IS NOT NULL THEN a.shots_against ELSE 0 END) as cup_sa
         FROM $pt p
         LEFT JOIN $at a ON a.player_id = p.id " .
         ($season_where ? "WHERE 1=1 $season_where " : "") . "
@@ -645,6 +768,7 @@ function lgw_players_admin_page() {
     // ── Player history modal ──────────────────────────────────────────────────
     var lgwPlayersNonce = '<?php echo wp_create_nonce('lgw_players_nonce'); ?>';
     var lgwAjaxUrl      = '<?php echo admin_url('admin-ajax.php'); ?>';
+    var lgwAdminUrl     = '<?php echo admin_url(); ?>';
 
     function lgwShowPlayerHistory(playerId) {
         var modal = document.getElementById('lgw-history-modal');
@@ -671,30 +795,90 @@ function lgw_players_admin_page() {
                     return;
                 }
 
-                var html = '<p style="margin:0 0 12px;color:#555;font-size:13px">'
+                // Calculate stats summary broken down by game type
+                var stats = { all:{apps:0,w:0,d:0,l:0,sf:0,sa:0}, league:{apps:0,w:0,d:0,l:0,sf:0,sa:0}, cup:{apps:0,w:0,d:0,l:0,sf:0,sa:0} };
+                apps.forEach(function(a) {
+                    var gt = (a.game_type === 'cup') ? 'cup' : 'league';
+                    stats.all.apps++;
+                    stats[gt].apps++;
+                    if (a.result === 'W') { stats.all.w++; stats[gt].w++; }
+                    else if (a.result === 'D') { stats.all.d++; stats[gt].d++; }
+                    else if (a.result === 'L') { stats.all.l++; stats[gt].l++; }
+                    if (a.shots_for !== null && a.shots_for !== '') { stats.all.sf += parseInt(a.shots_for)||0; stats[gt].sf += parseInt(a.shots_for)||0; }
+                    if (a.shots_against !== null && a.shots_against !== '') { stats.all.sa += parseInt(a.shots_against)||0; stats[gt].sa += parseInt(a.shots_against)||0; }
+                });
+
+                function statRow(label, s) {
+                    if (!s.apps) return '';
+                    var diff = s.sf - s.sa;
+                    var diffStr = diff >= 0 ? '+' + diff : String(diff);
+                    return '<tr><td><strong>' + label + '</strong></td>'
+                        + '<td style="text-align:center">' + s.apps + '</td>'
+                        + '<td style="text-align:center">' + s.w + '</td>'
+                        + '<td style="text-align:center">' + s.d + '</td>'
+                        + '<td style="text-align:center">' + s.l + '</td>'
+                        + '<td style="text-align:center">' + s.sf + '</td>'
+                        + '<td style="text-align:center">' + s.sa + '</td>'
+                        + '<td style="text-align:center">' + diffStr + '</td>'
+                        + '</tr>';
+                }
+
+                var hasStats = (stats.all.w + stats.all.d + stats.all.l) > 0;
+                var statsHtml = '';
+                if (hasStats) {
+                    statsHtml = '<table class="lgw-history-table" style="margin-bottom:18px">'
+                        + '<thead><tr><th>Competition</th><th style="text-align:center">Apps</th>'
+                        + '<th style="text-align:center">W</th><th style="text-align:center">D</th><th style="text-align:center">L</th>'
+                        + '<th style="text-align:center">SF</th><th style="text-align:center">SA</th><th style="text-align:center">+/−</th></tr></thead><tbody>'
+                        + statRow('Total', stats.all)
+                        + statRow('League', stats.league)
+                        + statRow('Cup', stats.cup)
+                        + '</tbody></table>';
+                }
+
+                var html = statsHtml
+                    + '<p style="margin:0 0 10px;color:#555;font-size:13px">'
                     + apps.length + ' appearance' + (apps.length !== 1 ? 's' : '') + ' recorded</p>'
                     + '<table class="lgw-history-table">'
                     + '<thead><tr><th>Date</th><th>Match</th><th>Division</th>'
                     + '<th style="text-align:center">Rink</th><th>Team</th>'
-                    + '<th style="text-align:center">Score</th><th>Status</th></tr></thead><tbody>';
+                    + '<th style="text-align:center">Rink Score</th>'
+                    + '<th style="text-align:center">Result</th>'
+                    + '<th style="text-align:center">Match</th><th>Status</th>'
+                    + '<th style="text-align:center">SC</th></tr></thead><tbody>';
 
                 apps.forEach(function(a) {
-                    var scoreTxt = (a.home_score !== '' && a.away_score !== '' && a.home_score !== null && a.away_score !== null)
+                    var rinkScoreTxt = (a.shots_for !== null && a.shots_for !== '' && a.shots_against !== null && a.shots_against !== '')
+                        ? a.shots_for + '\u2013' + a.shots_against : '\u2014';
+                    var matchScoreTxt = (a.home_score !== '' && a.away_score !== '' && a.home_score !== null && a.away_score !== null)
                         ? a.home_score + '\u2013' + a.away_score : '\u2014';
+                    var resultHtml = '\u2014';
+                    if (a.result === 'W') resultHtml = '<span style="color:#138211;font-weight:700">W</span>';
+                    else if (a.result === 'L') resultHtml = '<span style="color:#c0392b;font-weight:700">L</span>';
+                    else if (a.result === 'D') resultHtml = '<span style="color:#e67e22;font-weight:700">D</span>';
                     var statusHtml = '';
                     if (a.status) {
                         var cls = 'lgw-sc-' + ({'confirmed':'confirmed','pending':'pending','disputed':'disputed'}[a.status] || 'pending');
                         statusHtml = '<span class="lgw-sc-status ' + cls + '">'
                             + a.status.charAt(0).toUpperCase() + a.status.slice(1) + '</span>';
                     }
+                    var typeLabel = a.game_type === 'cup'
+                        ? '<span style="font-size:10px;background:#072a82;color:#fff;border-radius:3px;padding:1px 5px;margin-left:4px">CUP</span>'
+                        : '';
+                    var scLink = a.scorecard_id
+                        ? '<a href="' + lgwAdminUrl + 'post.php?post=' + a.scorecard_id + '&action=edit" target="_blank" title="Edit scorecard #' + a.scorecard_id + '" style="font-size:11px;color:#072a82;text-decoration:none;white-space:nowrap">#' + a.scorecard_id + ' &#8599;</a>'
+                        : '\u2014';
                     html += '<tr>'
                         + '<td style="white-space:nowrap">' + lgwEsc(a.match_date) + '</td>'
-                        + '<td>' + lgwEsc(a.match_title) + '</td>'
+                        + '<td>' + lgwEsc(a.match_title) + typeLabel + '</td>'
                         + '<td>' + lgwEsc(a.division) + '</td>'
                         + '<td style="text-align:center">' + (a.rink || '\u2014') + '</td>'
                         + '<td>' + lgwEsc(a.team) + '</td>'
-                        + '<td style="text-align:center;white-space:nowrap">' + lgwEsc(scoreTxt) + '</td>'
+                        + '<td style="text-align:center;white-space:nowrap">' + lgwEsc(rinkScoreTxt) + '</td>'
+                        + '<td style="text-align:center">' + resultHtml + '</td>'
+                        + '<td style="text-align:center;white-space:nowrap">' + lgwEsc(matchScoreTxt) + '</td>'
                         + '<td>' + statusHtml + '</td>'
+                        + '<td style="text-align:center">' + scLink + '</td>'
                         + '</tr>';
                 });
                 html += '</tbody></table>';
@@ -751,13 +935,33 @@ function lgw_players_admin_page() {
                 <thead><tr>
                     <th>Name</th>
                     <th>Teams played for</th>
-                    <th style="text-align:center">Appearances<?php echo $season_where ? ' (this season)' : ''; ?></th>
+                    <th style="text-align:center">Apps<?php echo $season_where ? ' (season)' : ''; ?></th>
+                    <th style="text-align:center" title="Wins / Draws / Losses (all games)">W/D/L</th>
+                    <th style="text-align:center" title="Shots For – Shots Against (all games)">SF–SA</th>
+                    <th style="text-align:center" title="League: Wins / Draws / Losses">Lge W/D/L</th>
+                    <th style="text-align:center" title="Cup: Wins / Draws / Losses">Cup W/D/L</th>
                     <th style="text-align:center" title="Starred player">⭐</th>
                     <th style="text-align:center" title="Female player">♀</th>
                     <th>Actions</th>
                 </tr></thead>
                 <tbody>
-                <?php foreach ($club_players as $pl): ?>
+                <?php foreach ($club_players as $pl):
+                    $has_stats = ($pl->wins + $pl->draws + $pl->losses) > 0;
+                    $wdl_all   = $has_stats
+                        ? intval($pl->wins).'/'.intval($pl->draws).'/'.intval($pl->losses)
+                        : '—';
+                    $sfsa_all  = $has_stats
+                        ? intval($pl->shots_for).'–'.intval($pl->shots_against)
+                        : '—';
+                    $lge_has   = ($pl->lge_wins + $pl->lge_draws + $pl->lge_losses) > 0;
+                    $wdl_lge   = $lge_has
+                        ? intval($pl->lge_wins).'/'.intval($pl->lge_draws).'/'.intval($pl->lge_losses)
+                        : '—';
+                    $cup_has   = ($pl->cup_wins + $pl->cup_draws + $pl->cup_losses) > 0;
+                    $wdl_cup   = $cup_has
+                        ? intval($pl->cup_wins).'/'.intval($pl->cup_draws).'/'.intval($pl->cup_losses)
+                        : '—';
+                ?>
                 <tr<?php echo $pl->appearances == 0 ? ' class="lgw-appearances-zero"' : ''; ?>>
                     <td>
                         <button class="lgw-player-link"
@@ -766,6 +970,10 @@ function lgw_players_admin_page() {
                     </td>
                     <td><?php echo esc_html($pl->teams ?: '—'); ?></td>
                     <td style="text-align:center"><?php echo intval($pl->appearances); ?></td>
+                    <td style="text-align:center;white-space:nowrap"><?php echo esc_html($wdl_all); ?></td>
+                    <td style="text-align:center;white-space:nowrap"><?php echo esc_html($sfsa_all); ?></td>
+                    <td style="text-align:center;white-space:nowrap"><?php echo esc_html($wdl_lge); ?></td>
+                    <td style="text-align:center;white-space:nowrap"><?php echo esc_html($wdl_cup); ?></td>
                     <td style="text-align:center">
                         <form method="post" style="display:inline">
                             <?php wp_nonce_field('lgw_players_nonce','lgw_players_nonce_field'); ?>
@@ -1112,6 +1320,33 @@ function lgw_export_players_xlsx() {
     }
     $match_order = array_unique($match_order);
 
+    // ── Fetch per-player aggregate stats ─────────────────────────────────────
+    $stats_rows = $wpdb->get_results(
+        "SELECT a.player_id,
+                SUM(CASE WHEN a.result='W' THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN a.result='D' THEN 1 ELSE 0 END) as draws,
+                SUM(CASE WHEN a.result='L' THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN a.shots_for IS NOT NULL THEN a.shots_for ELSE 0 END) as shots_for,
+                SUM(CASE WHEN a.shots_against IS NOT NULL THEN a.shots_against ELSE 0 END) as shots_against,
+                SUM(CASE WHEN a.game_type='league' AND a.result='W' THEN 1 ELSE 0 END) as lge_w,
+                SUM(CASE WHEN a.game_type='league' AND a.result='D' THEN 1 ELSE 0 END) as lge_d,
+                SUM(CASE WHEN a.game_type='league' AND a.result='L' THEN 1 ELSE 0 END) as lge_l,
+                SUM(CASE WHEN a.game_type='league' AND a.shots_for IS NOT NULL THEN a.shots_for ELSE 0 END) as lge_sf,
+                SUM(CASE WHEN a.game_type='league' AND a.shots_against IS NOT NULL THEN a.shots_against ELSE 0 END) as lge_sa,
+                SUM(CASE WHEN a.game_type='cup' AND a.result='W' THEN 1 ELSE 0 END) as cup_w,
+                SUM(CASE WHEN a.game_type='cup' AND a.result='D' THEN 1 ELSE 0 END) as cup_d,
+                SUM(CASE WHEN a.game_type='cup' AND a.result='L' THEN 1 ELSE 0 END) as cup_l,
+                SUM(CASE WHEN a.game_type='cup' AND a.shots_for IS NOT NULL THEN a.shots_for ELSE 0 END) as cup_sf,
+                SUM(CASE WHEN a.game_type='cup' AND a.shots_against IS NOT NULL THEN a.shots_against ELSE 0 END) as cup_sa
+         FROM $at a
+         " . ($season_where ? "WHERE 1=1 $season_where" : "") . "
+         GROUP BY a.player_id"
+    );
+    $player_stats = array();
+    foreach ($stats_rows as $sr) {
+        $player_stats[$sr->player_id] = $sr;
+    }
+
     // ── Group players by club ─────────────────────────────────────────────────
     $by_club = array();
     foreach ($all_players as $pl) {
@@ -1119,7 +1354,7 @@ function lgw_export_players_xlsx() {
     }
 
     // ── Build sheet names ─────────────────────────────────────────────────────
-    $sheet_names = array('Summary');
+    $sheet_names = array('Summary', 'Stats');
     foreach (array_keys($by_club) as $club) {
         $sheet_names[] = lgw_safe_sheet_name($club);
     }
@@ -1217,6 +1452,55 @@ function lgw_export_players_xlsx() {
     echo '</table>';
 
     // ════════════════════════════════════════════════════════════════════════
+    // STATS SHEET
+    // ════════════════════════════════════════════════════════════════════════
+    echo '<table id="Stats">';
+    echo '<tr><td class="hdr1" colspan="18">Player Statistics' . esc_html($label) . '</td></tr>';
+    echo '<tr>'
+       . '<td class="hdr2">Club</td>'
+       . '<td class="hdr2">Player</td>'
+       . '<td class="hdr2">Apps</td>'
+       . '<td class="total-hdr">W</td><td class="total-hdr">D</td><td class="total-hdr">L</td>'
+       . '<td class="total-hdr">SF</td><td class="total-hdr">SA</td><td class="total-hdr">+/−</td>'
+       . '<td class="hdr3">Lge W</td><td class="hdr3">Lge D</td><td class="hdr3">Lge L</td>'
+       . '<td class="hdr3">Lge SF</td><td class="hdr3">Lge SA</td>'
+       . '<td class="flag-hdr">Cup W</td><td class="flag-hdr">Cup D</td><td class="flag-hdr">Cup L</td>'
+       . '<td class="flag-hdr">Cup SF</td>'
+       . '</tr>';
+
+    foreach ($all_players as $pl) {
+        $st  = $player_stats[$pl->id] ?? null;
+        $apps = count($player_apps[$pl->id] ?? array());
+        $w   = $st ? intval($st->wins)         : 0;
+        $d   = $st ? intval($st->draws)        : 0;
+        $l   = $st ? intval($st->losses)       : 0;
+        $sf  = $st ? intval($st->shots_for)    : 0;
+        $sa  = $st ? intval($st->shots_against): 0;
+        $diff= $sf - $sa;
+        echo '<tr>'
+           . '<td class="player-name">' . esc_html($pl->club) . '</td>'
+           . '<td class="player-name">' . esc_html($pl->name) . '</td>'
+           . '<td class="total-cell">' . $apps . '</td>'
+           . '<td class="total-cell">' . ($w ?: '') . '</td>'
+           . '<td class="total-cell">' . ($d ?: '') . '</td>'
+           . '<td class="total-cell">' . ($l ?: '') . '</td>'
+           . '<td class="total-cell">' . ($sf ?: '') . '</td>'
+           . '<td class="total-cell">' . ($sa ?: '') . '</td>'
+           . '<td class="total-cell">' . ($w+$d+$l > 0 ? ($diff >= 0 ? '+':'').$diff : '') . '</td>'
+           . '<td class="app-a">'    . ($st ? ($st->lge_w ?: '') : '') . '</td>'
+           . '<td class="app-a">'    . ($st ? ($st->lge_d ?: '') : '') . '</td>'
+           . '<td class="app-a">'    . ($st ? ($st->lge_l ?: '') : '') . '</td>'
+           . '<td class="app-a">'    . ($st ? ($st->lge_sf ?: '') : '') . '</td>'
+           . '<td class="app-a">'    . ($st ? ($st->lge_sa ?: '') : '') . '</td>'
+           . '<td class="app-b">'    . ($st ? ($st->cup_w ?: '') : '') . '</td>'
+           . '<td class="app-b">'    . ($st ? ($st->cup_d ?: '') : '') . '</td>'
+           . '<td class="app-b">'    . ($st ? ($st->cup_l ?: '') : '') . '</td>'
+           . '<td class="app-b">'    . ($st ? ($st->cup_sf ?: '') : '') . '</td>'
+           . '</tr>';
+    }
+    echo '</table>';
+
+    // ════════════════════════════════════════════════════════════════════════
     // PER-CLUB MATRIX SHEETS
     // ════════════════════════════════════════════════════════════════════════
     foreach ($by_club as $club => $players) {
@@ -1235,7 +1519,7 @@ function lgw_export_players_xlsx() {
         }));
 
         $n_matches  = count($club_matches);
-        $fixed_cols = 7; // Name, T, A, B, MW, Starred, Female
+        $fixed_cols = 12; // Name, T, A, B, MW, W, D, L, SF, SA, Starred, Female
         $total_cols = $fixed_cols + $n_matches;
 
         echo '<table id="' . esc_attr($sn) . '">';
@@ -1250,6 +1534,11 @@ function lgw_export_players_xlsx() {
            . '<td class="total-hdr">A</td>'
            . '<td class="total-hdr">B</td>'
            . '<td class="total-hdr">MW</td>'
+           . '<td class="total-hdr">W</td>'
+           . '<td class="total-hdr">D</td>'
+           . '<td class="total-hdr">L</td>'
+           . '<td class="total-hdr">SF</td>'
+           . '<td class="total-hdr">SA</td>'
            . '<td class="flag-hdr">⭐</td>'
            . '<td class="flag-hdr">♀</td>';
         foreach ($club_matches as $mk) {
@@ -1260,7 +1549,7 @@ function lgw_export_players_xlsx() {
         // Row 3: team playing (home/away label for this club)
         echo '<tr>'
            . '<td class="hdr3">Team</td>'
-           . '<td class="hdr3" colspan="4"></td>'
+           . '<td class="hdr3" colspan="9"></td>'
            . '<td class="hdr3"></td>'
            . '<td class="hdr3"></td>';
         foreach ($club_matches as $mk) {
@@ -1274,7 +1563,7 @@ function lgw_export_players_xlsx() {
         // Row 4: opposition
         echo '<tr>'
            . '<td class="hdr3">Opposition</td>'
-           . '<td class="hdr3" colspan="4"></td>'
+           . '<td class="hdr3" colspan="9"></td>'
            . '<td class="hdr3"></td>'
            . '<td class="hdr3"></td>';
         foreach ($club_matches as $mk) {
@@ -1288,7 +1577,7 @@ function lgw_export_players_xlsx() {
         // Row 5: venue
         echo '<tr>'
            . '<td class="hdr3">Venue</td>'
-           . '<td class="hdr3" colspan="4"></td>'
+           . '<td class="hdr3" colspan="9"></td>'
            . '<td class="hdr3"></td>'
            . '<td class="hdr3"></td>';
         foreach ($club_matches as $mk) {
@@ -1302,7 +1591,7 @@ function lgw_export_players_xlsx() {
         // Row 6: competition
         echo '<tr>'
            . '<td class="hdr3">Comp</td>'
-           . '<td class="hdr3" colspan="4"></td>'
+           . '<td class="hdr3" colspan="9"></td>'
            . '<td class="hdr3"></td>'
            . '<td class="hdr3"></td>';
         foreach ($club_matches as $mk) {
@@ -1318,6 +1607,12 @@ function lgw_export_players_xlsx() {
             $t_b      = count(array_filter($apps, function($v){ return strtoupper($v)==='B'; }));
             $t_mw     = count(array_filter($apps, function($v){ return strtoupper($v)==='MW'; }));
             $row_cls  = $pl->starred ? ' class="starred"' : '';
+            $st       = $player_stats[$pl->id] ?? null;
+            $p_w      = $st ? intval($st->wins)         : 0;
+            $p_d      = $st ? intval($st->draws)        : 0;
+            $p_l      = $st ? intval($st->losses)       : 0;
+            $p_sf     = $st ? intval($st->shots_for)    : 0;
+            $p_sa     = $st ? intval($st->shots_against): 0;
 
             echo '<tr' . $row_cls . '>'
                . '<td class="player-name">' . esc_html($pl->name) . '</td>'
@@ -1325,6 +1620,11 @@ function lgw_export_players_xlsx() {
                . '<td class="total-cell">' . ($t_a  ?: '') . '</td>'
                . '<td class="total-cell">' . ($t_b  ?: '') . '</td>'
                . '<td class="total-cell">' . ($t_mw ?: '') . '</td>'
+               . '<td class="total-cell">' . ($p_w  ?: '') . '</td>'
+               . '<td class="total-cell">' . ($p_d  ?: '') . '</td>'
+               . '<td class="total-cell">' . ($p_l  ?: '') . '</td>'
+               . '<td class="total-cell">' . ($p_sf ?: '') . '</td>'
+               . '<td class="total-cell">' . ($p_sa ?: '') . '</td>'
                . '<td style="text-align:center">' . ($pl->starred ? 'X' : '') . '</td>'
                . '<td style="text-align:center">' . ($pl->female  ? 'X' : '') . '</td>';
 

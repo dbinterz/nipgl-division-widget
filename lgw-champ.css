@@ -1094,6 +1094,9 @@
     background: var(--lgw-navy, #1a2e5a);
     color: var(--lgw-gold, #e8b400);
   }
+  .lgw-champ-round.mobile-active .lgw-champ-round-date {
+    color: rgba(255,255,255,.85);
+  }
 
   .lgw-champ-match { margin: 6px 4px; }
 

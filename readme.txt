@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.89
+Stable tag: 7.1.94
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -71,10 +71,27 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.89 =
-* Fix: Cup and Championship round date text now shows in white when that round is selected (mobile-active) so it remains readable against the navy background
-* Fix: Fixture time note (e.g. 5:30) now correctly displayed for all divisions; column scan extended past APts, HH:MM:SS and Excel time-serial formats both handled, plain HH:MM no longer truncated to hours-only
-* Feature: Fixture time note displayed as a styled navy/gold pill centred below the fixture on the main panel, in the team modal, and in the print output
+= 7.1.94 =
+* Feature: Player history modal — each appearance row now shows the scorecard ID as a direct link to the WP admin edit screen (opens in new tab), making it easy to inspect, edit or trash test/duplicate scorecards
+
+= 7.1.93 =
+* Fix: Backfill missed scorecards tagged to a different/wrong season ID — Strategy 2 now scans ALL scorecards by match date against the season date range, not just untagged ones; tagged-to-wrong-season records now correctly included
+
+= 7.1.92 =
+* Fix: Backfill not picking up scorecards for previous seasons — query relied solely on lgw_sc_season meta which was never stamped on older records; backfill now also matches untagged scorecards by date range against the season's start/end dates
+
+= 7.1.91 =
+* Fix: Player stats not recorded when re-saving a scorecard — rink scores were stored as 0.0 (not null) when empty, causing false 0–0 draws; now stored as null when the field is blank
+* Fix: lgw_log_appearances() zero-guard added — legacy scorecards where all rink scores are 0 (floatval artifact) treated as score-absent; real 0-scores honoured when match totals are non-zero
+* Fix: lgw_sc_context (league/cup) now preserved on admin edits; missing context explicitly defaulted to league
+
+= 7.1.90 =
+* Feature: Player statistics — Wins, Draws, Losses, Shots For and Shots Against now tracked per appearance (rink level) for both League and Cup games
+* Feature: Player stats shown in admin player list table (total W/D/L, SF–SA, League W/D/L, Cup W/D/L columns per player)
+* Feature: Player history modal upgraded — stats summary table at top with Total/League/Cup breakdown; per-game rink score, W/D/L result badge, and Cup label badge on each row
+* Feature: Excel export gains a new Stats sheet with full per-player stats breakdown; per-club matrix sheets gain W/D/L/SF/SA columns
+* Improvement: DB migration auto-adds shots_for, shots_against, result, game_type columns to existing installations; game_type back-filled from scorecard context meta
+* Improvement: lgw_log_appearances() now reads rink-level scores and sc_context meta to store stats atomically with each appearance
 
 = 7.1.87 =
 * Fix: Fixture time note (e.g. 5:30) now correctly displayed for all divisions; scan range extended past APts column and HH:MM:SS format normalised to HH:MM

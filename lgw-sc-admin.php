@@ -146,10 +146,12 @@ function lgw_ajax_admin_edit_scorecard() {
             explode(',', $home_players[$i] ?? '')));
         $ap = array_filter(array_map('sanitize_text_field',
             explode(',', $away_players[$i] ?? '')));
+        $hs_raw = $home_scores[$i] ?? '';
+        $as_raw = $away_scores[$i] ?? '';
         $after['rinks'][] = array(
             'rink'         => intval($rn),
-            'home_score'   => floatval($home_scores[$i] ?? 0),
-            'away_score'   => floatval($away_scores[$i] ?? 0),
+            'home_score'   => is_numeric($hs_raw) ? floatval($hs_raw) : null,
+            'away_score'   => is_numeric($as_raw) ? floatval($as_raw) : null,
             'home_players' => array_values($hp),
             'away_players' => array_values($ap),
         );
@@ -164,6 +166,11 @@ function lgw_ajax_admin_edit_scorecard() {
     // Save
     update_post_meta($post_id, 'lgw_scorecard_data', $after);
     update_post_meta($post_id, 'lgw_admin_edited',   current_time('mysql'));
+    // Ensure sc_context is set (may be missing on older records — default to league)
+    $existing_ctx = get_post_meta($post_id, 'lgw_sc_context', true);
+    if (empty($existing_ctx)) {
+        update_post_meta($post_id, 'lgw_sc_context', 'league');
+    }
     // Clear division-unresolved flag if division now maps to a known sheet tab
     $drive_opts    = get_option('lgw_drive', array());
     $resolved_tab  = lgw_sheets_tab_for_division($after['division'], $drive_opts);
