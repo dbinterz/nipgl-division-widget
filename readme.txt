@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.94
+Stable tag: 7.1.98
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,25 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.98 =
+* New: Player tracking auto-merges dotted-initial name variants (e.g. "D. Bintley" == "D Bintley") — lgw_normalise_player_name() strips dots from single-letter initials before DB lookup so new scorecards never create duplicates; Merge Duplicates tab now shows a preview table of detected pairs with a one-click "Auto-merge" button; keep rule: most appearances wins, ties prefer the non-dotted (normalised) form
+
+
+= 7.1.97 =
+* Fix: "Skip Google writeback" checkbox now also suppresses Google Drive PDF upload (not just Sheets); uses a short-lived post meta flag so Drive's anonymous action hooks are correctly bypassed; checkbox label updated to "Skip Google Drive & Sheets writeback"
+
+
+= 7.1.96 =
+* Improvement: Excel/xlsx parse errors now return actionable diagnostic messages instead of generic "Could not read" — ZipArchive error codes, missing worksheet entries, empty grid details (sheet name, KB size, shared string count), and rink-mapping failures now include row samples and field detection summary
+
+= 7.1.95 =
+* New: Skip Google Sheets writeback option — admin scorecard form now includes a "Skip Google Sheets writeback" checkbox (visible to admins only); use when backfilling historical scorecards to avoid overwriting the live sheet
+
+
+= 7.1.95 =
+* New: Skip Google Sheets writeback option — admin scorecard form now includes a "Skip Google Sheets writeback" checkbox (visible to admins only); use when backfilling historical scorecards to avoid overwriting the live sheet
+
 
 = 7.1.94 =
 * Feature: Player history modal — each appearance row now shows the scorecard ID as a direct link to the WP admin edit screen (opens in new tab), making it easy to inspect, edit or trash test/duplicate scorecards
