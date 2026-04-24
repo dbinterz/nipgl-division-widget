@@ -2,7 +2,7 @@
 /**
  * Plugin Name: League Game Widget
  * Description: Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Fetches live data from Google Sheets CSV. Supports per-club passphrase authentication, two-party scorecard confirmation, photo/Excel parsing via AI, player appearance tracking, sponsor branding, and animated cup bracket draws.
- * Version: 7.1.98
+ * Version: 7.1.102
  * Author: dbinterz
  * Plugin URI: https://github.com/dbinterz/lgw-division-widget
  * GitHub Plugin URI: https://github.com/dbinterz/lgw-division-widget
@@ -11,7 +11,7 @@
  */
 
 define('LGW_PLUGIN_FILE', __FILE__);
-define('LGW_VERSION', '7.1.98');
+define('LGW_VERSION', '7.1.102');
 define('LGW_SETUP_PAGE', 'lgw-league-setup'); // page slug for League Setup admin page
 
 
@@ -803,8 +803,59 @@ function lgw_scorecards_admin_page() {
     }
 
     // ── Data for Submitted Scorecards section ─────────────────────────────────
-    $posts = get_posts(array('post_type'=>'lgw_scorecard','posts_per_page'=>100,'post_status'=>'publish','orderby'=>'date','order'=>'DESC'));
+    $all_seasons_list   = function_exists('lgw_get_seasons') ? lgw_get_seasons() : array();
+    $active_season_id   = function_exists('lgw_get_active_season_id') ? lgw_get_active_season_id() : '';
+    $viewing_season_id  = sanitize_text_field($_GET['sc_season'] ?? $active_season_id);
+    // Validate: must be a known season ID or empty
+    $known_season_ids   = array_map(function($s){ return $s['id']; }, $all_seasons_list);
+    if ($viewing_season_id && !in_array($viewing_season_id, $known_season_ids, true)) {
+        $viewing_season_id = $active_season_id;
+    }
+    // Fetch scorecards tagged to the viewed season only — no NOT EXISTS fallback,
+    // because untagged cards may belong to any season and would bleed in incorrectly.
+    // Untagged cards are surfaced separately via the backfill warning banner.
+    $posts_query_args = array(
+        'post_type'      => 'lgw_scorecard',
+        'posts_per_page' => 200,
+        'post_status'    => array('publish', 'draft'),
+        'orderby'        => 'date',
+        'order'          => 'DESC',
+    );
+    if ($viewing_season_id) {
+        $posts_query_args['meta_query'] = array(
+            array('key' => 'lgw_sc_season', 'value' => $viewing_season_id, 'compare' => '='),
+        );
+    }
+    $posts    = get_posts($posts_query_args);
     $sc_nonce = wp_create_nonce('lgw_admin_nonce');
+
+    // Count scorecards whose match date falls in this season but are tagged differently (or untagged).
+    // Used to show the backfill warning banner on any season view, not just the active one.
+    $mismatched_count = 0;
+    if ($viewing_season_id && function_exists('lgw_get_season_by_id')) {
+        $viewing_season_obj = lgw_get_season_by_id($viewing_season_id);
+        if ($viewing_season_obj && !empty($viewing_season_obj['start']) && !empty($viewing_season_obj['end'])) {
+            $vs_start = $viewing_season_obj['start']; // Y-m-d
+            $vs_end   = $viewing_season_obj['end'];
+            $all_sc_ids = get_posts(array(
+                'post_type'      => 'lgw_scorecard',
+                'posts_per_page' => -1,
+                'post_status'    => array('publish', 'draft'),
+                'fields'         => 'ids',
+            ));
+            foreach ($all_sc_ids as $pid) {
+                if (get_post_meta($pid, 'lgw_sc_season', true) === $viewing_season_id) continue;
+                $sc_data  = get_post_meta($pid, 'lgw_scorecard_data', true);
+                $raw_date = $sc_data['date'] ?? '';
+                if (!$raw_date) continue;
+                $parts = explode('/', $raw_date);
+                if (count($parts) === 3) {
+                    $ymd = $parts[2] . '-' . $parts[1] . '-' . $parts[0];
+                    if ($ymd >= $vs_start && $ymd <= $vs_end) $mismatched_count++;
+                }
+            }
+        }
+    }
     ?>
     <div class="wrap">
     <?php lgw_page_header('Scorecards'); ?>
@@ -1025,6 +1076,67 @@ function lgw_scorecards_admin_page() {
                     .then(function(r){if(r.success) location.reload();});
             });
         }
+        // ── Backfill untagged scorecard seasons ──────────────────────────────
+        var backfillBtn = document.getElementById('lgw-backfill-sc-seasons-btn');
+        if (backfillBtn) {
+            backfillBtn.addEventListener('click', function() {
+                if (!confirm('Tag all untagged scorecards to the current season? This cannot be undone.')) return;
+                backfillBtn.disabled = true;
+                backfillBtn.textContent = '⏳ Tagging\u2026';
+                var msg = document.getElementById('lgw-backfill-sc-msg');
+                var fd = new FormData();
+                fd.append('action',    'lgw_backfill_sc_seasons');
+                fd.append('nonce',     backfillBtn.dataset.nonce);
+                fd.append('season_id', backfillBtn.dataset.season);
+                fetch(scoresAjax, {method:'POST', body:fd})
+                    .then(function(r){ return r.json(); })
+                    .then(function(r){
+                        if (r.success) {
+                            if (msg) msg.textContent = '✅ Tagged ' + (r.data.count || 0) + ' scorecard(s).';
+                            setTimeout(function(){ location.reload(); }, 1200);
+                        } else {
+                            backfillBtn.disabled = false;
+                            backfillBtn.textContent = '🏷️ Tag all to this season';
+                            if (msg) msg.textContent = '❌ ' + (r.data || 'Failed');
+                        }
+                    })
+                    .catch(function(){
+                        backfillBtn.disabled = false;
+                        backfillBtn.textContent = '🏷️ Tag all to this season';
+                        if (msg) msg.textContent = '❌ Network error';
+                    });
+            });
+        }
+        // ── Season tag dropdown ──────────────────────────────────────────────────
+        document.querySelectorAll('.lgw-sc-season-select').forEach(function(sel) {
+            sel.addEventListener('change', function() {
+                var postId  = sel.dataset.id;
+                var nonce   = sel.dataset.nonce;
+                var season  = sel.value;
+                var statusEl = sel.parentNode.querySelector('.lgw-retag-status');
+                sel.disabled = true;
+                if (statusEl) statusEl.textContent = '⏳';
+                var fd = new FormData();
+                fd.append('action',    'lgw_retag_scorecard');
+                fd.append('nonce',     nonce);
+                fd.append('post_id',   postId);
+                fd.append('season_id', season);
+                fetch(scoresAjax, {method:'POST', body:fd})
+                    .then(function(r){ return r.json(); })
+                    .then(function(r){
+                        sel.disabled = false;
+                        if (r.success) {
+                            if (statusEl) { statusEl.textContent = '✅'; setTimeout(function(){ statusEl.textContent=''; }, 2000); }
+                        } else {
+                            if (statusEl) statusEl.textContent = '❌ ' + (r.data || 'Failed');
+                        }
+                    })
+                    .catch(function(){
+                        sel.disabled = false;
+                        if (statusEl) statusEl.textContent = '❌ Network error';
+                    });
+            });
+        });
     });
     </script>
 
@@ -1143,12 +1255,52 @@ function lgw_scorecards_admin_page() {
             <?php endif; ?>
         </div>
         <div class="lgw-section-body">
+
+        <?php if (!empty($all_seasons_list)): ?>
+        <!-- ── Season switcher ── -->
+        <div class="lgw-season-switcher" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;align-items:center">
+            <span style="font-size:12px;font-weight:600;color:#555;margin-right:4px">Season:</span>
+            <?php
+            // Active season first, then archived newest-first
+            $sw_seasons = array();
+            foreach ($all_seasons_list as $s) { if (!empty($s['active'])) { $sw_seasons[] = $s; break; } }
+            $archived_sw = array_values(array_filter($all_seasons_list, function($s){ return empty($s['active']); }));
+            usort($archived_sw, function($a,$b){ return strcmp($b['id'],$a['id']); });
+            $sw_seasons = array_merge($sw_seasons, $archived_sw);
+            foreach ($sw_seasons as $sw_s):
+                $sw_active = ($sw_s['id'] === $viewing_season_id);
+                $sw_url    = admin_url('admin.php?page=lgw-scorecards&sc_season=' . urlencode($sw_s['id']) . '#lgw-sec-scorecards');
+            ?>
+            <a href="<?php echo esc_url($sw_url); ?>"
+               class="button button-small<?php echo $sw_active ? ' button-primary' : ''; ?>"
+               style="<?php echo $sw_active ? 'font-weight:700' : ''; ?>">
+                <?php echo esc_html($sw_s['label'] ?: $sw_s['id']); ?>
+                <?php if (!empty($sw_s['active'])): ?><span style="font-size:10px;opacity:.8"> ★</span><?php endif; ?>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
         <?php if (empty($posts)): ?>
-            <p>No scorecards submitted yet.</p>
+            <p>No scorecards found for this season.</p>
         <?php else: ?>
+
+        <?php if ($mismatched_count > 0): ?>
+        <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span>⚠️ <strong><?php echo $mismatched_count; ?> scorecard<?php echo $mismatched_count > 1 ? 's have' : ' has'; ?> a match date in this season but <?php echo $mismatched_count > 1 ? 'are' : 'is'; ?> tagged to a different season.</strong> Run backfill to reassign.</span>
+            <button type="button" class="button button-small" id="lgw-backfill-sc-seasons-btn"
+                    data-season="<?php echo esc_attr($viewing_season_id); ?>"
+                    data-nonce="<?php echo wp_create_nonce('lgw_backfill_sc_seasons_' . $viewing_season_id); ?>">
+                🏷️ Reassign to this season
+            </button>
+            <span id="lgw-backfill-sc-msg" style="font-size:12px"></span>
+        </div>
+        <?php endif; ?>
+
         <table class="widefat striped">
         <thead><tr>
             <th>Match</th><th>Division</th>
+            <th>Season</th>
             <th>Result (home v away)</th>
             <th>Status</th>
             <th>Submitted</th>
@@ -1170,6 +1322,7 @@ function lgw_scorecards_admin_page() {
                 ? $sc['home_total'].' ('.$sc['home_points'].'pts) – '.$sc['away_total'].' ('.$sc['away_points'].'pts)'
                 : '—';
             $status_labels = array('pending'=>'Pending','confirmed'=>'Confirmed','disputed'=>'Disputed');
+            $sc_tag    = get_post_meta($p->ID, 'lgw_sc_season', true) ?: '';
         ?>
         <tr>
             <td>
@@ -1184,6 +1337,24 @@ function lgw_scorecards_admin_page() {
                     <span class="lgw-sc-div-warn" title="Division not matched to a sheet tab — sheet writeback will be skipped until corrected">⚠️ Unresolved</span>
                 <?php endif; ?>
             </td>
+            <td>
+                <?php
+                $sc_nonce_tag = wp_create_nonce('lgw_retag_sc_' . $p->ID);
+                ?>
+                <select class="lgw-sc-season-select" style="max-width:110px;font-size:12px"
+                        data-id="<?php echo $p->ID; ?>"
+                        data-nonce="<?php echo esc_attr($sc_nonce_tag); ?>">
+                    <option value="" <?php selected($sc_tag, ''); ?>>— untagged —</option>
+                    <?php foreach ($all_seasons_list as $sw_opt): ?>
+                    <option value="<?php echo esc_attr($sw_opt['id']); ?>"
+                            <?php selected($sc_tag, $sw_opt['id']); ?>>
+                        <?php echo esc_html($sw_opt['label'] ?: $sw_opt['id']); ?>
+                        <?php if (!empty($sw_opt['active'])) echo ' ★'; ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <span class="lgw-retag-status" style="font-size:11px;display:block;margin-top:2px"></span>
+            </td>
             <td><?php echo esc_html($result); ?></td>
             <td><span class="lgw-sc-status <?php echo esc_attr($status); ?>"><?php echo $status_labels[$status] ?? $status; ?></span></td>
             <td><?php echo get_the_date('d M Y H:i', $p); ?><br><small>by <?php echo esc_html($sub_by ?: '—'); ?></small></td>
@@ -1195,7 +1366,7 @@ function lgw_scorecards_admin_page() {
             </td>
         </tr>
         <tr>
-            <td colspan="6" style="padding:0">
+            <td colspan="7" style="padding:0">
             <div class="lgw-admin-sc-wrap" id="sc-<?php echo $p->ID; ?>">
                 <div class="lgw-sc-subpanel" data-panel="view">
                 <?php if ($status === 'disputed' && $away_sc): ?>
@@ -2833,6 +3004,88 @@ function lgw_ajax_clear_score_overrides() {
         update_option('lgw_score_overrides', $overrides);
     }
     wp_send_json_success('Cleared');
+}
+
+// ── Retag a single scorecard to a specific season ────────────────────────────
+add_action('wp_ajax_lgw_retag_scorecard', 'lgw_ajax_retag_scorecard');
+function lgw_ajax_retag_scorecard() {
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    $post_id   = intval($_POST['post_id'] ?? 0);
+    $season_id = sanitize_text_field($_POST['season_id'] ?? '');
+    if (!$post_id) wp_send_json_error('Missing post ID');
+    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'lgw_retag_sc_' . $post_id)) {
+        wp_send_json_error('Nonce invalid');
+    }
+    if (!get_post($post_id) || get_post_type($post_id) !== 'lgw_scorecard') {
+        wp_send_json_error('Invalid scorecard');
+    }
+    if ($season_id === '') {
+        delete_post_meta($post_id, 'lgw_sc_season');
+    } else {
+        // Validate season ID exists
+        $known = array_map(function($s){ return $s['id']; }, lgw_get_seasons());
+        if (!in_array($season_id, $known, true)) wp_send_json_error('Unknown season');
+        update_post_meta($post_id, 'lgw_sc_season', $season_id);
+    }
+    wp_send_json_success(array('post_id' => $post_id, 'season_id' => $season_id));
+}
+
+
+// ── Backfill scorecard season tags ───────────────────────────────────────────
+add_action('wp_ajax_lgw_backfill_sc_seasons', 'lgw_ajax_backfill_sc_seasons');
+function lgw_ajax_backfill_sc_seasons() {
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    $season_id = sanitize_text_field($_POST['season_id'] ?? '');
+    if (!$season_id) wp_send_json_error('Missing season ID');
+    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'lgw_backfill_sc_seasons_' . $season_id)) {
+        wp_send_json_error('Nonce invalid');
+    }
+
+    // Strategy 1: scorecards with no season tag at all
+    $untagged = get_posts(array(
+        'post_type'      => 'lgw_scorecard',
+        'posts_per_page' => -1,
+        'post_status'    => array('publish', 'draft'),
+        'fields'         => 'ids',
+        'meta_query'     => array(
+            array('key' => 'lgw_sc_season', 'compare' => 'NOT EXISTS'),
+        ),
+    ));
+
+    // Strategy 2: scorecards within the season's date range (catches wrong-season tags)
+    $by_date = array();
+    if (function_exists('lgw_get_season_by_id')) {
+        $season_obj = lgw_get_season_by_id($season_id);
+        if ($season_obj && !empty($season_obj['start']) && !empty($season_obj['end'])) {
+            $start = $season_obj['start'];
+            $end   = $season_obj['end'];
+            $all_sc = get_posts(array(
+                'post_type'      => 'lgw_scorecard',
+                'posts_per_page' => -1,
+                'post_status'    => array('publish', 'draft'),
+                'fields'         => 'ids',
+            ));
+            foreach ($all_sc as $pid) {
+                if (in_array($pid, $untagged)) continue;
+                $sc_data  = get_post_meta($pid, 'lgw_scorecard_data', true);
+                $raw_date = $sc_data['date'] ?? '';
+                if (!$raw_date) continue;
+                $parts = explode('/', $raw_date);
+                if (count($parts) === 3) {
+                    $ymd = $parts[2] . '-' . $parts[1] . '-' . $parts[0];
+                    if ($ymd >= $start && $ymd <= $end) $by_date[] = $pid;
+                }
+            }
+        }
+    }
+
+    $all_ids = array_unique(array_merge($untagged, $by_date));
+    $count   = 0;
+    foreach ($all_ids as $pid) {
+        update_post_meta($pid, 'lgw_sc_season', $season_id);
+        $count++;
+    }
+    wp_send_json_success(array('count' => $count, 'season_id' => $season_id));
 }
 
 // ── Quick Score Entry — parse fixtures from CSV ──────────────────────────────

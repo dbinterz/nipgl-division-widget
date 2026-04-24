@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.98
+Stable tag: 7.1.102
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,22 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.102 =
+* New: Scorecards admin table now has a Season column — inline dropdown on every row lets admin directly retag any scorecard to any season (or untagged); change fires immediately via AJAX with ✅/❌ feedback; new lgw_retag_scorecard AJAX handler; nonce per-post for security
+
+
+= 7.1.101 =
+* Fix: Scorecards admin season backfill now correctly reassigns cards that are tagged to the wrong season (not just untagged ones) — banner shows on all seasons with date ranges, counts scorecards whose match date falls in the season but are tagged differently, and "Reassign to this season" button retags all of them via the existing date-range strategy
+
+
+= 7.1.100 =
+* Fix: Scorecards admin season filter no longer shows previous-season cards in the active season view — removed NOT EXISTS fallback from the main query (untagged cards from any season were bleeding in); untagged count now comes from a separate dedicated query; warning banner still appears prompting backfill
+
+
+= 7.1.99 =
+* New: Scorecards admin page now splits by season — season switcher bar defaults to the active season; archived seasons accessible via buttons; list filtered by lgw_sc_season meta (active season also shows untagged cards); untagged card warning banner with one-click "Tag all to this season" backfill button; new lgw_backfill_sc_seasons AJAX handler uses dual-strategy (tag + date-range fallback)
+
 
 = 7.1.98 =
 * New: Player tracking auto-merges dotted-initial name variants (e.g. "D. Bintley" == "D Bintley") — lgw_normalise_player_name() strips dots from single-letter initials before DB lookup so new scorecards never create duplicates; Merge Duplicates tab now shows a preview table of detected pairs with a one-click "Auto-merge" button; keep rule: most appearances wins, ties prefer the non-dotted (normalised) form
