@@ -718,8 +718,10 @@
     }
     var selectedSeasonId=currentSeasonEntry?currentSeasonEntry.id:'';
 
-    var prev=widget.previousElementSibling;
-    var divisionTitle=prev&&prev.classList.contains('lgw-title')?prev.textContent.trim():'';
+    // Read division title from data-division attr (set by PHP from shortcode title).
+    // Previously used previousElementSibling but that broke when the ticker was
+    // injected between the .lgw-title element and the widget.
+    var divisionTitle = widget.getAttribute('data-division') || '';
 
     // Dark mode toggle — cycles auto→dark→light→auto, stored on :root
     var dmBtn=document.createElement('button');

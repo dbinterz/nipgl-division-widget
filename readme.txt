@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.106
+Stable tag: 7.1.107
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,9 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.107 =
+* Fix: Division name no longer blank in scorecard modal after shortcode title change — widget now reads divisionTitle from data-division attribute instead of previousElementSibling (which was broken by the ticker element being inserted between the title and the widget)
 
 = 7.1.106 =
 * New: CSV reference row detection — parser now reads 'homepts','home','home shots','away shots','away','awaypts','time' labels to map columns directly; 'time' column read at explicit index with no scanning
