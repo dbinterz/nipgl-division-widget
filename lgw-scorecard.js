@@ -1,4 +1,4 @@
-/* LGW Scorecard JS - v5.18.1 */
+/* LGW Scorecard JS - v5.18.2 */
 (function(){
   'use strict';
 
@@ -2483,6 +2483,8 @@
 
   // Create the singleton popover element
   var lgwPlayerPopover = null;
+  var lgwPopoverDragged = false; // true after user has manually moved the popover
+
   function lgwEnsurePopover() {
     if (lgwPlayerPopover) return lgwPlayerPopover;
     var el = document.createElement('div');
@@ -2490,10 +2492,75 @@
     el.className = 'lgw-player-popover';
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Player stats');
-    el.innerHTML = '<button class="lgw-player-popover-close" aria-label="Close">&times;</button>'
+    el.innerHTML = '<div class="lgw-player-popover-drag" aria-hidden="true">'
+        + '<span class="lgw-player-popover-drag-handle"></span>'
+        + '<button class="lgw-player-popover-close" aria-label="Close">&times;</button>'
+      + '</div>'
       + '<div class="lgw-player-popover-body"></div>';
     document.body.appendChild(el);
     el.querySelector('.lgw-player-popover-close').addEventListener('click', lgwHidePopover);
+
+    // ── Drag logic ────────────────────────────────────────────────────────────
+    var dragBar = el.querySelector('.lgw-player-popover-drag');
+    var dragStartX, dragStartY, popStartX, popStartY, isDragging = false;
+
+    function onDragStart(clientX, clientY) {
+      var rect = el.getBoundingClientRect();
+      dragStartX = clientX;
+      dragStartY = clientY;
+      popStartX  = rect.left;
+      popStartY  = rect.top;
+      isDragging = true;
+      el.classList.add('lgw-player-popover-dragging');
+      // Normalise to top+left only so arithmetic is predictable
+      el.style.top    = rect.top  + 'px';
+      el.style.left   = rect.left + 'px';
+      el.style.bottom = 'auto';
+    }
+
+    function onDragMove(clientX, clientY) {
+      if (!isDragging) return;
+      var dx  = clientX - dragStartX;
+      var dy  = clientY - dragStartY;
+      var vw  = window.innerWidth;
+      var vh  = window.innerHeight;
+      var pw  = el.offsetWidth;
+      var ph  = el.offsetHeight;
+      var newLeft = Math.max(0, Math.min(popStartX + dx, vw - pw));
+      var newTop  = Math.max(0, Math.min(popStartY + dy, vh - Math.min(ph, 80)));
+      el.style.left = newLeft + 'px';
+      el.style.top  = newTop  + 'px';
+      lgwPopoverDragged = true;
+    }
+
+    function onDragEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+      el.classList.remove('lgw-player-popover-dragging');
+    }
+
+    // Mouse
+    dragBar.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      onDragStart(e.clientX, e.clientY);
+    });
+    document.addEventListener('mousemove', function(e) { onDragMove(e.clientX, e.clientY); });
+    document.addEventListener('mouseup',   onDragEnd);
+
+    // Touch
+    dragBar.addEventListener('touchstart', function(e) {
+      var t = e.touches[0];
+      onDragStart(t.clientX, t.clientY);
+    }, {passive: true});
+    document.addEventListener('touchmove', function(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+      var t = e.touches[0];
+      onDragMove(t.clientX, t.clientY);
+    }, {passive: false});
+    document.addEventListener('touchend', onDragEnd);
+
     // Close on outside click
     document.addEventListener('click', function(e) {
       if (lgwPlayerPopover && lgwPlayerPopover.classList.contains('lgw-player-popover-visible')) {
@@ -2513,10 +2580,12 @@
   function lgwHidePopover() {
     if (lgwPlayerPopover) {
       lgwPlayerPopover.classList.remove('lgw-player-popover-visible');
+      lgwPopoverDragged = false;
     }
   }
 
   function lgwPositionPopover(pop, btn) {
+    if (lgwPopoverDragged) return; // user has moved it — respect their placement
     var rect    = btn.getBoundingClientRect();
     var vw      = window.innerWidth;
     var vh      = window.innerHeight;

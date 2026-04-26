@@ -108,6 +108,9 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### v7.1.110
+- **New:** Player stats popover is draggable — a grab-handle bar at the top lets users reposition it freely by mouse or touch; once moved, automatic positioning is suppressed until the popover is closed and reopened
+
 ### v7.1.109
 - **New:** Player stats popover now includes a full games list for the current season — each row shows the match title, date, rink number, score, and a colour-coded W/D/L badge, ordered newest first; cup games tagged with a type pill
 - **Fix:** Popover switched to `position:fixed` with viewport-aware placement — flips above the button when space below is insufficient; inner body is `overflow-y:auto` with a dynamically calculated `max-height` so it never goes off-screen
