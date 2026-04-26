@@ -551,8 +551,8 @@ add_action('wp_ajax_lgw_get_player_stats',        'lgw_ajax_get_player_stats');
 function lgw_ajax_get_player_stats() {
     check_ajax_referer('lgw_submit_nonce', 'nonce');
 
-    $name = sanitize_text_field($_POST['player_name'] ?? '');
-    $club = sanitize_text_field($_POST['club']        ?? '');
+    $name = lgw_clean_player_name(sanitize_text_field(wp_unslash($_POST['player_name'] ?? '')));
+    $club = sanitize_text_field(wp_unslash($_POST['club'] ?? ''));
     if (!$name) wp_send_json_error('Missing player name');
 
     global $wpdb;
@@ -736,8 +736,8 @@ function lgw_players_admin_page() {
         }
 
         if ($action === 'add_player') {
-            $club = sanitize_text_field($_POST['new_club'] ?? '');
-            $name = sanitize_text_field($_POST['new_name'] ?? '');
+            $club = sanitize_text_field(wp_unslash($_POST['new_club'] ?? ''));
+            $name = sanitize_text_field(wp_unslash($_POST['new_name'] ?? ''));
             if ($club && $name) {
                 lgw_get_or_create_player($club, $name);
                 echo '<div class="notice notice-success"><p>Player added.</p></div>';
@@ -755,7 +755,7 @@ function lgw_players_admin_page() {
 
         if ($action === 'rename_player') {
             $pid  = intval($_POST['player_id']  ?? 0);
-            $name = sanitize_text_field($_POST['new_name'] ?? '');
+            $name = sanitize_text_field(wp_unslash($_POST['new_name'] ?? ''));
             if ($pid && $name) {
                 $wpdb->update($pt, array('name' => $name), array('id' => $pid), array('%s'), array('%d'));
                 echo '<div class="notice notice-success"><p>Player renamed.</p></div>';
@@ -885,6 +885,12 @@ function lgw_players_admin_page() {
     .lgw-sc-confirmed{background:#d4edda;color:#155724}
     .lgw-sc-pending{background:#fff3cd;color:#856404}
     .lgw-sc-disputed{background:#f8d7da;color:#721c24}
+    /* Player filter bar */
+    .lgw-player-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#f0f2f8;border:1px solid #ddd;border-radius:6px;padding:10px 14px;margin-bottom:16px}
+    .lgw-player-filters label{font-weight:600;font-size:13px;margin:0;white-space:nowrap}
+    .lgw-player-filters select,.lgw-player-filters input[type=text]{padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;min-width:160px}
+    .lgw-filter-count{font-size:12px;color:#666;margin-left:auto;white-space:nowrap}
+    .lgw-filter-clear{font-size:12px;cursor:pointer;color:#0073aa;background:none;border:none;padding:0;text-decoration:underline}
     </style>
 
     <?php
@@ -963,7 +969,145 @@ function lgw_players_admin_page() {
         });
     }
 
-    // ── Player history modal ──────────────────────────────────────────────────
+    // ── Player filters (cascading) ────────────────────────────────────────────
+    //
+    // Strategy: after every change, compute the set of clubs/teams reachable
+    // given the OTHER two filters, then disable options that are no longer
+    // reachable. If the current selection has been disabled, reset it to "All".
+    // This ensures the dropdowns never point at an empty result set.
+
+    function lgwRowTeams(row) {
+        // Returns array of trimmed team strings for this row
+        var raw = row.dataset.teams || '';
+        if (!raw) return [];
+        return raw.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
+    }
+
+    function lgwRowMatches(row, clubVal, teamVal, nameVal) {
+        var sectionClub = row.closest('.lgw-club-section').dataset.club || '';
+        var rowName     = (row.dataset.name || '').toLowerCase();
+        var teams       = lgwRowTeams(row);
+        var clubOk  = !clubVal || sectionClub === clubVal;
+        var teamOk  = !teamVal || teams.some(function(t){ return t === teamVal; });
+        var nameOk  = !nameVal || rowName.indexOf(nameVal) !== -1;
+        return clubOk && teamOk && nameOk;
+    }
+
+    function lgwApplyFilters() {
+        var fcSel = document.getElementById('lgw-filter-club');
+        var ftSel = document.getElementById('lgw-filter-team');
+        var fnIn  = document.getElementById('lgw-filter-name');
+
+        var clubVal = fcSel ? fcSel.value : '';
+        var teamVal = ftSel ? ftSel.value : '';
+        var nameVal = fnIn  ? fnIn.value.toLowerCase().trim() : '';
+
+        // ── Compute reachable clubs (ignoring club filter itself) ─────────────
+        var reachableClubs = {};
+        var reachableTeams = {};
+        document.querySelectorAll('.lgw-club-section').forEach(function(section) {
+            var sectionClub = section.dataset.club || '';
+            section.querySelectorAll('tbody tr').forEach(function(row) {
+                // For club options: apply team + name filters only
+                if (lgwRowMatches(row, '', teamVal, nameVal)) {
+                    reachableClubs[sectionClub] = true;
+                }
+                // For team options: apply club + name filters only
+                if (lgwRowMatches(row, clubVal, '', nameVal)) {
+                    lgwRowTeams(row).forEach(function(t){ reachableTeams[t] = true; });
+                }
+            });
+        });
+
+        // ── Update Club dropdown ──────────────────────────────────────────────
+        if (fcSel) {
+            Array.from(fcSel.options).forEach(function(opt) {
+                if (opt.value === '') return; // keep "All Clubs"
+                var reachable = !!reachableClubs[opt.value];
+                opt.disabled = !reachable;
+                opt.style.color = reachable ? '' : '#bbb';
+            });
+            // If current selection is now unreachable, reset to All
+            if (clubVal && !reachableClubs[clubVal]) {
+                fcSel.value = '';
+                clubVal = '';
+            }
+        }
+
+        // ── Update Team dropdown ──────────────────────────────────────────────
+        if (ftSel) {
+            Array.from(ftSel.options).forEach(function(opt) {
+                if (opt.value === '') return; // keep "All Teams"
+                var reachable = !!reachableTeams[opt.value];
+                opt.disabled = !reachable;
+                opt.style.color = reachable ? '' : '#bbb';
+            });
+            // If current selection is now unreachable, reset to All
+            if (teamVal && !reachableTeams[teamVal]) {
+                ftSel.value = '';
+                teamVal = '';
+            }
+        }
+
+        // ── Apply row/section visibility ──────────────────────────────────────
+        var hasFilter  = clubVal || teamVal || nameVal;
+        var totalVisible = 0;
+
+        document.querySelectorAll('.lgw-club-section').forEach(function(section) {
+            var sectionClub = section.dataset.club || '';
+            if (clubVal && sectionClub !== clubVal) {
+                section.style.display = 'none';
+                return;
+            }
+            var rows = section.querySelectorAll('tbody tr');
+            var visibleInSection = 0;
+            rows.forEach(function(row) {
+                var show = lgwRowMatches(row, clubVal, teamVal, nameVal);
+                row.style.display = show ? '' : 'none';
+                if (show) visibleInSection++;
+            });
+            section.style.display = visibleInSection > 0 ? '' : 'none';
+            var countEl = section.querySelector('.lgw-club-count');
+            if (countEl) countEl.textContent = visibleInSection;
+            totalVisible += visibleInSection;
+        });
+
+        // ── Status bar ────────────────────────────────────────────────────────
+        var countEl = document.getElementById('lgw-filter-count');
+        if (countEl) countEl.textContent = hasFilter
+            ? totalVisible + ' player' + (totalVisible !== 1 ? 's' : '') + ' shown' : '';
+
+        var noResults = document.getElementById('lgw-no-filter-results');
+        if (noResults) noResults.style.display = (hasFilter && totalVisible === 0) ? '' : 'none';
+
+        var clearBtn = document.getElementById('lgw-filter-clear');
+        if (clearBtn) clearBtn.style.display = hasFilter ? '' : 'none';
+    }
+
+    function lgwClearFilters() {
+        var fc = document.getElementById('lgw-filter-club');
+        var ft = document.getElementById('lgw-filter-team');
+        var fn = document.getElementById('lgw-filter-name');
+        if (fc) { fc.value = ''; Array.from(fc.options).forEach(function(o){ o.disabled=false; o.style.color=''; }); }
+        if (ft) { ft.value = ''; Array.from(ft.options).forEach(function(o){ o.disabled=false; o.style.color=''; }); }
+        if (fn) fn.value = '';
+        // Restore section counts
+        document.querySelectorAll('.lgw-club-section').forEach(function(section) {
+            var rows = section.querySelectorAll('tbody tr');
+            var countEl = section.querySelector('.lgw-club-count');
+            if (countEl) countEl.textContent = rows.length;
+            section.style.display = '';
+            rows.forEach(function(r){ r.style.display=''; });
+        });
+        var countEl = document.getElementById('lgw-filter-count');
+        if (countEl) countEl.textContent = '';
+        var noResults = document.getElementById('lgw-no-filter-results');
+        if (noResults) noResults.style.display = 'none';
+        var clearBtn = document.getElementById('lgw-filter-clear');
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
+
+
     var lgwPlayersNonce = '<?php echo wp_create_nonce('lgw_players_nonce'); ?>';
     var lgwAjaxUrl      = '<?php echo admin_url('admin-ajax.php'); ?>';
     var lgwAdminUrl     = '<?php echo admin_url(); ?>';
@@ -1126,9 +1270,53 @@ function lgw_players_admin_page() {
         <?php if (empty($by_club)): ?>
             <p>No players recorded yet. Players are logged automatically when scorecards are confirmed.</p>
         <?php else: ?>
+
+            <?php
+            // Build distinct team list for team filter dropdown
+            $all_teams_set = array();
+            foreach ($by_club as $_cp_list) {
+                foreach ($_cp_list as $_cp) {
+                    if (!empty($_cp->teams)) {
+                        foreach (explode(', ', $_cp->teams) as $_t) {
+                            $t_trim = trim($_t);
+                            if ($t_trim) $all_teams_set[$t_trim] = true;
+                        }
+                    }
+                }
+            }
+            ksort($all_teams_set);
+            ?>
+
+            <!-- Player filter bar -->
+            <div class="lgw-player-filters" id="lgw-player-filters">
+                <label for="lgw-filter-club">Club:</label>
+                <select id="lgw-filter-club" onchange="lgwApplyFilters()">
+                    <option value="">All Clubs</option>
+                    <?php foreach (array_keys($by_club) as $_fc): ?>
+                    <option value="<?php echo esc_attr($_fc); ?>"><?php echo esc_html($_fc); ?></option>
+                    <?php endforeach; ?>
+                </select>
+
+                <label for="lgw-filter-team">Team:</label>
+                <select id="lgw-filter-team" onchange="lgwApplyFilters()">
+                    <option value="">All Teams</option>
+                    <?php foreach (array_keys($all_teams_set) as $_ft): ?>
+                    <option value="<?php echo esc_attr($_ft); ?>"><?php echo esc_html($_ft); ?></option>
+                    <?php endforeach; ?>
+                </select>
+
+                <label for="lgw-filter-name" style="margin-left:4px">Name:</label>
+                <input type="text" id="lgw-filter-name" placeholder="Search name…" oninput="lgwApplyFilters()" autocomplete="off" style="min-width:140px">
+
+                <span class="lgw-filter-count" id="lgw-filter-count"></span>
+                <button type="button" class="lgw-filter-clear" id="lgw-filter-clear" onclick="lgwClearFilters()" style="display:none">✕ Clear filters</button>
+            </div>
+
+            <div id="lgw-no-filter-results" style="display:none;color:#888;font-style:italic;margin-bottom:12px">No players match the selected filters.</div>
+
             <?php foreach ($by_club as $club => $club_players): ?>
-            <div class="lgw-club-section">
-                <h3><?php echo esc_html($club); ?> — <?php echo count($club_players); ?> player<?php echo count($club_players)!==1?'s':''; ?></h3>
+            <div class="lgw-club-section" data-club="<?php echo esc_attr($club); ?>">
+                <h3><?php echo esc_html($club); ?> — <span class="lgw-club-count"><?php echo count($club_players); ?></span> player<?php echo count($club_players)!==1?'s':''; ?></h3>
                 <table class="widefat striped">
                 <thead><tr>
                     <th>Name</th>
@@ -1160,7 +1348,9 @@ function lgw_players_admin_page() {
                         ? intval($pl->cup_wins).'/'.intval($pl->cup_draws).'/'.intval($pl->cup_losses)
                         : '—';
                 ?>
-                <tr<?php echo $pl->appearances == 0 ? ' class="lgw-appearances-zero"' : ''; ?>>
+                <tr<?php echo $pl->appearances == 0 ? ' class="lgw-appearances-zero"' : ''; ?>
+                    data-teams="<?php echo esc_attr($pl->teams ?: ''); ?>"
+                    data-name="<?php echo esc_attr(strtolower($pl->name)); ?>">
                     <td>
                         <button class="lgw-player-link"
                             onclick="lgwShowPlayerHistory(<?php echo $pl->id; ?>)"
