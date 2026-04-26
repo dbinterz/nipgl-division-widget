@@ -543,6 +543,90 @@ function lgw_ajax_backfill_season_players() {
     ));
 }
 
+// ── AJAX: Public player stats (current season) ───────────────────────────────
+// Returns W/D/L summary and teams played for in the current season.
+// Keyed by player name + club (no auth required — public scorecard context).
+add_action('wp_ajax_nopriv_lgw_get_player_stats', 'lgw_ajax_get_player_stats');
+add_action('wp_ajax_lgw_get_player_stats',        'lgw_ajax_get_player_stats');
+function lgw_ajax_get_player_stats() {
+    check_ajax_referer('lgw_submit_nonce', 'nonce');
+
+    $name = sanitize_text_field($_POST['player_name'] ?? '');
+    $club = sanitize_text_field($_POST['club']        ?? '');
+    if (!$name) wp_send_json_error('Missing player name');
+
+    global $wpdb;
+    $pt = lgw_players_table();
+    $at = lgw_appearances_table();
+
+    // Look up player — match by name (normalised), optionally scoped to club
+    $norm = lgw_normalise_player_name($name);
+    if ($club) {
+        $player = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $pt WHERE name = %s AND club = %s LIMIT 1",
+            $norm, $club
+        ));
+        // Fallback: exact original name
+        if (!$player) {
+            $player = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM $pt WHERE name = %s AND club = %s LIMIT 1",
+                $name, $club
+            ));
+        }
+    }
+    // Fallback: name only (pick first match)
+    if (!$player) {
+        $player = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $pt WHERE name = %s LIMIT 1", $norm
+        ));
+    }
+    if (!$player) {
+        $player = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $pt WHERE name = %s LIMIT 1", $name
+        ));
+    }
+    if (!$player) wp_send_json_error('Player not found');
+
+    // Current-season WHERE clause
+    $sw = lgw_season_where();
+
+    // W / D / L counts for current season
+    $results = $wpdb->get_results($wpdb->prepare(
+        "SELECT result, COUNT(*) AS cnt
+         FROM $at a
+         WHERE a.player_id = %d AND a.result IS NOT NULL $sw
+         GROUP BY a.result",
+        $player->id
+    ));
+
+    $w = $d = $l = 0;
+    foreach ($results as $r) {
+        if ($r->result === 'W') $w = (int)$r->cnt;
+        if ($r->result === 'D') $d = (int)$r->cnt;
+        if ($r->result === 'L') $l = (int)$r->cnt;
+    }
+    $played = $w + $d + $l;
+
+    // Distinct teams played for this season
+    $teams = $wpdb->get_col($wpdb->prepare(
+        "SELECT DISTINCT a.team
+         FROM $at a
+         WHERE a.player_id = %d $sw
+         ORDER BY a.team ASC",
+        $player->id
+    ));
+
+    wp_send_json_success(array(
+        'name'   => $player->name,
+        'club'   => $player->club,
+        'played' => $played,
+        'won'    => $w,
+        'drawn'  => $d,
+        'lost'   => $l,
+        'teams'  => array_values($teams),
+    ));
+}
+
 // ── Admin menu ────────────────────────────────────────────────────────────────
 // ── Admin page ────────────────────────────────────────────────────────────────
 function lgw_players_admin_page() {

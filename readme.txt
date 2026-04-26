@@ -3,7 +3,7 @@ Contributors: dbinterz
 Tags: bowls, sports, league table, fixtures, google sheets
 Requires at least: 5.0
 Tested up to: 6.5
-Stable tag: 7.1.107
+Stable tag: 7.1.108
 License: GPLv2 or later
 
 Mobile-friendly league tables, fixtures, and scorecard submission for bowls leagues. Powered by Google Sheets CSV.
@@ -70,6 +70,11 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+
+= 7.1.108 =
+* New: Player name links in scorecard modal — clicking any player name opens a stats popover showing their current-season W/D/L record, games played, and which teams they have appeared for
+* New: Public AJAX endpoint lgw_get_player_stats returns current-season stats keyed by player name and club (no auth required, nonce-protected)
+* CSS: Player stats popover with club badge, W/D/L colour tiles, teams-this-season chips; dark mode support
 
 = 7.1.107 =
 * Fix: Division name no longer blank in scorecard modal after shortcode title change — widget now reads divisionTitle from data-division attribute instead of previousElementSibling (which was broken by the ticker element being inserted between the title and the widget)

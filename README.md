@@ -108,6 +108,11 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### v7.1.108
+- **New:** Player name links in scorecard modal — clicking a player's name opens a stats popover showing their current-season W/D/L record, total games played, and which teams they have appeared for this season
+- **New:** Public AJAX endpoint `lgw_get_player_stats` — returns current-season stats by player name and club, nonce-protected, no authentication required
+- **CSS:** Player stats popover with club badge, colour-coded W/D/L tiles (green/amber/red), played total tile, teams-this-season chips; full dark-mode support
+
 ### v7.1.107
 - **Fix:** Division name missing in scorecard modal after shortcode title change — `divisionTitle` now read from `data-division` attribute instead of `previousElementSibling` (ticker insertion had broken the sibling lookup)
 

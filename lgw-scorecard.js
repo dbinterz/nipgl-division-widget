@@ -1,4 +1,4 @@
-/* LGW Scorecard JS - v5.17.17 */
+/* LGW Scorecard JS - v5.18.0 */
 (function(){
   'use strict';
 
@@ -1325,8 +1325,10 @@
       h += '<div class="lgw-sc-rink">';
       h += '<div class="lgw-sc-rink-hdr">Rink '+rk.rink+'</div>';
       h += '<div class="lgw-sc-rink-body">';
+      var homeClub = lgwResolveClub(sc.home_team || '');
+      var awayClub = lgwResolveClub(sc.away_team || '');
       h += '<div class="lgw-sc-players lgw-sc-players-home">';
-      (rk.home_players||[]).forEach(function(p){ if(p) h+='<div class="lgw-sc-player">'+esc(p)+'</div>'; });
+      (rk.home_players||[]).forEach(function(p){ if(p) h+='<div class="lgw-sc-player"><button type="button" class="lgw-player-link" data-player="'+esc(p)+'" data-club="'+esc(homeClub)+'">'+esc(p)+'</button></div>'; });
       h += '</div>';
       h += '<div class="lgw-sc-scores">';
       h += '<span class="lgw-sc-score'+(rk.home_score>rk.away_score?' lgw-sc-win':'')+'">'+
@@ -1336,7 +1338,7 @@
            (rk.away_score!==null?rk.away_score:'–')+'</span>';
       h += '</div>';
       h += '<div class="lgw-sc-players lgw-sc-players-away">';
-      (rk.away_players||[]).forEach(function(p){ if(p) h+='<div class="lgw-sc-player">'+esc(p)+'</div>'; });
+      (rk.away_players||[]).forEach(function(p){ if(p) h+='<div class="lgw-sc-player"><button type="button" class="lgw-player-link" data-player="'+esc(p)+'" data-club="'+esc(awayClub)+'">'+esc(p)+'</button></div>'; });
       h += '</div>';
       h += '</div></div>';
     });
@@ -2447,5 +2449,161 @@
     if(clubA && clubB && clubA.toUpperCase() === clubB.toUpperCase()) return true;
     return false;
   }
+
+  // ── Player stats popover ─────────────────────────────────────────────────────
+  // Resolves the best nonce available (scorecard page or widget page)
+  function lgwGetPublicNonce() {
+    if (typeof lgwSubmit !== 'undefined' && lgwSubmit.nonce) return lgwSubmit.nonce;
+    if (typeof lgwData   !== 'undefined' && lgwData.scNonce)  return lgwData.scNonce;
+    return '';
+  }
+  function lgwGetAjaxUrl() {
+    if (typeof lgwSubmit !== 'undefined' && lgwSubmit.ajaxUrl) return lgwSubmit.ajaxUrl;
+    if (typeof lgwData   !== 'undefined' && lgwData.ajaxUrl)   return lgwData.ajaxUrl;
+    return '/wp-admin/admin-ajax.php';
+  }
+
+  // Resolve club badge URL from clubBadges map (mirrors widget logic)
+  function lgwGetClubBadgeUrl(club) {
+    var cb = (typeof lgwData !== 'undefined' && lgwData.clubBadges) ? lgwData.clubBadges : {};
+    if (!club) return '';
+    var upper = club.toUpperCase();
+    var bestKey = '', bestImg = '';
+    for (var key in cb) {
+      var ku = key.toUpperCase();
+      if (upper === ku || upper.indexOf(ku) === 0) {
+        var rest = club.slice(key.length);
+        if (rest === '' || rest[0] === ' ') {
+          if (key.length > bestKey.length) { bestKey = key; bestImg = cb[key]; }
+        }
+      }
+    }
+    return bestImg;
+  }
+
+  // Create the singleton popover element
+  var lgwPlayerPopover = null;
+  function lgwEnsurePopover() {
+    if (lgwPlayerPopover) return lgwPlayerPopover;
+    var el = document.createElement('div');
+    el.id = 'lgw-player-popover';
+    el.className = 'lgw-player-popover';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Player stats');
+    el.innerHTML = '<button class="lgw-player-popover-close" aria-label="Close">&times;</button>'
+      + '<div class="lgw-player-popover-body"></div>';
+    document.body.appendChild(el);
+    el.querySelector('.lgw-player-popover-close').addEventListener('click', lgwHidePopover);
+    // Close on outside click
+    document.addEventListener('click', function(e) {
+      if (lgwPlayerPopover && lgwPlayerPopover.classList.contains('lgw-player-popover-visible')) {
+        if (!lgwPlayerPopover.contains(e.target) && !e.target.classList.contains('lgw-player-link')) {
+          lgwHidePopover();
+        }
+      }
+    });
+    // Close on Escape
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') lgwHidePopover();
+    });
+    lgwPlayerPopover = el;
+    return el;
+  }
+
+  function lgwHidePopover() {
+    if (lgwPlayerPopover) {
+      lgwPlayerPopover.classList.remove('lgw-player-popover-visible');
+    }
+  }
+
+  function lgwShowPlayerStats(btn, playerName, club) {
+    var pop = lgwEnsurePopover();
+    var body = pop.querySelector('.lgw-player-popover-body');
+
+    // Position popover near the button
+    var rect = btn.getBoundingClientRect();
+    var scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    var scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    pop.style.top  = (rect.bottom + scrollY + 6) + 'px';
+    pop.style.left = Math.max(8, Math.min(rect.left + scrollX, window.innerWidth - 280)) + 'px';
+
+    // Show loading state
+    var badgeUrl = lgwGetClubBadgeUrl(club);
+    var badgeHtml = badgeUrl
+      ? '<img class="lgw-player-popover-badge" src="'+badgeUrl+'" alt="'+esc(club)+'">'
+      : '';
+    body.innerHTML = '<div class="lgw-player-popover-header">'
+      + badgeHtml
+      + '<div class="lgw-player-popover-name">'+esc(playerName)+'</div>'
+      + '</div>'
+      + '<div class="lgw-player-popover-loading">Loading stats…</div>';
+
+    pop.classList.add('lgw-player-popover-visible');
+
+    var n  = lgwGetPublicNonce();
+    var fd = new FormData();
+    fd.append('action',      'lgw_get_player_stats');
+    fd.append('nonce',       n);
+    fd.append('player_name', playerName);
+    fd.append('club',        club || '');
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', lgwGetAjaxUrl());
+    xhr.onload = function() {
+      var r;
+      try { r = JSON.parse(xhr.responseText || '{}'); } catch(e) { r = {success:false}; }
+      if (!r.success) {
+        body.querySelector('.lgw-player-popover-loading').innerHTML
+          = '<p class="lgw-player-popover-none">No stats found for this player yet.</p>';
+        return;
+      }
+      var d = r.data;
+      var played = d.played || 0;
+      var html = '<div class="lgw-player-popover-header">'
+        + badgeHtml
+        + '<div>'
+          + '<div class="lgw-player-popover-name">'+esc(d.name)+'</div>'
+          + (d.club ? '<div class="lgw-player-popover-club">'+esc(d.club)+'</div>' : '')
+        + '</div>'
+        + '</div>';
+
+      if (played > 0) {
+        html += '<div class="lgw-player-popover-stats">'
+          + '<div class="lgw-player-popover-stat lgw-pps-w"><span class="lgw-pps-val">'+d.won+'</span><span class="lgw-pps-lbl">Won</span></div>'
+          + '<div class="lgw-player-popover-stat lgw-pps-d"><span class="lgw-pps-val">'+d.drawn+'</span><span class="lgw-pps-lbl">Drawn</span></div>'
+          + '<div class="lgw-player-popover-stat lgw-pps-l"><span class="lgw-pps-val">'+d.lost+'</span><span class="lgw-pps-lbl">Lost</span></div>'
+          + '<div class="lgw-player-popover-stat lgw-pps-p"><span class="lgw-pps-val">'+played+'</span><span class="lgw-pps-lbl">Played</span></div>'
+          + '</div>';
+        if (d.teams && d.teams.length) {
+          html += '<div class="lgw-player-popover-teams"><span class="lgw-ppt-label">Teams this season:</span>'
+            + d.teams.map(function(t){ return '<span class="lgw-ppt-team">'+esc(t)+'</span>'; }).join('')
+            + '</div>';
+        }
+      } else {
+        html += '<p class="lgw-player-popover-none">No appearances recorded this season yet.</p>';
+      }
+      body.innerHTML = html;
+    };
+    xhr.onerror = function() {
+      body.querySelector('.lgw-player-popover-loading').innerHTML
+        = '<p class="lgw-player-popover-none">Could not load stats — check your connection.</p>';
+    };
+    xhr.send(fd);
+  }
+
+  // Event delegation — handle player link clicks anywhere in the document
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest ? e.target.closest('.lgw-player-link') : null;
+    if (!btn) return;
+    e.stopPropagation();
+    var playerName = btn.getAttribute('data-player') || '';
+    var club       = btn.getAttribute('data-club')   || '';
+    // Toggle: clicking the same open player hides the popover
+    if (lgwPlayerPopover && lgwPlayerPopover.classList.contains('lgw-player-popover-visible')) {
+      var currentName = lgwPlayerPopover.getAttribute('data-current-player');
+      if (currentName === playerName) { lgwHidePopover(); return; }
+    }
+    if (lgwPlayerPopover) lgwPlayerPopover.setAttribute('data-current-player', playerName);
+    lgwShowPlayerStats(btn, playerName, club);
+  });
 
 })();
