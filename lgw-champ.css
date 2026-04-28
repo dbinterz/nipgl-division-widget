@@ -1,4 +1,4 @@
-/* LGW Championships CSS - v7.1.118 */
+/* LGW Championships CSS - v7.1.120 */
 
 /* ── Default light-mode CSS variables ──────────────────────────────────────── */
 /* These mirror the division widget defaults so the cup widget looks correct    */
@@ -1392,6 +1392,11 @@
   flex-shrink: 0;
   min-height: 28px;
 }
+.lgw-champ-sr-admin-hint {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+}
 .lgw-champ-search-results {
   overflow-y: auto;
   flex: 1;
@@ -1502,7 +1507,22 @@
   border-radius: 3px;
   padding: 1px 4px;
 }
-/* Score cell */
+/* Admin navigation row — pointer cursor */
+.lgw-champ-sr-row-nav { cursor: pointer; }
+.lgw-champ-sr-row-nav:hover td { background: #e8f0fe !important; }
+.lgw-champ-sr-row-nav:hover .lgw-champ-sr-highlight { background: #fef3c0; }
+
+/* Match card highlight flash — triggered by navigateToMatch */
+@keyframes lgw-match-highlight-flash {
+  0%   { box-shadow: 0 0 0 3px #e8b400, 0 0 18px 6px rgba(232,180,0,.5); background: #fffbe6; }
+  60%  { box-shadow: 0 0 0 3px #e8b400, 0 0 18px 6px rgba(232,180,0,.5); background: #fffbe6; }
+  100% { box-shadow: none; background: ''; }
+}
+.lgw-champ-match.lgw-champ-match-highlight {
+  animation: lgw-match-highlight-flash 2.2s ease-out forwards;
+  position: relative;
+  z-index: 2;
+}
 .lgw-champ-sr-score-col { width: 72px; text-align: center; white-space: nowrap; }
 .lgw-champ-sr-score-cell { text-align: center; white-space: nowrap; vertical-align: middle; }
 .lgw-champ-sr-score-val {
@@ -1557,8 +1577,10 @@
   .lgw-champ-search-mode-tabs { justify-content: stretch; }
   .lgw-champ-search-mode-btn { flex: 1; text-align: center; padding: 7px 8px; font-size: 12px; }
   .lgw-champ-search-btn { width: 100%; text-align: center; padding: 8px; }
-  .lgw-champ-sr-section-cell,
-  .lgw-champ-sr-round { display: none; }
+  th.lgw-champ-sr-section-cell,
+  td.lgw-champ-sr-section-cell,
+  th.lgw-champ-sr-round,
+  td.lgw-champ-sr-round { display: none !important; width: 0 !important; padding: 0 !important; }
   .lgw-champ-search-actions { flex-wrap: wrap; gap: 6px; padding: 8px 14px; }
   .lgw-champ-search-copy-btn,
   .lgw-champ-search-pdf-btn,
@@ -1594,6 +1616,8 @@
   .lgw-champ-search-copy-btn,
   .lgw-champ-search-pdf-btn,
   .lgw-champ-search-csv-btn { flex: 1 1 28%; font-size: 11px; padding: 6px 6px; text-align: center; }
-  .lgw-champ-sr-section-cell,
-  .lgw-champ-sr-round { display: none; }
+  th.lgw-champ-sr-section-cell,
+  td.lgw-champ-sr-section-cell,
+  th.lgw-champ-sr-round,
+  td.lgw-champ-sr-round { display: none !important; width: 0 !important; padding: 0 !important; }
 }

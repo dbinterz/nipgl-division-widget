@@ -108,6 +108,15 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### 7.1.120
+- **Fix:** Section and Round columns hidden correctly on Chromium mobile — `th`/`td` element selectors with `!important` fix Chromium table layout quirk (was already working in Firefox)
+
+### 7.1.119
+- **New:** Admin search rows are clickable — closes modal, switches section tab, scrolls bracket to match, flashes gold highlight on the card
+- **New:** Admin hint beneath results: "Click a row to go to that match in the draw"
+- **Fix:** `section_idx` returned by search AJAX handler for correct section pane targeting
+- **Fix:** `game_num` stored on match card `dataset` during bracket render
+
 ### 7.1.118
 - **Fix:** Search modal in landscape on mobile — collapses chrome, makes entire box scrollable; sticky header and sticky export bar preserve usability without eating screen height
 

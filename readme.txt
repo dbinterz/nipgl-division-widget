@@ -71,6 +71,15 @@ Parameters:
 
 == Changelog ==
 
+= 7.1.120 =
+* Fix: Section and Round columns now correctly hidden on Chromium mobile browsers — explicit th/td element selectors with !important override Chromium table layout defaults
+
+= 7.1.119 =
+* New: Admin search rows are clickable — clicking a result closes the modal, switches to the correct section tab, scrolls the bracket to the match, and flashes a gold highlight on the card
+* New: Admin sees a "Click a row to go to that match in the draw" hint beneath search results
+* Fix: section_idx now returned by search AJAX so JS can target the correct section pane
+* Fix: game_num stored on match card dataset during bracket render to support lookup
+
 = 7.1.118 =
 * Fix: Search modal in landscape orientation — entire modal is now a single scroll container; header and export bar remain visible via sticky positioning so screen space is not wasted
 

@@ -1,4 +1,4 @@
-/* LGW Championships JS - v7.1.118 */
+/* LGW Championships JS - v7.1.120 */
 (function () {
   'use strict';
 
@@ -261,6 +261,7 @@
         var card = matchEl.firstElementChild;
         card.dataset.round = ri;
         card.dataset.match = mi;
+        if (match.game_num) card.dataset.gameNum = match.game_num;
         var isAdmin = typeof lgwChampData !== 'undefined' && lgwChampData.isAdmin == 1;
         var hasResult = match.home_score !== null && match.home_score !== undefined &&
                         match.away_score !== null && match.away_score !== undefined;
@@ -1133,6 +1134,62 @@
     scheduleNextPoll();
   }
 
+  // ── Navigate to a match card in the draw and highlight it ────────────────────
+  /**
+   * Close the search modal, switch to the correct section tab, scroll the bracket
+   * to the target match card, and flash a highlight so the admin knows where to click.
+   *
+   * @param {string} champId     – data-champ-id value
+   * @param {string|number} sectionIdx – numeric section index or 'final'
+   * @param {number|string} gameNum    – match game_num
+   */
+  function navigateToMatch(champId, sectionIdx, gameNum) {
+    // 1. Close any open search modal
+    var modal = qs('.lgw-champ-search-modal');
+    if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+
+    // 2. Find the tabs-outer for this championship
+    var outer = document.querySelector('.lgw-champ-tabs-outer[data-champ-id="' + champId + '"]');
+    if (!outer) return;
+
+    // 3. Switch to the correct section tab
+    var sectionStr = String(sectionIdx);
+    var tabBtn = outer.querySelector('.lgw-champ-section-tab[data-section="' + sectionStr + '"]');
+    if (tabBtn) {
+      outer.querySelectorAll('.lgw-champ-section-tab').forEach(function (b) { b.classList.remove('active'); });
+      outer.querySelectorAll('.lgw-champ-section-pane').forEach(function (p) { p.classList.remove('active'); });
+      tabBtn.classList.add('active');
+      var pane = outer.querySelector('.lgw-champ-section-pane[data-section="' + sectionStr + '"]');
+      if (pane) pane.classList.add('active');
+      // Persist in sessionStorage so a page refresh remembers the tab
+      try { sessionStorage.setItem('lgw_champ_section_' + champId, sectionStr); } catch (e) {}
+    }
+
+    // 4. Find the match card by game_num within the now-active pane
+    if (!gameNum) return;
+    var paneEl = outer.querySelector('.lgw-champ-section-pane[data-section="' + sectionStr + '"]');
+    if (!paneEl) return;
+    var card = paneEl.querySelector('.lgw-champ-match[data-game-num="' + gameNum + '"]');
+    if (!card) return;
+
+    // 5. Scroll the bracket outer container so the card is visible, then scroll the page
+    var bracketOuter = paneEl.querySelector('.lgw-champ-bracket-outer');
+    if (bracketOuter) {
+      // Horizontal scroll within bracket to bring round into view
+      var roundEl = card.closest('.lgw-champ-round');
+      if (roundEl) {
+        bracketOuter.scrollTo({ left: roundEl.offsetLeft, behavior: 'smooth' });
+      }
+    }
+    // Small delay so the tab switch and horizontal scroll settle before vertical scroll
+    setTimeout(function () {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // 6. Flash highlight
+      card.classList.add('lgw-champ-match-highlight');
+      setTimeout(function () { card.classList.remove('lgw-champ-match-highlight'); }, 2200);
+    }, 120);
+  }
+
   // ── Championship Search Modal ─────────────────────────────────────────────────
   /**
    * Opens a search modal for a championship.
@@ -1258,7 +1315,14 @@
 
       var noun1  = mode === 'fixtures' ? 'fixture' : 'result';
       var nounPl = filtered.length === 1 ? noun1 : noun1 + 's';
+      var isAdmin = typeof lgwChampData !== 'undefined' && lgwChampData.isAdmin == 1;
       statusEl.textContent = filtered.length + ' ' + nounPl + ' found for "' + query + '" in ' + escHtml(data.title) + '.';
+      if (isAdmin) {
+        var hint = document.createElement('span');
+        hint.className = 'lgw-champ-sr-admin-hint';
+        hint.textContent = ' Click a row to go to that match in the draw.';
+        statusEl.appendChild(hint);
+      }
 
       // Partition each match into home and away buckets relative to the query
       // A match can appear in both if the query matches both teams (e.g. club with two entries).
@@ -1326,7 +1390,16 @@
               }
             }
 
-            html += '<tr class="lgw-champ-sr-row">';
+            var isAdmin = typeof lgwChampData !== 'undefined' && lgwChampData.isAdmin == 1;
+            var navAttrs = (isAdmin && m.game_num != null && m.section_idx != null)
+              ? ' data-champ-id="' + escHtml(String(champId)) + '"'
+                + ' data-section-idx="' + escHtml(String(m.section_idx)) + '"'
+                + ' data-game-num="' + escHtml(String(m.game_num)) + '"'
+                + ' class="lgw-champ-sr-row lgw-champ-sr-row-nav"'
+                + ' title="Click to go to this match in the draw"'
+              : ' class="lgw-champ-sr-row"';
+
+            html += '<tr' + navAttrs + '>';
             html += '<td class="lgw-champ-sr-date">' + (i === 0 ? dateLabel : '') + '</td>';
             html += '<td class="lgw-champ-sr-section-cell">' + escHtml(m.section) + '</td>';
             html += '<td class="lgw-champ-sr-round">' + escHtml(m.round) + '</td>';
@@ -1360,6 +1433,13 @@
 
       resultsEl.innerHTML = html;
       actionsEl.style.display = 'flex';
+
+      // Delegated click: admin rows navigate to the match in the draw
+      resultsEl.onclick = function (e) {
+        var row = e.target.closest('.lgw-champ-sr-row-nav');
+        if (!row) return;
+        navigateToMatch(row.dataset.champId, row.dataset.sectionIdx, row.dataset.gameNum);
+      };
     }
 
     // ── Copy as Text ─────────────────────────────────────────────────────────────

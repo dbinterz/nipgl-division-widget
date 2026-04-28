@@ -1,6 +1,6 @@
 <?php
 /**
- * LGW National Championships - v7.1.118
+ * LGW National Championships - v7.1.120
  *
  * Single-elimination bracket competitions for singles, pairs, triples, fours.
  * Based on the cup draw system with two key differences:
@@ -493,6 +493,7 @@ function lgw_ajax_champ_search() {
 
                 $results[] = array(
                     'section'      => $section_label,
+                    'section_idx'  => $bracket_label === 'Final Stage' ? 'final' : null, // filled below
                     'bracket'      => $bracket_label,
                     'round'        => $round_name,
                     'date'         => $date_str,
@@ -516,12 +517,20 @@ function lgw_ajax_champ_search() {
         if (!empty($champ[$bracket_key])) {
             $label = 'Section ' . ($sec['label'] ?? ($idx + 1));
             $scan_bracket($champ[$bracket_key], $label, $label);
+            // Patch section_idx onto results added by this scan
+            foreach ($results as &$r) {
+                if ($r['section_idx'] === null && $r['section'] === $label) {
+                    $r['section_idx'] = $idx;
+                }
+            }
+            unset($r);
         }
     }
 
     // Scan final bracket
     if (!empty($champ['final_bracket'])) {
         $scan_bracket($champ['final_bracket'], 'Final Stage', 'Final Stage');
+        // section_idx already set to 'final' in scan_bracket
     }
 
     // Sort by date ascending
