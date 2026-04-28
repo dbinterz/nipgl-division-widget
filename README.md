@@ -108,6 +108,15 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### 7.1.117
+- **Fix:** Match display changed to inline "A vs B" format; wraps to vertical only when needed
+- **Fix:** Section and Round `<th>` headers now also hidden on mobile, matching their hidden `<td>` cells
+
+### 7.1.116
+- **Fix:** Mobile search — input box properly constrained; font-size 16px prevents iOS auto-zoom
+- **Fix:** Mobile search — Section and Round columns hidden on small screens to eliminate horizontal scrolling; both remain in all exports
+- **Fix:** Mobile search action buttons wrap cleanly at narrow widths
+
 ### 7.1.115
 - **Improved:** Championship search results split into 🏠 Home Fixtures and ✈️ Away Fixtures groups, each sorted by date with date-row dividers
 - **Improved:** Matched entry highlighted in yellow within each group; opponent shown alongside

@@ -71,6 +71,15 @@ Parameters:
 
 == Changelog ==
 
+= 7.1.117 =
+* Fix: Search result table now shows matches as "A vs B" inline; wraps vertically only when screen space requires it
+* Fix: Section and Round column headers are now also hidden on mobile (previously only the cells were hidden)
+
+= 7.1.116 =
+* Fix: Mobile search — input box resized and constrained to screen width; iOS zoom prevented
+* Fix: Mobile search — Section and Round columns hidden in results table to eliminate horizontal overflow
+* Fix: Mobile search action buttons wrap neatly at small widths
+
 = 7.1.115 =
 * Improved: Championship search results now split into Home Fixtures and Away Fixtures groups, each sorted by date
 * Improved: Matched entry is highlighted in yellow; date acts as a row divider within each group

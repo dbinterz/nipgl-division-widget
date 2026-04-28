@@ -1,4 +1,4 @@
-/* LGW Championships JS - v7.1.115 */
+/* LGW Championships JS - v7.1.117 */
 (function () {
   'use strict';
 
@@ -1286,16 +1286,11 @@
         var grouped = groupByDate(matches);
         var html = '<table class="lgw-champ-sr-table">';
         html += '<thead><tr>';
-        html += '<th>Date</th><th>Section</th><th>Round</th>';
-        if (isHome) {
-          html += '<th class="lgw-champ-sr-hl-col">Home (matched)</th>';
-          if (mode === 'results') html += '<th class="lgw-champ-sr-score-col">H</th><th class="lgw-champ-sr-score-col">A</th>';
-          html += '<th>Away (opponent)</th>';
-        } else {
-          html += '<th>Home (opponent)</th>';
-          if (mode === 'results') html += '<th class="lgw-champ-sr-score-col">H</th><th class="lgw-champ-sr-score-col">A</th>';
-          html += '<th class="lgw-champ-sr-hl-col">Away (matched)</th>';
-        }
+        html += '<th>Date</th>';
+        html += '<th class="lgw-champ-sr-section-cell">Section</th>';
+        html += '<th class="lgw-champ-sr-round">Round</th>';
+        html += '<th>Match</th>';
+        if (mode === 'results') html += '<th class="lgw-champ-sr-score-col">Score</th>';
         html += '</tr></thead><tbody>';
 
         grouped.order.forEach(function (dateKey) {
@@ -1305,27 +1300,39 @@
           dayMatches.forEach(function (m, i) {
             var homeWin = m.has_result && parseFloat(m.home_score) > parseFloat(m.away_score);
             var awayWin = m.has_result && parseFloat(m.away_score) > parseFloat(m.home_score);
+            var matchedIsHome = isHome;
+
+            // Build the inline "A vs B" match cell
+            var homeClass = 'lgw-champ-sr-vs-name' + (matchedIsHome ? ' lgw-champ-sr-highlight' : '');
+            var awayClass = 'lgw-champ-sr-vs-name' + (!matchedIsHome ? ' lgw-champ-sr-highlight' : '');
+            var matchCell =
+              '<div class="lgw-champ-sr-vs-row">' +
+                '<span class="' + homeClass + '">' + champBadge(m.home) + escHtml(m.home || 'TBD') + '</span>' +
+                '<span class="lgw-champ-sr-vs-sep">vs</span>' +
+                '<span class="' + awayClass + '">' + champBadge(m.away) + escHtml(m.away || 'TBD') + '</span>' +
+              '</div>';
+
+            // Score cell
+            var scoreCell = '';
+            if (mode === 'results') {
+              if (m.has_result) {
+                var hs = escHtml(String(m.home_score));
+                var as = escHtml(String(m.away_score));
+                scoreCell = '<span class="lgw-champ-sr-score-val' + (homeWin ? ' win-h' : '') + '">' + hs + '</span>'
+                  + '<span class="lgw-champ-sr-score-dash">–</span>'
+                  + '<span class="lgw-champ-sr-score-val' + (awayWin ? ' win-a' : '') + '">' + as + '</span>';
+              } else {
+                scoreCell = '<span class="lgw-champ-sr-score-pending">—</span>';
+              }
+            }
 
             html += '<tr class="lgw-champ-sr-row">';
-            // Date cell — only show on first row of each date group
             html += '<td class="lgw-champ-sr-date">' + (i === 0 ? dateLabel : '') + '</td>';
-            html += '<td class="lgw-champ-sr-round lgw-champ-sr-section-cell">' + escHtml(m.section) + '</td>';
+            html += '<td class="lgw-champ-sr-section-cell">' + escHtml(m.section) + '</td>';
             html += '<td class="lgw-champ-sr-round">' + escHtml(m.round) + '</td>';
-
-            if (isHome) {
-              html += '<td class="lgw-champ-sr-name lgw-champ-sr-highlight">' + champBadge(m.home) + escHtml(m.home || 'TBD') + '</td>';
-              if (mode === 'results') {
-                html += '<td class="lgw-champ-sr-score' + (homeWin ? ' win' : '') + '">' + (m.has_result ? escHtml(String(m.home_score)) : '—') + '</td>';
-                html += '<td class="lgw-champ-sr-score' + (awayWin ? ' win' : '') + '">' + (m.has_result ? escHtml(String(m.away_score)) : '—') + '</td>';
-              }
-              html += '<td class="lgw-champ-sr-name">' + champBadge(m.away) + escHtml(m.away || 'TBD') + '</td>';
-            } else {
-              html += '<td class="lgw-champ-sr-name">' + champBadge(m.home) + escHtml(m.home || 'TBD') + '</td>';
-              if (mode === 'results') {
-                html += '<td class="lgw-champ-sr-score' + (homeWin ? ' win' : '') + '">' + (m.has_result ? escHtml(String(m.home_score)) : '—') + '</td>';
-                html += '<td class="lgw-champ-sr-score' + (awayWin ? ' win' : '') + '">' + (m.has_result ? escHtml(String(m.away_score)) : '—') + '</td>';
-              }
-              html += '<td class="lgw-champ-sr-name lgw-champ-sr-highlight">' + champBadge(m.away) + escHtml(m.away || 'TBD') + '</td>';
+            html += '<td class="lgw-champ-sr-match-cell">' + matchCell + '</td>';
+            if (mode === 'results') {
+              html += '<td class="lgw-champ-sr-score-cell">' + scoreCell + '</td>';
             }
             html += '</tr>';
           });
@@ -1499,13 +1506,15 @@
           'th{background:#1a2e5a;color:#fff;padding:5px 7px;font-size:11px;text-align:left;font-weight:600}' +
           'td{padding:5px 7px;border-bottom:1px solid #eaedf6;font-size:11px;vertical-align:middle}' +
           'tr:nth-child(even) td{background:#f8f9fd}' +
-          '.lgw-champ-sr-highlight{font-weight:700;background:#fffbe6!important}' +
+          '.lgw-champ-sr-vs-row{display:flex;align-items:center;gap:5px;flex-wrap:nowrap}' +
+          '.lgw-champ-sr-vs-name{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}' +
+          '.lgw-champ-sr-vs-sep{font-size:10px;color:#999;font-weight:600;padding:0 2px}' +
+          '.lgw-champ-sr-highlight{font-weight:700;background:#fffbe6;border-radius:2px;padding:1px 3px}' +
           '.lgw-champ-sr-tbd{color:#999;font-style:italic}' +
-          '.win{font-weight:800;color:#0a3622}' +
-          '.lgw-champ-sr-date{white-space:nowrap;font-weight:600;color:#1a2e5a}' +
-          '.lgw-champ-sr-score{text-align:center}' +
-          '.lgw-champ-sr-score-col{width:32px}' +
-          '.lgw-champ-sr-hl-col{}' +
+          '.lgw-champ-sr-score-val{font-size:11px;font-weight:600;padding:0 1px}' +
+          '.win-h,.win-a{font-weight:800;color:#0a3622}' +
+          '.lgw-champ-sr-score-dash{color:#aaa;padding:0 1px}' +
+          '.lgw-champ-sr-date{white-space:nowrap;font-weight:600;color:#1a2e5a;vertical-align:top;padding-top:7px}' +
           '.lgw-champ-sr-section-cell{font-size:10px;color:#666;white-space:nowrap}' +
           '.lgw-champ-sr-round{font-size:10px;color:#888;font-style:italic;white-space:nowrap}' +
           'img{display:none}' +  // badges hidden — cross-origin safe

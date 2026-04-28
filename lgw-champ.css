@@ -1,4 +1,4 @@
-/* LGW Championships CSS - v7.1.115 */
+/* LGW Championships CSS - v7.1.117 */
 
 /* ── Default light-mode CSS variables ──────────────────────────────────────── */
 /* These mirror the division widget defaults so the cup widget looks correct    */
@@ -1460,39 +1460,60 @@
   color: var(--lgw-navy, #1a2e5a);
   font-weight: 700;
   min-width: 60px;
+  vertical-align: top;
+  padding-top: 9px;
 }
 .lgw-champ-sr-tbd {
   color: #999;
   font-style: italic;
   font-weight: 400;
 }
-.lgw-champ-sr-name {
+/* Inline "A vs B" match cell */
+.lgw-champ-sr-match-cell { vertical-align: middle; }
+.lgw-champ-sr-vs-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  flex-wrap: wrap;
 }
-.lgw-champ-sr-name .lgw-champ-team-badge {
-  width: 20px;
-  height: 20px;
+.lgw-champ-sr-vs-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.lgw-champ-sr-vs-name .lgw-champ-team-badge {
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   flex-shrink: 0;
 }
+.lgw-champ-sr-vs-sep {
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  flex-shrink: 0;
+  padding: 0 2px;
+}
 .lgw-champ-sr-highlight {
   font-weight: 700;
-  background: #fffbe6 !important;
+  background: #fffbe6;
+  border-radius: 3px;
+  padding: 1px 4px;
 }
-.lgw-champ-sr-hl-col { min-width: 120px; }
-.lgw-champ-sr-score-col { width: 36px; text-align: center; }
-.lgw-champ-sr-score {
-  text-align: center;
-  font-weight: 600;
+/* Score cell */
+.lgw-champ-sr-score-col { width: 72px; text-align: center; white-space: nowrap; }
+.lgw-champ-sr-score-cell { text-align: center; white-space: nowrap; vertical-align: middle; }
+.lgw-champ-sr-score-val {
   font-size: 13px;
+  font-weight: 600;
+  padding: 0 2px;
 }
-.lgw-champ-sr-score.win {
-  color: #0a3622;
-  font-weight: 800;
-}
+.lgw-champ-sr-score-val.win-h,
+.lgw-champ-sr-score-val.win-a { color: #0a3622; font-weight: 800; }
+.lgw-champ-sr-score-dash { font-size: 12px; color: #aaa; padding: 0 1px; }
+.lgw-champ-sr-score-pending { color: #bbb; font-size: 13px; }
 .lgw-champ-search-actions {
   display: flex;
   gap: 8px;
@@ -1531,8 +1552,15 @@
 .lgw-champ-search-pdf-btn:hover { background: #243d78; border-color: #243d78; }
 @media (max-width: 560px) {
   .lgw-champ-search-box { max-height: 95vh; }
-  .lgw-champ-search-controls { flex-direction: column; align-items: stretch; }
-  .lgw-champ-search-mode-tabs { justify-content: center; }
-  .lgw-champ-search-btn { text-align: center; }
-  .lgw-champ-sr-section-cell { display: none; }
+  .lgw-champ-search-controls { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 14px; }
+  .lgw-champ-search-input { font-size: 16px; padding: 7px 10px; flex: none; width: 100%; box-sizing: border-box; }
+  .lgw-champ-search-mode-tabs { justify-content: stretch; }
+  .lgw-champ-search-mode-btn { flex: 1; text-align: center; padding: 7px 8px; font-size: 12px; }
+  .lgw-champ-search-btn { width: 100%; text-align: center; padding: 8px; }
+  .lgw-champ-sr-section-cell,
+  .lgw-champ-sr-round { display: none; }
+  .lgw-champ-search-actions { flex-wrap: wrap; gap: 6px; padding: 8px 14px; }
+  .lgw-champ-search-copy-btn,
+  .lgw-champ-search-pdf-btn,
+  .lgw-champ-search-csv-btn { flex: 1 1 40%; font-size: 12px; padding: 7px 8px; text-align: center; }
 }
