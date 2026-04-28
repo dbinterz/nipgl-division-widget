@@ -108,6 +108,20 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### 7.1.115
+- **Improved:** Championship search results split into 🏠 Home Fixtures and ✈️ Away Fixtures groups, each sorted by date with date-row dividers
+- **Improved:** Matched entry highlighted in yellow within each group; opponent shown alongside
+- **New:** Copy as Text — copies results to clipboard, grouped and dated, ready for social media / WhatsApp
+- **New:** Export PDF — opens a print-ready window with sponsor banner; user saves as PDF from browser print dialog
+- **Changed:** Export CSV now has H/A column indicating home or away status of the matched entry
+
+### 7.1.114
+- **New:** Championship search modal — search fixtures or results by player name or club across all sections and the Final Stage
+- **New:** Fixtures mode shows upcoming/undated matches; Results mode shows scored matches; future-dated matches with results appear in both
+- **New:** Search results highlight matched entry, group by section, sort by date
+- **New:** Print and CSV export for search results
+- **New:** 🔍 Search tab button in championship shortcode header
+
 ### v7.1.113
 - **Fix:** Scorecard modal stuck on "Loading scorecard…" — `lgwFetchScorecard` referenced `opts.context` which is undefined in that function scope, throwing a ReferenceError and preventing the AJAX request from firing; removed the stray reference (context is correctly handled in `lgwFetchScorecardOrSubmit` which is used for the played-fixture path)
 

@@ -1,4 +1,4 @@
-/* LGW Championships JS - v6.4.0 */
+/* LGW Championships JS - v7.1.115 */
 (function () {
   'use strict';
 
@@ -1133,6 +1133,445 @@
     scheduleNextPoll();
   }
 
+  // ── Championship Search Modal ─────────────────────────────────────────────────
+  /**
+   * Opens a search modal for a championship.
+   * Allows searching by player name or club, with a toggle between
+   * Fixtures (upcoming/undated) and Results (scored matches).
+   * Future-dated fixtures that already have a result appear in both modes.
+   */
+  function openChampSearch(champId) {
+    var existing = qs('.lgw-champ-search-modal');
+    if (existing) existing.parentNode.removeChild(existing);
+
+    var nonce = (typeof lgwChampData !== 'undefined') ? lgwChampData.searchNonce : '';
+
+    var modal = document.createElement('div');
+    modal.className = 'lgw-champ-search-modal';
+    modal.innerHTML =
+      '<div class="lgw-champ-search-box">' +
+        '<div class="lgw-champ-search-header">' +
+          '<span class="lgw-champ-search-title">🔍 Championship Search</span>' +
+          '<button class="lgw-champ-search-close" aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<div class="lgw-champ-search-hint">Search by player name or club name across all sections and rounds.</div>' +
+        '<div class="lgw-champ-search-controls">' +
+          '<input class="lgw-champ-search-input" type="text" placeholder="Enter name or club…" autocomplete="off" autocorrect="off">' +
+          '<div class="lgw-champ-search-mode-tabs">' +
+            '<button class="lgw-champ-search-mode-btn active" data-mode="fixtures">📅 Fixtures</button>' +
+            '<button class="lgw-champ-search-mode-btn" data-mode="results">✅ Results</button>' +
+          '</div>' +
+          '<button class="lgw-champ-search-btn">Search</button>' +
+        '</div>' +
+        '<div class="lgw-champ-search-status"></div>' +
+        '<div class="lgw-champ-search-results"></div>' +
+        '<div class="lgw-champ-search-actions" style="display:none">' +
+          '<button class="lgw-champ-search-copy-btn">📋 Copy as Text</button>' +
+          '<button class="lgw-champ-search-pdf-btn">📄 Export PDF</button>' +
+          '<button class="lgw-champ-search-csv-btn">📥 Export CSV</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+
+    var input       = qs('.lgw-champ-search-input',   modal);
+    var searchBtn   = qs('.lgw-champ-search-btn',      modal);
+    var statusEl    = qs('.lgw-champ-search-status',   modal);
+    var resultsEl   = qs('.lgw-champ-search-results',  modal);
+    var actionsEl   = qs('.lgw-champ-search-actions',  modal);
+    var modeBtns    = qsa('.lgw-champ-search-mode-btn',modal);
+    var currentMode = 'fixtures';
+    var lastData    = null;
+
+    // Close button
+    qs('.lgw-champ-search-close', modal).addEventListener('click', function () {
+      modal.parentNode.removeChild(modal);
+    });
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) modal.parentNode.removeChild(modal);
+    });
+
+    // Mode tab switching
+    modeBtns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        modeBtns.forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        currentMode = btn.dataset.mode;
+        // Re-render last results in new mode if available
+        if (lastData) renderResults(lastData, currentMode);
+      });
+    });
+
+    // Focus input
+    input.focus();
+
+    function doSearch() {
+      var q = input.value.trim();
+      if (q.length < 2) {
+        statusEl.textContent = 'Please enter at least 2 characters.';
+        resultsEl.innerHTML  = '';
+        actionsEl.style.display = 'none';
+        return;
+      }
+      searchBtn.disabled = true;
+      searchBtn.textContent = '⏳ Searching…';
+      statusEl.textContent = '';
+      resultsEl.innerHTML  = '';
+      actionsEl.style.display = 'none';
+
+      post('lgw_champ_search', {
+        champ_id: champId,
+        query:    q,
+        mode:     'both',
+        nonce:    nonce,
+      }, function (res) {
+        searchBtn.disabled = false;
+        searchBtn.textContent = 'Search';
+        if (!res.success) {
+          statusEl.textContent = res.data || 'Search failed.';
+          return;
+        }
+        lastData = res.data;
+        renderResults(lastData, currentMode);
+      });
+    }
+
+    searchBtn.addEventListener('click', doSearch);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') doSearch(); });
+
+    function renderResults(data, mode) {
+      var allMatches = data.matches || [];
+      var query      = data.query   || '';
+      var queryUpper = query.toUpperCase();
+
+      // Filter to current mode
+      var filtered = allMatches.filter(function (m) {
+        return mode === 'fixtures' ? m.is_fixture : m.is_result;
+      });
+
+      if (filtered.length === 0) {
+        var noun0 = mode === 'fixtures' ? 'upcoming fixtures' : 'results';
+        statusEl.textContent = 'No ' + noun0 + ' found for "' + query + '".';
+        resultsEl.innerHTML  = '';
+        actionsEl.style.display = 'none';
+        return;
+      }
+
+      var noun1  = mode === 'fixtures' ? 'fixture' : 'result';
+      var nounPl = filtered.length === 1 ? noun1 : noun1 + 's';
+      statusEl.textContent = filtered.length + ' ' + nounPl + ' found for "' + query + '" in ' + escHtml(data.title) + '.';
+
+      // Partition each match into home and away buckets relative to the query
+      // A match can appear in both if the query matches both teams (e.g. club with two entries).
+      var homeMatches = filtered.filter(function (m) {
+        return m.home && m.home.toUpperCase().indexOf(queryUpper) !== -1;
+      });
+      var awayMatches = filtered.filter(function (m) {
+        return m.away && m.away.toUpperCase().indexOf(queryUpper) !== -1;
+      });
+
+      // Helper: group an array of matches by date string
+      function groupByDate(arr) {
+        var groups = {}, order = [];
+        arr.forEach(function (m) {
+          var key = m.date || 'TBC';
+          if (!groups[key]) { groups[key] = []; order.push(key); }
+          groups[key].push(m);
+        });
+        return { groups: groups, order: order };
+      }
+
+      // Helper: render a table for one home/away group
+      function renderTable(matches, isHome) {
+        if (!matches.length) return '';
+        var grouped = groupByDate(matches);
+        var html = '<table class="lgw-champ-sr-table">';
+        html += '<thead><tr>';
+        html += '<th>Date</th><th>Section</th><th>Round</th>';
+        if (isHome) {
+          html += '<th class="lgw-champ-sr-hl-col">Home (matched)</th>';
+          if (mode === 'results') html += '<th class="lgw-champ-sr-score-col">H</th><th class="lgw-champ-sr-score-col">A</th>';
+          html += '<th>Away (opponent)</th>';
+        } else {
+          html += '<th>Home (opponent)</th>';
+          if (mode === 'results') html += '<th class="lgw-champ-sr-score-col">H</th><th class="lgw-champ-sr-score-col">A</th>';
+          html += '<th class="lgw-champ-sr-hl-col">Away (matched)</th>';
+        }
+        html += '</tr></thead><tbody>';
+
+        grouped.order.forEach(function (dateKey) {
+          var dayMatches = grouped.groups[dateKey];
+          var dateLabel  = dateKey === 'TBC' ? '<span class="lgw-champ-sr-tbd">TBC</span>' : escHtml(dateKey);
+
+          dayMatches.forEach(function (m, i) {
+            var homeWin = m.has_result && parseFloat(m.home_score) > parseFloat(m.away_score);
+            var awayWin = m.has_result && parseFloat(m.away_score) > parseFloat(m.home_score);
+
+            html += '<tr class="lgw-champ-sr-row">';
+            // Date cell — only show on first row of each date group
+            html += '<td class="lgw-champ-sr-date">' + (i === 0 ? dateLabel : '') + '</td>';
+            html += '<td class="lgw-champ-sr-round lgw-champ-sr-section-cell">' + escHtml(m.section) + '</td>';
+            html += '<td class="lgw-champ-sr-round">' + escHtml(m.round) + '</td>';
+
+            if (isHome) {
+              html += '<td class="lgw-champ-sr-name lgw-champ-sr-highlight">' + champBadge(m.home) + escHtml(m.home || 'TBD') + '</td>';
+              if (mode === 'results') {
+                html += '<td class="lgw-champ-sr-score' + (homeWin ? ' win' : '') + '">' + (m.has_result ? escHtml(String(m.home_score)) : '—') + '</td>';
+                html += '<td class="lgw-champ-sr-score' + (awayWin ? ' win' : '') + '">' + (m.has_result ? escHtml(String(m.away_score)) : '—') + '</td>';
+              }
+              html += '<td class="lgw-champ-sr-name">' + champBadge(m.away) + escHtml(m.away || 'TBD') + '</td>';
+            } else {
+              html += '<td class="lgw-champ-sr-name">' + champBadge(m.home) + escHtml(m.home || 'TBD') + '</td>';
+              if (mode === 'results') {
+                html += '<td class="lgw-champ-sr-score' + (homeWin ? ' win' : '') + '">' + (m.has_result ? escHtml(String(m.home_score)) : '—') + '</td>';
+                html += '<td class="lgw-champ-sr-score' + (awayWin ? ' win' : '') + '">' + (m.has_result ? escHtml(String(m.away_score)) : '—') + '</td>';
+              }
+              html += '<td class="lgw-champ-sr-name lgw-champ-sr-highlight">' + champBadge(m.away) + escHtml(m.away || 'TBD') + '</td>';
+            }
+            html += '</tr>';
+          });
+        });
+
+        html += '</tbody></table>';
+        return html;
+      }
+
+      var html = '';
+
+      if (homeMatches.length) {
+        html += '<div class="lgw-champ-sr-group">';
+        html += '<div class="lgw-champ-sr-group-label lgw-champ-sr-home-label">🏠 Home Fixtures</div>';
+        html += renderTable(homeMatches, true);
+        html += '</div>';
+      }
+
+      if (awayMatches.length) {
+        html += '<div class="lgw-champ-sr-group">';
+        html += '<div class="lgw-champ-sr-group-label lgw-champ-sr-away-label">✈️ Away Fixtures</div>';
+        html += renderTable(awayMatches, false);
+        html += '</div>';
+      }
+
+      resultsEl.innerHTML = html;
+      actionsEl.style.display = 'flex';
+    }
+
+    // ── Copy as Text ─────────────────────────────────────────────────────────────
+    qs('.lgw-champ-search-copy-btn', modal).addEventListener('click', function () {
+      if (!lastData) return;
+      var mode       = currentMode;
+      var query      = lastData.query || '';
+      var queryUpper = query.toUpperCase();
+      var filtered   = (lastData.matches || []).filter(function (m) {
+        return mode === 'fixtures' ? m.is_fixture : m.is_result;
+      });
+
+      var homeMatches = filtered.filter(function (m) {
+        return m.home && m.home.toUpperCase().indexOf(queryUpper) !== -1;
+      });
+      var awayMatches = filtered.filter(function (m) {
+        return m.away && m.away.toUpperCase().indexOf(queryUpper) !== -1;
+      });
+
+      var lines = [];
+      var modeLabel = mode === 'fixtures' ? 'Fixtures' : 'Results';
+      lines.push(escPlain(lastData.title) + ' — ' + modeLabel + ' for "' + escPlain(query) + '"');
+      lines.push('');
+
+      function formatGroup(matches, isHome) {
+        if (!matches.length) return;
+        lines.push(isHome ? '🏠 HOME FIXTURES' : '✈️ AWAY FIXTURES');
+        lines.push('');
+        var lastDate = null;
+        matches.forEach(function (m) {
+          var dateStr = m.date || 'TBC';
+          if (dateStr !== lastDate) {
+            if (lastDate !== null) lines.push('');
+            lines.push('📅 ' + dateStr);
+            lastDate = dateStr;
+          }
+          var opponent = isHome ? (m.away || 'TBD') : (m.home || 'TBD');
+          var self_    = isHome ? (m.home || 'TBD') : (m.away || 'TBD');
+          var line     = '  ' + escPlain(m.section) + ' · ' + escPlain(m.round) + ' · ' + escPlain(self_) + ' v ' + escPlain(opponent);
+          if (mode === 'results' && m.has_result) {
+            if (isHome) line += '  (' + m.home_score + '–' + m.away_score + ')';
+            else        line += '  (' + m.home_score + '–' + m.away_score + ')';
+          }
+          lines.push(line);
+        });
+        lines.push('');
+      }
+
+      formatGroup(homeMatches, true);
+      formatGroup(awayMatches, false);
+
+      var text = lines.join('\n');
+
+      var btn = this;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          btn.textContent = '✅ Copied!';
+          setTimeout(function () { btn.textContent = '📋 Copy as Text'; }, 2000);
+        }).catch(function () {
+          fallbackCopy(text, btn);
+        });
+      } else {
+        fallbackCopy(text, btn);
+      }
+    });
+
+    function escPlain(s) { return String(s || ''); }
+
+    function fallbackCopy(text, btn) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        btn.textContent = '✅ Copied!';
+        setTimeout(function () { btn.textContent = '📋 Copy as Text'; }, 2000);
+      } catch (e) {
+        btn.textContent = '❌ Copy failed';
+        setTimeout(function () { btn.textContent = '📋 Copy as Text'; }, 2000);
+      }
+      document.body.removeChild(ta);
+    }
+
+    // ── Export PDF ───────────────────────────────────────────────────────────────
+    // Opens a print-ready popup containing the search results plus the sponsor
+    // banner (if configured). The user saves as PDF from the browser print dialog.
+    qs('.lgw-champ-search-pdf-btn', modal).addEventListener('click', function () {
+      if (!lastData) return;
+
+      // Collect sponsor image from the nearest lgw-champ-wrap's data-sponsors,
+      // or from lgwData / lgwChampData globals.
+      var sponsorHtml = '';
+      var sponsorImg  = '';
+      var sponsorName = '';
+      var sponsorUrl  = '';
+
+      // Try primary sponsor from the DOM (first lgw-sponsor-primary image on page)
+      var primaryEl = document.querySelector('.lgw-sponsor-primary img');
+      if (primaryEl) {
+        sponsorImg  = primaryEl.src || '';
+        sponsorName = primaryEl.alt || '';
+        var parentA = primaryEl.parentElement;
+        if (parentA && parentA.tagName === 'A') sponsorUrl = parentA.href || '';
+      }
+
+      if (sponsorImg) {
+        var imgTag = '<img src="' + escHtml(sponsorImg) + '" alt="' + escHtml(sponsorName) + '" style="max-height:60px;max-width:200px;object-fit:contain">';
+        sponsorHtml = '<div style="text-align:center;padding:16px 0 8px;border-top:1px solid #d0d5e8;margin-top:24px">'
+          + '<div style="font-size:11px;color:#888;margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase">Sponsored by</div>'
+          + (sponsorUrl ? '<a href="' + escHtml(sponsorUrl) + '">' + imgTag + '</a>' : imgTag)
+          + '</div>';
+      }
+
+      var mode   = currentMode;
+      var query  = lastData.query || '';
+      var status = qs('.lgw-champ-search-status', modal).textContent;
+
+      // Inline the results HTML — strip badge <img> (they may be cross-origin),
+      // keep structure for print styling
+      var bodyHtml = qs('.lgw-champ-search-results', modal).innerHTML
+        .replace(/<img[^>]*class="lgw-champ-team-badge"[^>]*>/gi, '');
+
+      var modeLabel = mode === 'fixtures' ? 'Fixtures' : 'Results';
+      var printTitle = escHtml(lastData.title) + ' — ' + modeLabel + ' for "' + escHtml(query) + '"';
+
+      var printWin = window.open('', '_blank', 'width=860,height=700');
+      if (!printWin) { alert('Pop-up blocked — please allow pop-ups for this site.'); return; }
+
+      printWin.document.write(
+        '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+        '<title>' + printTitle + '</title>' +
+        '<style>' +
+          '@page{margin:18mm 14mm}' +
+          'body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:0}' +
+          'h1{font-size:16px;color:#1a2e5a;margin:0 0 4px}' +
+          '.subtitle{font-size:12px;color:#555;margin-bottom:14px}' +
+          '.lgw-champ-sr-group{margin-bottom:18px}' +
+          '.lgw-champ-sr-group-label{font-size:13px;font-weight:700;padding:5px 8px;border-radius:3px 3px 0 0;margin-bottom:0}' +
+          '.lgw-champ-sr-home-label{background:#1a2e5a;color:#fff}' +
+          '.lgw-champ-sr-away-label{background:#1a4e6e;color:#fff}' +
+          'table{width:100%;border-collapse:collapse;margin-bottom:4px}' +
+          'th{background:#1a2e5a;color:#fff;padding:5px 7px;font-size:11px;text-align:left;font-weight:600}' +
+          'td{padding:5px 7px;border-bottom:1px solid #eaedf6;font-size:11px;vertical-align:middle}' +
+          'tr:nth-child(even) td{background:#f8f9fd}' +
+          '.lgw-champ-sr-highlight{font-weight:700;background:#fffbe6!important}' +
+          '.lgw-champ-sr-tbd{color:#999;font-style:italic}' +
+          '.win{font-weight:800;color:#0a3622}' +
+          '.lgw-champ-sr-date{white-space:nowrap;font-weight:600;color:#1a2e5a}' +
+          '.lgw-champ-sr-score{text-align:center}' +
+          '.lgw-champ-sr-score-col{width:32px}' +
+          '.lgw-champ-sr-hl-col{}' +
+          '.lgw-champ-sr-section-cell{font-size:10px;color:#666;white-space:nowrap}' +
+          '.lgw-champ-sr-round{font-size:10px;color:#888;font-style:italic;white-space:nowrap}' +
+          'img{display:none}' +  // badges hidden — cross-origin safe
+        '</style>' +
+        '</head><body>' +
+        '<h1>' + printTitle + '</h1>' +
+        '<div class="subtitle">' + escHtml(status) + '</div>' +
+        bodyHtml +
+        sponsorHtml +
+        '</body></html>'
+      );
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(function () { printWin.print(); }, 500);
+    });
+
+    // ── Export CSV ───────────────────────────────────────────────────────────────
+    qs('.lgw-champ-search-csv-btn', modal).addEventListener('click', function () {
+      if (!lastData) return;
+      var mode       = currentMode;
+      var query      = lastData.query || '';
+      var queryUpper = query.toUpperCase();
+      var filtered   = (lastData.matches || []).filter(function (m) {
+        return mode === 'fixtures' ? m.is_fixture : m.is_result;
+      });
+      if (!filtered.length) return;
+
+      var header = mode === 'results'
+        ? ['H/A','Section','Round','Date','Matched Entry','Opponent','Home Score','Away Score']
+        : ['H/A','Section','Round','Date','Matched Entry','Opponent'];
+
+      var rows = [header];
+      filtered.forEach(function (m) {
+        var isHome  = m.home && m.home.toUpperCase().indexOf(queryUpper) !== -1;
+        var matched = isHome ? (m.home || '') : (m.away || '');
+        var opp     = isHome ? (m.away || '') : (m.home || '');
+        var ha      = isHome ? 'H' : 'A';
+        if (mode === 'results') {
+          rows.push([ha, m.section, m.round, m.date || '', matched, opp, m.home_score !== null ? m.home_score : '', m.away_score !== null ? m.away_score : '']);
+        } else {
+          rows.push([ha, m.section, m.round, m.date || '', matched, opp]);
+        }
+      });
+
+      var csv = rows.map(function (row) {
+        return row.map(function (cell) {
+          var s = String(cell);
+          if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+            s = '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        }).join(',');
+      }).join('\r\n');
+
+      var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'champ-' + query.replace(/[^a-z0-9]/gi, '_') + '-' + mode + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   function initChampWidget(wrap) {
     var cupId = wrap.dataset.champId;
@@ -1217,6 +1656,14 @@
     if (firstWrap && firstWrap.dataset.champId) {
       initSectionTabs(firstWrap.dataset.champId);
     }
+    // Wire up search buttons
+    qsa('.lgw-champ-search-tab').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var champId = btn.dataset.champId;
+        if (champId) openChampSearch(champId);
+      });
+    });
   });
 
 })();

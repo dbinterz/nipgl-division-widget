@@ -71,6 +71,20 @@ Parameters:
 
 == Changelog ==
 
+= 7.1.115 =
+* Improved: Championship search results now split into Home Fixtures and Away Fixtures groups, each sorted by date
+* Improved: Matched entry is highlighted in yellow; date acts as a row divider within each group
+* New: Copy as Text button — copies fixtures/results to clipboard in plain text format suitable for pasting into social media or messaging
+* New: Export PDF button — opens a print-ready popup with sponsor banner included; save as PDF from browser print dialog
+* Changed: Export CSV now includes a H/A column indicating whether the matched entry is home or away
+
+= 7.1.114 =
+* New: Championship search modal — search fixtures or results by player name or club across all sections and the Final Stage
+* New: Search results highlight the matched entry, group by section, and sort by date
+* New: Fixtures mode shows upcoming/undated matches; Results mode shows scored matches; future-dated matches with results appear in both
+* New: Print and CSV export for search results
+* New: 🔍 Search tab button in championship section header
+
 = 7.1.113 =
 * Fix: Scorecard modal stuck on "Loading scorecard..." — lgwFetchScorecard referenced opts.context which is undefined in that function scope, throwing a ReferenceError and preventing the AJAX request from firing; removed the stray reference
 
