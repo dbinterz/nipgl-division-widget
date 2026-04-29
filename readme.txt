@@ -71,8 +71,8 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.133 =
-* Fix: saving a championship score no longer wipes appearance records for other matches in the same championship. Cascading downstream clear was hitting TBD slots with no title and triggering a nuclear delete of all champ rows.
+= 7.1.134 =
+* Player records for Midweek 1, Midweek 2, and Midweek Cup now stored with a " MW" suffix on the team name (e.g. "Belmont A MW") to distinguish midweek appearances from Saturday league appearances in player tracking
 
 = 7.1.132 =
 * Fix: championship appearance delete now correctly wipes all rows for player+champ_id — resolves duplicate appearances on re-save and failed clears caused by match_key format inconsistencies across earlier versions

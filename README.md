@@ -108,6 +108,9 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
+### 7.1.134
+- Player records for Midweek 1, Midweek 2, and Midweek Cup now stored with a ` MW` suffix on the team name (e.g. `Belmont A MW`) to separate midweek appearances from Saturday league appearances in player tracking
+
 ### 7.1.132
 - Fix: championship appearance delete now wipes all rows for `player_id + champ_id` — resolves duplicates on re-save and failed clears from mismatched `match_key` values in earlier versions
 - Removed debug logging

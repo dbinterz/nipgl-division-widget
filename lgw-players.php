@@ -178,6 +178,29 @@ function lgw_normalise_date_dmy( $date_str ) {
     return date( 'd/m/Y' ); // unrecognised — use today
 }
 
+// ── Helper: midweek team-name qualifier ──────────────────────────────────────
+/**
+ * Returns the team name as it should be stored in player appearance records.
+ *
+ * For Midweek divisions (Midweek 1, Midweek 2, Midweek Cup, or any division
+ * whose name contains "midweek"), appends " MW" to the team name so that
+ * player records distinguish e.g. "Belmont A MW" from "Belmont A" (Saturday).
+ *
+ * @param string $team_name  Raw team name from the scorecard (e.g. "Belmont A").
+ * @param string $division   Division / cup name stored on the scorecard.
+ * @return string            Team name, with " MW" appended for midweek fixtures.
+ */
+function lgw_team_name_for_appearances( $team_name, $division ) {
+    if ( $team_name === '' ) return $team_name;
+    if ( stripos( $division, 'midweek' ) !== false ) {
+        // Avoid double-appending if already tagged (idempotent re-log safety)
+        if ( substr( $team_name, -3 ) !== ' MW' ) {
+            return $team_name . ' MW';
+        }
+    }
+    return $team_name;
+}
+
 // ── Core: log appearances from a scorecard ────────────────────────────────────
 function lgw_log_appearances($scorecard_post_id) {
     global $wpdb;
@@ -187,10 +210,16 @@ function lgw_log_appearances($scorecard_post_id) {
     $home_team  = $sc['home_team'] ?? '';
     $away_team  = $sc['away_team'] ?? '';
     $match_date = $sc['date']      ?? '';
+    $division   = $sc['division']  ?? '';
     $match_title = $home_team . ' v ' . $away_team;
 
     // Determine game type from scorecard context meta
     $game_type = get_post_meta($scorecard_post_id, 'lgw_sc_context', true) ?: 'league';
+
+    // For Midweek divisions (league or cup), append " MW" to team names in
+    // player appearance records so midweek players are tracked separately.
+    $home_team_rec = lgw_team_name_for_appearances( $home_team, $division );
+    $away_team_rec = lgw_team_name_for_appearances( $away_team, $division );
 
     // Resolve clubs from team names using existing prefix-matching
     $home_club = lgw_team_to_club($home_team);
@@ -246,7 +275,7 @@ function lgw_log_appearances($scorecard_post_id) {
             if ($is_female) lgw_ensure_female_flag($player_id);
             $wpdb->insert(lgw_appearances_table(), array(
                 'player_id'    => $player_id,
-                'team'         => $home_team,
+                'team'         => $home_team_rec,
                 'match_title'  => $match_title,
                 'match_date'   => $match_date,
                 'rink'         => $rink_num,
@@ -268,7 +297,7 @@ function lgw_log_appearances($scorecard_post_id) {
             if ($is_female) lgw_ensure_female_flag($player_id);
             $wpdb->insert(lgw_appearances_table(), array(
                 'player_id'    => $player_id,
-                'team'         => $away_team,
+                'team'         => $away_team_rec,
                 'match_title'  => $match_title,
                 'match_date'   => $match_date,
                 'rink'         => $rink_num,
@@ -354,20 +383,14 @@ function lgw_clear_champ_appearances( $champ_id, $match_title ) {
 function lgw_clear_champ_appearances_by_key( $champ_id, $match_key, $match_title = '' ) {
     global $wpdb;
     $at = lgw_appearances_table();
-    // Delete by match_title (the human-readable "A v B" string) which is always populated
-    // and immune to match_key format changes across versions.
-    if ( $match_title !== '' ) {
-        $wpdb->query( $wpdb->prepare(
-            "DELETE FROM $at WHERE (champ_id = %s OR champ_id IS NULL) AND game_type = 'champ' AND match_title = %s",
-            $champ_id, $match_title
-        ) );
-    } else {
-        // No title — delete all rows for this champ (used when teams not yet known)
-        $wpdb->query( $wpdb->prepare(
-            "DELETE FROM $at WHERE (champ_id = %s OR champ_id IS NULL) AND game_type = 'champ'",
-            $champ_id
-        ) );
-    }
+    // Only delete if we have a match_title — a match with no title has no appearance
+    // rows yet, so there is nothing to clear. The old fallback of deleting everything
+    // for the championship was a bug that wiped all other matches' records.
+    if ( $match_title === '' ) return;
+    $wpdb->query( $wpdb->prepare(
+        "DELETE FROM $at WHERE (champ_id = %s OR champ_id IS NULL) AND game_type = 'champ' AND match_title = %s",
+        $champ_id, $match_title
+    ) );
 }
 
 /**
