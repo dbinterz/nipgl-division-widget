@@ -2724,10 +2724,11 @@
             + '<div class="lgw-player-popover-stat lgw-pps-p"><span class="lgw-pps-val">'+panPlayed+'</span><span class="lgw-pps-lbl">Played</span></div>'
             + '</div>';
 
-          // Teams (only for league/cup)
+          // Teams (only for league/cup) — rendered as clickable filter chips
           if ((typeKey === 'lgecup' || typeKey === 'total') && d.teams && d.teams.length) {
             ph += '<div class="lgw-player-popover-teams"><span class="lgw-ppt-label">Teams this season:</span>'
-              + d.teams.map(function(t){ return '<span class="lgw-ppt-team">'+esc(t)+'</span>'; }).join('')
+              + '<button type="button" class="lgw-ppt-team lgw-ppt-team-all lgw-ppt-team-active" data-team-filter="">All</button>'
+              + d.teams.map(function(t){ return '<button type="button" class="lgw-ppt-team" data-team-filter="'+esc(t)+'">'+esc(t)+'</button>'; }).join('')
               + '</div>';
           }
 
@@ -2746,12 +2747,15 @@
               var typePill  = (typeKey === 'lgecup' || typeKey === 'total') && g.type && g.type !== 'league'
                 ? '<span class="lgw-ppg-type">'+esc(g.type)+'</span>'
                 : '';
-              ph += '<div class="lgw-ppg-row">'
+              var compSpan = g.competition
+                ? '<span class="lgw-ppg-comp">'+esc(g.competition)+'</span>'
+                : '';
+              ph += '<div class="lgw-ppg-row" data-game-team="'+esc(g.team||'')+'">'
                 + '<div class="lgw-ppg-left">'
                   + '<div class="lgw-ppg-match">'+esc(g.match)+'</div>'
                   + '<div class="lgw-ppg-meta">'
                     + (g.date ? '<span>'+esc(g.date)+'</span>' : '')
-                    + (g.rink ? '<span>Rink '+g.rink+'</span>' : '')
+                    + compSpan
                     + typePill
                   + '</div>'
                 + '</div>'
@@ -2785,6 +2789,29 @@
       }
 
       body.innerHTML = html;
+
+      // ── Team filter chips ──
+      body.querySelectorAll('.lgw-ppt-team[data-team-filter]').forEach(function(chip) {
+        chip.addEventListener('click', function() {
+          var filterVal = chip.getAttribute('data-team-filter');
+          // Update active chip
+          var parent = chip.closest('.lgw-player-popover-teams');
+          if (parent) {
+            parent.querySelectorAll('.lgw-ppt-team').forEach(function(c){ c.classList.remove('lgw-ppt-team-active'); });
+          }
+          chip.classList.add('lgw-ppt-team-active');
+          // Filter game rows within the same panel (or body if no tabs)
+          var scope = chip.closest('.lgw-pp-panel') || body;
+          scope.querySelectorAll('.lgw-ppg-row').forEach(function(row) {
+            if (!filterVal) {
+              row.style.display = '';
+            } else {
+              var rowTeam = row.getAttribute('data-game-team') || '';
+              row.style.display = (rowTeam === filterVal) ? '' : 'none';
+            }
+          });
+        });
+      });
 
       // ── Tab switching ──
       body.querySelectorAll('.lgw-pp-tab').forEach(function(tb) {

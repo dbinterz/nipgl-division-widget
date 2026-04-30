@@ -336,8 +336,15 @@
 }
 .lgw-ppt-team{
   background:#e8edf8;color:#1a2e5a;font-size:11px;font-weight:600;
-  border-radius:4px;padding:2px 7px
+  border-radius:4px;padding:2px 7px;
+  border:none;font-family:inherit;cursor:pointer;
+  transition:background .12s,color .12s
 }
+.lgw-ppt-team:hover{background:#c8d4f0}
+.lgw-ppt-team-active{background:#1a2e5a;color:#fff}
+.lgw-ppt-team-active:hover{background:#1a2e5a;color:#fff}
+/* "All" chip — slightly distinct baseline */
+.lgw-ppt-team-all{background:#d4daf0}
 /* Games list */
 .lgw-player-popover-games{
   border-top:1px solid #e8edf8;padding-top:8px
@@ -367,6 +374,9 @@
   font-size:9px;font-weight:700;text-transform:uppercase;
   background:#e8edf8;color:#1a2e5a;border-radius:3px;padding:1px 4px;
   letter-spacing:.04em
+}
+.lgw-ppg-comp{
+  font-size:10px;color:#555;font-style:italic
 }
 .lgw-ppg-right{
   display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0
@@ -400,12 +410,17 @@
 [data-lgw-theme="dark"] .lgw-player-popover-close:hover{color:#c8d6f8}
 [data-lgw-theme="dark"] .lgw-pps-p{background:#2a3a5a;color:#c8d6f8}
 [data-lgw-theme="dark"] .lgw-ppt-team{background:#2a3a5a;color:#c8d6f8}
+[data-lgw-theme="dark"] .lgw-ppt-team:hover{background:#3a4e72}
+[data-lgw-theme="dark"] .lgw-ppt-team-active{background:#5577aa;color:#fff}
+[data-lgw-theme="dark"] .lgw-ppt-team-active:hover{background:#5577aa}
+[data-lgw-theme="dark"] .lgw-ppt-team-all{background:#243350}
 [data-lgw-theme="dark"] .lgw-player-popover-teams{border-top-color:#2a3a5a}
 [data-lgw-theme="dark"] .lgw-player-popover-games{border-top-color:#2a3a5a}
 [data-lgw-theme="dark"] .lgw-ppg-match{color:#c8d6f8}
 [data-lgw-theme="dark"] .lgw-ppg-row{border-bottom-color:#2a3a5a}
 [data-lgw-theme="dark"] .lgw-ppg-score{color:#c8d6f8}
 [data-lgw-theme="dark"] .lgw-ppg-type{background:#2a3a5a;color:#c8d6f8}
+[data-lgw-theme="dark"] .lgw-ppg-comp{color:#9aabcc}
 [data-lgw-theme="dark"] .lgw-player-link{text-decoration-color:rgba(200,214,248,.3)}
 [data-lgw-theme="dark"] .lgw-player-link:hover,[data-lgw-theme="dark"] .lgw-player-link:focus-visible{
   color:#7ab0ff;text-decoration-color:#7ab0ff;background:rgba(122,176,255,.1)

@@ -840,7 +840,7 @@ function lgw_ajax_get_player_stats() {
 
     // Individual game records for this season, newest first
     $games_raw = $wpdb->get_results($wpdb->prepare(
-        "SELECT a.match_title, a.match_date, a.team, a.rink,
+        "SELECT a.match_title, a.match_date, a.team, a.rink, a.scorecard_id,
                 a.shots_for, a.shots_against, a.result, a.game_type, a.champ_id
          FROM $at a
          WHERE a.player_id = %d $sw
@@ -848,18 +848,34 @@ function lgw_ajax_get_player_stats() {
         $player->id
     ));
 
+    // Pre-load championship titles for champ-type games
+    $champ_titles_g = array();
+    foreach ( $games_raw as $g ) {
+        if ( $g->game_type === 'champ' && $g->champ_id && !isset( $champ_titles_g[$g->champ_id] ) ) {
+            $champ_data = get_option( 'lgw_champ_' . $g->champ_id, array() );
+            $champ_titles_g[$g->champ_id] = $champ_data['title'] ?? $g->champ_id;
+        }
+    }
+
     $games = array();
     foreach ($games_raw as $g) {
+        if ( $g->game_type === 'champ' ) {
+            $competition = $champ_titles_g[$g->champ_id] ?? '';
+        } else {
+            $sc_data     = $g->scorecard_id ? get_post_meta( (int)$g->scorecard_id, 'lgw_scorecard_data', true ) : null;
+            $competition = $sc_data['division'] ?? '';
+        }
         $games[] = array(
-            'match'   => $g->match_title,
-            'date'    => $g->match_date,
-            'team'    => $g->team,
-            'rink'    => (int)$g->rink,
-            'for'     => $g->shots_for !== null ? (int)$g->shots_for : null,
-            'against' => $g->shots_against !== null ? (int)$g->shots_against : null,
-            'result'  => $g->result,
-            'type'    => $g->game_type ?: 'league',
-            'champ_id'=> $g->champ_id ?: null,
+            'match'       => $g->match_title,
+            'date'        => $g->match_date,
+            'team'        => $g->team,
+            'rink'        => (int)$g->rink,
+            'competition' => $competition,
+            'for'         => $g->shots_for !== null ? (int)$g->shots_for : null,
+            'against'     => $g->shots_against !== null ? (int)$g->shots_against : null,
+            'result'      => $g->result,
+            'type'        => $g->game_type ?: 'league',
+            'champ_id'    => $g->champ_id ?: null,
         );
     }
 

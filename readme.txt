@@ -71,8 +71,10 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.134 =
-* Player records for Midweek 1, Midweek 2, and Midweek Cup now stored with a " MW" suffix on the team name (e.g. "Belmont A MW") to distinguish midweek appearances from Saturday league appearances in player tracking
+= 7.1.135 =
+* New: Player stats popover games list now shows competition (division name or championship title) instead of rink number
+* New: Team chips in the stats popover are now clickable — tap a team to filter the games list to that team; tap "All" to reset
+* New: `lgw_get_player_stats` AJAX response now includes `competition` field on each game record
 
 = 7.1.132 =
 * Fix: championship appearance delete now correctly wipes all rows for player+champ_id — resolves duplicate appearances on re-save and failed clears caused by match_key format inconsistencies across earlier versions
