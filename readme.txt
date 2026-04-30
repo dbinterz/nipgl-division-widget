@@ -71,7 +71,16 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.135 =
+= 7.1.137 =
+* Fix: Championship player stats — entering a score in a later round no longer overwrites/deletes the player's earlier round appearance records; the pre-insert delete in lgw_log_champ_appearance is now scoped to the specific match position (match_key) rather than wiping all champ rows for that player across the entire championship
+
+= 7.1.137 =
+* New: Club Summary table — sortable columns (click any header to sort asc/desc, with direction indicator)
+* New: Club Summary table — per-column filter inputs: text search on Club, numeric min/max range on all stat columns
+* New: Club Summary table — live totals bar above the table updates dynamically as filters are applied, showing visible-row sums for Players, Apps, Ladies, Paid, and Balance; tfoot row also updates to match filtered rows
+* Fix: Paid input changes in Club Summary now immediately update the Balance cell and totals without a page reload
+
+= 7.1.137 =
 * New: Player stats popover games list now shows competition (division name or championship title) instead of rink number
 * New: Team chips in the stats popover are now clickable — tap a team to filter the games list to that team; tap "All" to reset
 * New: `lgw_get_player_stats` AJAX response now includes `competition` field on each game record

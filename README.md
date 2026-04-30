@@ -108,7 +108,16 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
-### 7.1.135
+### 7.1.137
+- **Fix:** Championship player stats — entering a score in a later round no longer overwrites earlier round appearance records; `lgw_log_champ_appearance` now deletes only the row for the specific match position (`match_key`) rather than all champ rows for that player across the entire championship
+
+### 7.1.137
+- **New:** Club Summary table — sortable columns (click any header; direction arrow shown)
+- **New:** Club Summary table — per-column filter inputs: text search on Club, numeric min/max range on all stat columns
+- **New:** Club Summary table — live totals bar above the table updates dynamically as filters/sort are applied, showing sums for Players, Apps, Ladies, Paid, and Balance; tfoot row also reflects filtered rows
+- **Fix:** Paid input changes immediately update the Balance cell and totals bar without a page reload
+
+### 7.1.137
 - **New:** Player stats popover games list now shows competition (division or championship title) instead of rink number
 - **New:** Team chips in the stats popover are clickable — tap a team to filter the games list; "All" resets the filter
 - **New:** `lgw_get_player_stats` AJAX response now includes `competition` field on each game record

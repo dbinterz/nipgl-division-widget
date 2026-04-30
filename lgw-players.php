@@ -336,15 +336,22 @@ function lgw_log_champ_appearance( $champ_id, $entry, $result, $match_date = '',
         if ( !$name ) continue;
         $player_id = lgw_get_or_create_player( $club, $name );
 
-        // Delete ALL champ rows for this player+champ_id — a player has exactly one
-        // appearance record per championship (no rink splits), so this is always safe.
-        // Also clears any malformed rows from earlier versions regardless of what was
-        // stored in match_key or match_title.
-        $wpdb->query( $wpdb->prepare(
-            "DELETE FROM $at WHERE player_id = %d AND game_type = 'champ'
-              AND (champ_id = %s OR champ_id IS NULL)",
-            $player_id, $champ_id
-        ) );
+        // Delete any existing champ row for this player at this specific match position.
+        // Scoped to match_key so earlier rounds (different positions) are preserved.
+        // Falls back to match_title if match_key is absent (legacy rows).
+        if ( $match_key ) {
+            $wpdb->query( $wpdb->prepare(
+                "DELETE FROM $at WHERE player_id = %d AND game_type = 'champ'
+                  AND (champ_id = %s OR champ_id IS NULL) AND match_key = %s",
+                $player_id, $champ_id, $match_key
+            ) );
+        } elseif ( $match_title ) {
+            $wpdb->query( $wpdb->prepare(
+                "DELETE FROM $at WHERE player_id = %d AND game_type = 'champ'
+                  AND (champ_id = %s OR champ_id IS NULL) AND match_title = %s",
+                $player_id, $champ_id, $match_title
+            ) );
+        }
 
         $wpdb->insert( $at, array(
             'player_id'    => $player_id,
@@ -1131,6 +1138,67 @@ function lgw_players_admin_page() {
     .lgw-player-filters select,.lgw-player-filters input[type=text]{padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;min-width:160px}
     .lgw-filter-count{font-size:12px;color:#666;margin-left:auto;white-space:nowrap}
     .lgw-filter-clear{font-size:12px;cursor:pointer;color:#0073aa;background:none;border:none;padding:0;text-decoration:underline}
+    /* ── Club Summary table ───────────────────────────────────────────────── */
+    /* Totals bar */
+    .lgw-cs-totals-bar{
+        display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;
+        background:#1a2e5a;color:#fff;border-radius:6px 6px 0 0;
+        padding:9px 14px;font-size:13px;margin-bottom:0
+    }
+    .lgw-cs-totals-label{font-size:12px;opacity:.8}
+    .lgw-cs-totals-sep{opacity:.4}
+    .lgw-cs-totals-item{display:flex;gap:4px;align-items:center}
+    .lgw-cs-totals-key{opacity:.75;font-size:12px}
+    .lgw-cs-totals-bar strong{font-size:14px}
+    .lgw-cs-totals-clear{
+        margin-left:auto;background:none;border:1px solid rgba(255,255,255,.4);
+        color:#fff;border-radius:4px;padding:2px 10px;cursor:pointer;font-size:12px;
+        white-space:nowrap;transition:background .12s
+    }
+    .lgw-cs-totals-clear:hover{background:rgba(255,255,255,.15)}
+    /* Table */
+    #lgw-cs-table{border-radius:0 0 4px 4px;border-top:none;margin-top:0}
+    #lgw-cs-table thead tr.lgw-cs-sort-row th{
+        background:#e8edf8;border-bottom:1px solid #c0cde8;
+        cursor:pointer;user-select:none;white-space:nowrap;
+        padding:8px 10px;font-size:13px;transition:background .12s
+    }
+    #lgw-cs-table thead tr.lgw-cs-sort-row th:hover{background:#d4dcf0}
+    #lgw-cs-table thead tr.lgw-cs-sort-row th.lgw-cs-sort-asc,
+    #lgw-cs-table thead tr.lgw-cs-sort-row th.lgw-cs-sort-desc{background:#c8d4ee}
+    .lgw-cs-sort-icon{font-size:10px;opacity:.5;margin-left:4px}
+    .lgw-cs-sort-asc .lgw-cs-sort-icon::after{content:'▲';opacity:1}
+    .lgw-cs-sort-desc .lgw-cs-sort-icon::after{content:'▼';opacity:1}
+    /* Filter row */
+    #lgw-cs-table thead tr.lgw-cs-filter-row th{
+        background:#f6f8fc;padding:4px 6px;border-bottom:2px solid #c0cde8
+    }
+    .lgw-cs-filter-cell{vertical-align:middle}
+    .lgw-cs-filter,.lgw-cs-filter-min,.lgw-cs-filter-max{
+        width:100%;box-sizing:border-box;padding:4px 6px;
+        border:1px solid #ccc;border-radius:4px;font-size:12px;
+        font-family:inherit;background:#fff
+    }
+    .lgw-cs-filter-min,.lgw-cs-filter-max{width:calc(50% - 2px)}
+    .lgw-cs-range{display:flex;gap:4px}
+    /* Body */
+    #lgw-cs-table tbody tr:nth-child(odd){background:#fff}
+    #lgw-cs-table tbody tr:nth-child(even){background:#f6f7f7}
+    #lgw-cs-table tbody tr:hover{background:#eef2ff}
+    #lgw-cs-table tbody tr[data-hidden="1"]{display:none}
+    .lgw-cs-num{text-align:center;white-space:nowrap}
+    .lgw-cs-balance[data-raw^="-"]{color:#c0392b;font-weight:700}
+    .lgw-cs-balance:not([data-raw^="-"])[data-raw!="0"]{color:#1a6e1a;font-weight:700}
+    .lgw-cs-paid-input{width:70px;text-align:center}
+    /* Tfoot */
+    .lgw-cs-tfoot-total td{
+        background:#1a2e5a;color:#fff;font-weight:700;
+        padding:8px 10px;text-align:center
+    }
+    .lgw-cs-tfoot-total td:first-child{text-align:left}
+    .lgw-cs-tfoot-note{font-size:11px;font-weight:400;opacity:.75;margin-left:6px}
+    /* No-results row */
+    #lgw-cs-no-results{display:none;color:#888;font-style:italic;padding:10px 14px;text-align:center}
     </style>
 
     <?php
@@ -1491,6 +1559,186 @@ function lgw_players_admin_page() {
         document.addEventListener('keydown', function(e){
             if (e.key === 'Escape') document.getElementById('lgw-history-modal').classList.remove('open');
         });
+
+        // ── Club Summary: sort + filter + live totals ────────────────────────
+        var csTable  = document.getElementById('lgw-cs-table');
+        if (!csTable) return;
+
+        var csTbody  = document.getElementById('lgw-cs-tbody');
+        var totalRows = csTbody ? csTbody.rows.length : 0;
+
+        var csSort = { col: -1, dir: 1 }; // dir: 1=asc, -1=desc
+
+        // Paid input changes update the row's data-paid and recalc totals
+        csTable.querySelectorAll('.lgw-cs-paid-input').forEach(function(inp) {
+            inp.addEventListener('input', function() {
+                var row = inp.closest('tr');
+                if (!row) return;
+                var paid = parseInt(inp.value, 10) || 0;
+                var players = parseInt(row.getAttribute('data-players'), 10) || 0;
+                var bal = paid - players;
+                row.setAttribute('data-paid', paid);
+                row.setAttribute('data-balance', bal);
+                var balCell = row.querySelector('.lgw-cs-balance');
+                if (balCell) {
+                    balCell.setAttribute('data-raw', bal);
+                    balCell.textContent = (bal > 0 ? '+' : '') + bal;
+                }
+                lgwCsUpdateTotals();
+            });
+        });
+
+        // Sort on header click
+        csTable.querySelectorAll('.lgw-cs-sortable').forEach(function(th) {
+            th.addEventListener('click', function() {
+                var col  = parseInt(th.getAttribute('data-col'), 10);
+                var type = th.getAttribute('data-type') || 'text';
+                if (csSort.col === col) {
+                    csSort.dir *= -1;
+                } else {
+                    csSort.col = col;
+                    csSort.dir = (type === 'num') ? -1 : 1; // nums default desc, text asc
+                }
+                // Update icons
+                csTable.querySelectorAll('.lgw-cs-sortable').forEach(function(h) {
+                    h.classList.remove('lgw-cs-sort-asc', 'lgw-cs-sort-desc');
+                });
+                th.classList.add(csSort.dir === 1 ? 'lgw-cs-sort-asc' : 'lgw-cs-sort-desc');
+
+                // Sort rows
+                var rows = Array.from(csTbody.rows);
+                rows.sort(function(a, b) {
+                    var av = lgwCsCellVal(a, col, type);
+                    var bv = lgwCsCellVal(b, col, type);
+                    if (type === 'num') return csSort.dir * (av - bv);
+                    return csSort.dir * av.localeCompare(bv);
+                });
+                rows.forEach(function(r) { csTbody.appendChild(r); });
+                lgwCsUpdateTotals();
+            });
+        });
+
+        // Filter inputs
+        csTable.querySelectorAll('.lgw-cs-filter, .lgw-cs-filter-min, .lgw-cs-filter-max').forEach(function(inp) {
+            inp.addEventListener('input', lgwCsApplyFilters);
+        });
+
+        function lgwCsCellVal(row, col, type) {
+            var dataMap = ['','players','apps','ladies','paid','balance'];
+            if (col >= 1 && col <= 5) {
+                var v = parseFloat(row.getAttribute('data-' + dataMap[col]));
+                return isNaN(v) ? 0 : v;
+            }
+            // col 0: text from first cell
+            var cell = row.cells[0];
+            return cell ? cell.textContent.trim().toLowerCase() : '';
+        }
+
+        function lgwCsApplyFilters() {
+            var textFilter = '';
+            var colFilters = {}; // col → {min, max}
+
+            csTable.querySelectorAll('.lgw-cs-filter').forEach(function(inp) {
+                var col = inp.getAttribute('data-col');
+                textFilter = inp.value.trim().toLowerCase();
+            });
+            csTable.querySelectorAll('.lgw-cs-filter-min').forEach(function(inp) {
+                var col = inp.getAttribute('data-col');
+                if (!colFilters[col]) colFilters[col] = {};
+                colFilters[col].min = inp.value !== '' ? parseFloat(inp.value) : null;
+            });
+            csTable.querySelectorAll('.lgw-cs-filter-max').forEach(function(inp) {
+                var col = inp.getAttribute('data-col');
+                if (!colFilters[col]) colFilters[col] = {};
+                colFilters[col].max = inp.value !== '' ? parseFloat(inp.value) : null;
+            });
+
+            var hasFilter = textFilter || Object.values(colFilters).some(function(f) {
+                return f.min !== null || f.max !== null;
+            });
+
+            var dataMap = ['','players','apps','ladies','paid','balance'];
+            Array.from(csTbody.rows).forEach(function(row) {
+                // Text filter on col 0
+                var nameText = (row.cells[0] ? row.cells[0].textContent.trim().toLowerCase() : '');
+                var show = !textFilter || nameText.indexOf(textFilter) !== -1;
+
+                if (show) {
+                    Object.keys(colFilters).forEach(function(col) {
+                        if (!show) return;
+                        var ci = parseInt(col, 10);
+                        if (ci < 1 || ci > 5) return;
+                        var val = parseFloat(row.getAttribute('data-' + dataMap[ci]));
+                        var f   = colFilters[col];
+                        if (f.min !== null && val < f.min) show = false;
+                        if (f.max !== null && val > f.max) show = false;
+                    });
+                }
+
+                row.setAttribute('data-hidden', show ? '0' : '1');
+                row.style.display = show ? '' : 'none';
+            });
+
+            var clearBtn = document.getElementById('lgw-cs-clear');
+            if (clearBtn) clearBtn.style.display = hasFilter ? '' : 'none';
+
+            lgwCsUpdateTotals();
+        }
+
+        window.lgwCsResetFilters = function() {
+            csTable.querySelectorAll('.lgw-cs-filter, .lgw-cs-filter-min, .lgw-cs-filter-max').forEach(function(inp){
+                inp.value = '';
+            });
+            Array.from(csTbody.rows).forEach(function(row) {
+                row.setAttribute('data-hidden', '0');
+                row.style.display = '';
+            });
+            var clearBtn = document.getElementById('lgw-cs-clear');
+            if (clearBtn) clearBtn.style.display = 'none';
+            lgwCsUpdateTotals();
+        };
+
+        window.lgwCsUpdateTotals = function() {
+            var totals = { players:0, apps:0, ladies:0, paid:0, balance:0 };
+            var vis = 0;
+            Array.from(csTbody.rows).forEach(function(row) {
+                if (row.getAttribute('data-hidden') === '1' || row.style.display === 'none') return;
+                vis++;
+                totals.players += parseInt(row.getAttribute('data-players'), 10) || 0;
+                totals.apps    += parseInt(row.getAttribute('data-apps'),    10) || 0;
+                totals.ladies  += parseInt(row.getAttribute('data-ladies'),  10) || 0;
+                totals.paid    += parseInt(row.getAttribute('data-paid'),    10) || 0;
+                totals.balance += parseInt(row.getAttribute('data-balance'), 10) || 0;
+            });
+
+            var fmt = function(n) { return (n > 0 ? '+' : '') + n; };
+
+            // Update totals bar
+            var el = function(id) { return document.getElementById(id); };
+            if (el('lgw-cs-vis-count')) el('lgw-cs-vis-count').textContent = vis;
+            if (el('lgw-cst-players')) el('lgw-cst-players').textContent = totals.players;
+            if (el('lgw-cst-apps'))    el('lgw-cst-apps').textContent    = totals.apps;
+            if (el('lgw-cst-ladies'))  el('lgw-cst-ladies').textContent  = totals.ladies;
+            if (el('lgw-cst-paid'))    el('lgw-cst-paid').textContent    = totals.paid;
+            if (el('lgw-cst-balance')) {
+                el('lgw-cst-balance').textContent = fmt(totals.balance);
+                el('lgw-cst-balance').style.color = totals.balance < 0 ? '#ffaaaa' : totals.balance > 0 ? '#aaffaa' : '';
+            }
+
+            // Update tfoot
+            if (el('lgw-csf-players')) el('lgw-csf-players').textContent = totals.players;
+            if (el('lgw-csf-apps'))    el('lgw-csf-apps').textContent    = totals.apps;
+            if (el('lgw-csf-ladies'))  el('lgw-csf-ladies').textContent  = totals.ladies;
+            if (el('lgw-csf-paid'))    el('lgw-csf-paid').textContent    = totals.paid;
+            if (el('lgw-csf-balance')) el('lgw-csf-balance').textContent = fmt(totals.balance);
+
+            var note = el('lgw-cs-tfoot')
+                ? el('lgw-cs-tfoot').querySelector('.lgw-cs-tfoot-note') : null;
+            if (note) note.textContent = (vis < totalRows) ? '(' + vis + ' of ' + totalRows + ' clubs)' : '';
+        };
+
+        // Initial totals
+        lgwCsUpdateTotals();
     });
     </script>
 
@@ -1683,51 +1931,121 @@ function lgw_players_admin_page() {
             <?php wp_nonce_field('lgw_players_nonce','lgw_players_nonce_field'); ?>
             <input type="hidden" name="lgw_players_action" value="save_paid_counts">
 
-        <table class="widefat striped" style="margin-bottom:16px">
+        <!-- Live totals bar -->
+        <div class="lgw-cs-totals-bar" id="lgw-cs-totals-bar">
+            <span class="lgw-cs-totals-label">Showing <strong id="lgw-cs-vis-count"><?php echo count($club_summary); ?></strong> of <?php echo count($club_summary); ?> clubs</span>
+            <span class="lgw-cs-totals-sep">|</span>
+            <span class="lgw-cs-totals-item"><span class="lgw-cs-totals-key">Players:</span> <strong id="lgw-cst-players"></strong></span>
+            <span class="lgw-cs-totals-item"><span class="lgw-cs-totals-key">Apps:</span> <strong id="lgw-cst-apps"></strong></span>
+            <span class="lgw-cs-totals-item"><span class="lgw-cs-totals-key">Ladies:</span> <strong id="lgw-cst-ladies"></strong></span>
+            <span class="lgw-cs-totals-item"><span class="lgw-cs-totals-key">Paid:</span> <strong id="lgw-cst-paid"></strong></span>
+            <span class="lgw-cs-totals-item"><span class="lgw-cs-totals-key">Balance:</span> <strong id="lgw-cst-balance"></strong></span>
+            <button type="button" class="lgw-cs-totals-clear" id="lgw-cs-clear" onclick="lgwCsResetFilters()" style="display:none">✕ Clear filters</button>
+        </div>
+
+        <table class="widefat" id="lgw-cs-table" style="margin-bottom:16px">
             <thead>
-                <tr>
-                    <th>Club</th>
-                    <th style="text-align:center">Players<br><small style="font-weight:400">in tracker</small></th>
-                    <th style="text-align:center">Appearances<br><small style="font-weight:400"><?php echo $season_where ? 'this season' : 'all-time'; ?></small></th>
-                    <th style="text-align:center">Ladies</th>
-                    <th style="text-align:center" title="Number of players the club has paid for">Players Paid<br><small style="font-weight:400">enter below</small></th>
-                    <th style="text-align:center">Balance<br><small style="font-weight:400">paid − played</small></th>
+                <!-- Sort row -->
+                <tr class="lgw-cs-sort-row">
+                    <th class="lgw-cs-th lgw-cs-sortable" data-col="0" data-type="text">
+                        Club <span class="lgw-cs-sort-icon"></span>
+                    </th>
+                    <th class="lgw-cs-th lgw-cs-sortable" data-col="1" data-type="num" style="text-align:center">
+                        Players<br><small style="font-weight:400">in tracker</small>
+                        <span class="lgw-cs-sort-icon"></span>
+                    </th>
+                    <th class="lgw-cs-th lgw-cs-sortable" data-col="2" data-type="num" style="text-align:center">
+                        Appearances<br><small style="font-weight:400"><?php echo $season_where ? 'this season' : 'all-time'; ?></small>
+                        <span class="lgw-cs-sort-icon"></span>
+                    </th>
+                    <th class="lgw-cs-th lgw-cs-sortable" data-col="3" data-type="num" style="text-align:center">
+                        Ladies <span class="lgw-cs-sort-icon"></span>
+                    </th>
+                    <th class="lgw-cs-th lgw-cs-sortable" data-col="4" data-type="num" style="text-align:center"
+                        title="Number of players the club has paid for">
+                        Players Paid<br><small style="font-weight:400">enter below</small>
+                        <span class="lgw-cs-sort-icon"></span>
+                    </th>
+                    <th class="lgw-cs-th lgw-cs-sortable" data-col="5" data-type="num" style="text-align:center">
+                        Balance<br><small style="font-weight:400">paid − played</small>
+                        <span class="lgw-cs-sort-icon"></span>
+                    </th>
+                </tr>
+                <!-- Filter row -->
+                <tr class="lgw-cs-filter-row">
+                    <th class="lgw-cs-filter-cell">
+                        <input type="text" class="lgw-cs-filter" data-col="0" placeholder="Filter club…" autocomplete="off">
+                    </th>
+                    <th class="lgw-cs-filter-cell" colspan="1">
+                        <div class="lgw-cs-range">
+                            <input type="number" class="lgw-cs-filter-min" data-col="1" placeholder="≥" min="0">
+                            <input type="number" class="lgw-cs-filter-max" data-col="1" placeholder="≤" min="0">
+                        </div>
+                    </th>
+                    <th class="lgw-cs-filter-cell">
+                        <div class="lgw-cs-range">
+                            <input type="number" class="lgw-cs-filter-min" data-col="2" placeholder="≥" min="0">
+                            <input type="number" class="lgw-cs-filter-max" data-col="2" placeholder="≤" min="0">
+                        </div>
+                    </th>
+                    <th class="lgw-cs-filter-cell">
+                        <div class="lgw-cs-range">
+                            <input type="number" class="lgw-cs-filter-min" data-col="3" placeholder="≥" min="0">
+                            <input type="number" class="lgw-cs-filter-max" data-col="3" placeholder="≤" min="0">
+                        </div>
+                    </th>
+                    <th class="lgw-cs-filter-cell">
+                        <div class="lgw-cs-range">
+                            <input type="number" class="lgw-cs-filter-min" data-col="4" placeholder="≥" min="0">
+                            <input type="number" class="lgw-cs-filter-max" data-col="4" placeholder="≤" min="0">
+                        </div>
+                    </th>
+                    <th class="lgw-cs-filter-cell">
+                        <div class="lgw-cs-range">
+                            <input type="number" class="lgw-cs-filter-min" data-col="5" placeholder="≥">
+                            <input type="number" class="lgw-cs-filter-max" data-col="5" placeholder="≤">
+                        </div>
+                    </th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="lgw-cs-tbody">
             <?php
             $grand_players = 0; $grand_apps = 0; $grand_ladies = 0; $grand_paid = 0;
             foreach ($club_summary as $cname => $cs):
                 $balance = $cs['paid'] - $cs['players'];
-                $bal_col = $balance < 0 ? '#c0392b' : ($balance > 0 ? '#1a6e1a' : '#555');
                 $grand_players += $cs['players']; $grand_apps += $cs['apps'];
                 $grand_ladies  += $cs['ladies'];  $grand_paid += $cs['paid'];
                 $enc = base64_encode($cname);
             ?>
-                <tr>
+                <tr data-players="<?php echo $cs['players']; ?>"
+                    data-apps="<?php echo $cs['apps']; ?>"
+                    data-ladies="<?php echo $cs['ladies']; ?>"
+                    data-paid="<?php echo intval($cs['paid']); ?>"
+                    data-balance="<?php echo $balance; ?>">
                     <td><strong><?php echo esc_html($cname); ?></strong></td>
-                    <td style="text-align:center"><?php echo $cs['players']; ?></td>
-                    <td style="text-align:center"><?php echo $cs['apps']; ?></td>
-                    <td style="text-align:center"><?php echo $cs['ladies']; ?></td>
-                    <td style="text-align:center">
+                    <td class="lgw-cs-num"><?php echo $cs['players']; ?></td>
+                    <td class="lgw-cs-num"><?php echo $cs['apps']; ?></td>
+                    <td class="lgw-cs-num"><?php echo $cs['ladies']; ?></td>
+                    <td class="lgw-cs-num">
                         <input type="number" name="paid[<?php echo esc_attr($enc); ?>]"
                             value="<?php echo intval($cs['paid']); ?>"
-                            min="0" style="width:70px;text-align:center">
+                            class="lgw-cs-paid-input"
+                            min="0">
                     </td>
-                    <td style="text-align:center;font-weight:700;color:<?php echo $bal_col; ?>">
+                    <td class="lgw-cs-num lgw-cs-balance" data-raw="<?php echo $balance; ?>">
                         <?php echo ($balance > 0 ? '+' : '') . $balance; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
             <tfoot>
-                <tr style="background:#1a2e5a;color:#fff;font-weight:700">
-                    <td>TOTAL</td>
-                    <td style="text-align:center"><?php echo $grand_players; ?></td>
-                    <td style="text-align:center"><?php echo $grand_apps; ?></td>
-                    <td style="text-align:center"><?php echo $grand_ladies; ?></td>
-                    <td style="text-align:center"><?php echo $grand_paid; ?></td>
-                    <td style="text-align:center"><?php
+                <tr class="lgw-cs-tfoot-total" id="lgw-cs-tfoot">
+                    <td><strong>TOTAL</strong> <small class="lgw-cs-tfoot-note"></small></td>
+                    <td class="lgw-cs-num" id="lgw-csf-players"><?php echo $grand_players; ?></td>
+                    <td class="lgw-cs-num" id="lgw-csf-apps"><?php echo $grand_apps; ?></td>
+                    <td class="lgw-cs-num" id="lgw-csf-ladies"><?php echo $grand_ladies; ?></td>
+                    <td class="lgw-cs-num" id="lgw-csf-paid"><?php echo $grand_paid; ?></td>
+                    <td class="lgw-cs-num" id="lgw-csf-balance"><?php
                         $grand_bal = $grand_paid - $grand_players;
                         echo ($grand_bal > 0 ? '+' : '') . $grand_bal;
                     ?></td>
