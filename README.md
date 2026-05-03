@@ -108,10 +108,13 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 
 ## Changelog
 
-### 7.1.138
+### v7.1.139
+- Admin scorecard edit: renamed "Date" label to "Date Played"; widened date input so full date is always visible.
+
+### 7.1.139
 - **Fix:** Scorecard post edit screen (`post.php?post=X&action=edit`) now shows the full scorecard editor and audit log as meta boxes — previously the `#NNN ↗` link from Player Tracking opened a blank WP post form
 
-### 7.1.138
+### 7.1.139
 - **Fix:** Championship player stats — entering a score in a later round no longer overwrites earlier round appearance records; `lgw_log_champ_appearance` now deletes only the row for the specific match position (`match_key`) rather than all champ rows for that player across the entire championship
 
 ### 7.1.136

@@ -71,10 +71,13 @@ Parameters:
 
 == Changelog ==
 
-= 7.1.138 =
+= 7.1.139 =
+* Admin scorecard edit: renamed "Date" label to "Date Played"; widened date input so full date is always visible.
+
+= 7.1.139 =
 * Fix: Scorecard post edit screen (post.php?post=X&action=edit) now shows the full scorecard editor and audit log as meta boxes — previously it showed a blank WordPress post form with no scorecard data visible
 
-= 7.1.138 =
+= 7.1.139 =
 * Fix: Championship player stats — entering a score in a later round no longer overwrites/deletes the player's earlier round appearance records; the pre-insert delete in lgw_log_champ_appearance is now scoped to the specific match position (match_key) rather than wiping all champ rows for that player across the entire championship
 
 = 7.1.136 =

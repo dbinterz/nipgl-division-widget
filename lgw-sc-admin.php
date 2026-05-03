@@ -302,8 +302,8 @@ function lgw_render_admin_edit_form($post_id, $sc) {
                 <input type="text" name="away_team" value="<?php echo esc_attr($sc['away_team'] ?? ''); ?>" class="regular-text">
             </div>
             <div class="lgw-edit-row">
-                <label>Date</label>
-                <input type="text" name="match_date" value="<?php echo esc_attr($sc['date'] ?? ''); ?>" placeholder="dd/mm/yyyy" class="small-text">
+                <label>Date Played</label>
+                <input type="text" name="match_date" value="<?php echo esc_attr($sc['date'] ?? ''); ?>" placeholder="dd/mm/yyyy" class="medium-text">
             </div>
             <div class="lgw-edit-row">
                 <label>Venue</label>
