@@ -218,6 +218,63 @@ function lgw_ajax_admin_edit_scorecard() {
     }
 }
 
+// ── Meta boxes on the native WP post edit screen ─────────────────────────────
+add_action( 'add_meta_boxes', 'lgw_sc_register_meta_boxes' );
+function lgw_sc_register_meta_boxes() {
+    add_meta_box(
+        'lgw_sc_edit',
+        '✏️ Scorecard',
+        'lgw_sc_meta_box_edit',
+        'lgw_scorecard',
+        'normal',
+        'high'
+    );
+    add_meta_box(
+        'lgw_sc_audit',
+        '📋 Audit Log',
+        'lgw_sc_meta_box_audit',
+        'lgw_scorecard',
+        'normal',
+        'default'
+    );
+}
+
+function lgw_sc_meta_box_edit( $post ) {
+    // Enqueue the admin JS/CSS needed for the save handler
+    wp_enqueue_style( 'lgw-admin-css',   plugin_dir_url( __FILE__ ) . 'lgw-admin.css',   array(), LGW_VERSION );
+    wp_enqueue_script( 'lgw-admin-js',   plugin_dir_url( __FILE__ ) . 'lgw-admin.js',    array('jquery'), LGW_VERSION, true );
+    wp_localize_script( 'lgw-admin-js', 'lgwAdminData', array(
+        'ajaxUrl' => admin_url('admin-ajax.php'),
+        'nonce'   => wp_create_nonce('lgw_admin_nonce'),
+    ) );
+    $sc = get_post_meta( $post->ID, 'lgw_scorecard_data', true );
+    lgw_render_admin_edit_form( $post->ID, $sc );
+}
+
+function lgw_sc_meta_box_audit( $post ) {
+    lgw_render_audit_log( $post->ID );
+}
+
+// Hide the unnecessary default meta boxes on this CPT edit screen
+add_action( 'admin_head', 'lgw_sc_hide_default_boxes' );
+function lgw_sc_hide_default_boxes() {
+    $screen = get_current_screen();
+    if ( !$screen || $screen->id !== 'lgw_scorecard' ) return;
+    echo '<style>
+        #submitdiv .misc-pub-post-status,
+        #submitdiv .misc-pub-visibility,
+        #misc-publishing-actions .misc-pub-post-status,
+        #misc-publishing-actions .misc-pub-visibility,
+        #minor-publishing-actions,
+        #slugdiv, #authordiv, #commentstatusdiv, #commentsdiv,
+        #revisionsdiv, #trackbacksdiv
+        { display:none !important }
+        #post-body-content { display:none !important }
+        #titlediv { margin-bottom:0 }
+        #submitdiv { min-width:0 }
+    </style>';
+}
+
 // ── Admin edit form renderer ──────────────────────────────────────────────────
 function lgw_render_admin_edit_form($post_id, $sc) {
     if (!$sc) { echo '<p>No scorecard data to edit.</p>'; return; }
