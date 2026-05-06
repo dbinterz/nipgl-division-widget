@@ -303,6 +303,41 @@
   color: var(--lgw-gold, #e8b400);
 }
 
+/* ── Current round highlight (desktop) ───────────────────────────────────────── */
+.lgw-champ-round--current .lgw-champ-round-header {
+  background: var(--lgw-navy, #1a2e5a);
+  color: #fff;
+}
+.lgw-champ-round--current .lgw-champ-round-header::before {
+  content: '\25B6 NOW';
+  display: block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: var(--lgw-gold, #e8b400);
+  margin-bottom: 2px;
+}
+.lgw-champ-round--current .lgw-champ-round-date {
+  color: rgba(255,255,255,.85);
+}
+/* Final + current: keep gold text */
+.lgw-champ-round-final.lgw-champ-round--current .lgw-champ-round-header {
+  background: var(--lgw-navy, #1a2e5a);
+  color: var(--lgw-gold, #e8b400);
+}
+
+/* ── Current round tab indicator (mobile) ────────────────────────────────────── */
+.lgw-champ-tab--current {
+  position: relative;
+}
+.lgw-champ-tab--current::after {
+  content: '\25B6';
+  font-size: 8px;
+  color: var(--lgw-gold, #e8b400);
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
 /* ── Trophy / winner card ────────────────────────────────────────────────────── */
 .lgw-champ-champion {
   display: flex;

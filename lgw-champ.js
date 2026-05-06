@@ -225,11 +225,54 @@
       + '</div>';
   }
 
+  // ── Current-round helpers ─────────────────────────────────────────────────────
+  // Parse "d/m/yy" or "d/m/yyyy" → midnight timestamp (ms), or null.
+  function parseChampDate(s) {
+    if (!s) return null;
+    var m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m) return null;
+    var y = parseInt(m[3], 10); if (y < 100) y += 2000;
+    return new Date(y, parseInt(m[2], 10) - 1, parseInt(m[1], 10)).getTime();
+  }
+
+  // Return the index of the "current" round:
+  //   1. First round whose date >= today (upcoming/current round).
+  //   2. If all dates are in the past → last round.
+  //   3. If no dates → first round with any incomplete match.
+  //   4. Fallback: 0.
+  function findCurrentRound(rounds, matches, dates) {
+    var today = new Date(); today.setHours(0,0,0,0); today = today.getTime();
+    if (dates && dates.length) {
+      var firstUpcoming = -1;
+      for (var i = 0; i < dates.length; i++) {
+        var ts = parseChampDate(dates[i]);
+        if (ts !== null && ts >= today) { firstUpcoming = i; break; }
+      }
+      if (firstUpcoming >= 0) return firstUpcoming;
+      for (var j = dates.length - 1; j >= 0; j--) {
+        if (parseChampDate(dates[j]) !== null) return j;
+      }
+    }
+    for (var r = 0; r < (matches || []).length; r++) {
+      var roundMatches = matches[r] || [];
+      var incomplete = roundMatches.some(function (m) {
+        return !m.bye && (m.home_score === null || m.home_score === undefined ||
+                          m.home_score === '' || m.away_score === null ||
+                          m.away_score === undefined || m.away_score === '');
+      });
+      if (incomplete) return r;
+    }
+    return 0;
+  }
+
   function renderBracket(wrap, data) {
     var rounds        = data.rounds  || [];
     var matches       = data.matches || [];
     var dates         = data.dates   || [];
     var statsEligible = wrap && wrap.dataset && wrap.dataset.statsEligible === '1';
+
+    // Determine which round is "current" for highlight / auto-scroll
+    var currentRound = findCurrentRound(rounds, matches, dates);
 
     // ── Mobile tabs
     var tabsEl = qs('.lgw-champ-tabs', wrap);
@@ -238,7 +281,8 @@
       tabsInner.innerHTML = '';
       rounds.forEach(function (name, i) {
         var tab = document.createElement('div');
-        tab.className = 'lgw-champ-tab' + (i === 0 ? ' active' : '');
+        var isCurrent = (i === currentRound);
+        tab.className = 'lgw-champ-tab' + (isCurrent ? ' active' : '') + (isCurrent ? ' lgw-champ-tab--current' : '');
         tab.textContent = name;
         tab.dataset.round = i;
         tabsInner.appendChild(tab);
@@ -270,7 +314,10 @@
       }
 
       var roundEl = document.createElement('div');
-      roundEl.className = 'lgw-champ-round' + (isFinal ? ' lgw-champ-round-final' : '') + (ri === 0 ? ' mobile-active' : '');
+      var isCurrent2 = (ri === currentRound);
+      roundEl.className = 'lgw-champ-round'
+        + (isFinal    ? ' lgw-champ-round-final'   : '')
+        + (isCurrent2 ? ' mobile-active lgw-champ-round--current' : '');
       roundEl.dataset.round = ri;
 
       var dateStr = dates[ri] ? '<span class="lgw-champ-round-date">' + escHtml(dates[ri]) + '</span>' : '';
@@ -407,7 +454,15 @@
         }, { root: bracketOuter, threshold: 0.5 });
         qsa('.lgw-champ-round', bracketEl).forEach(function (r) { observer.observe(r); });
       }
+      // Auto-scroll to current round on load (deferred so layout is complete)
+      if (currentRound > 0) {
+        setTimeout(function () { scrollToRound(currentRound); }, 80);
+      }
     }
+    // Expose a method so external callers (section tabs) can re-trigger the scroll
+    wrap._lgwScrollToCurrentRound = function () {
+      setTimeout(function () { scrollToRound(currentRound); }, 80);
+    };
   }
 
   // ── Live draw animation ───────────────────────────────────────────────────────
@@ -1767,7 +1822,14 @@
         outer.querySelectorAll('.lgw-champ-section-pane').forEach(function(p) { p.classList.remove('active'); });
         btn.classList.add('active');
         var pane = outer.querySelector('.lgw-champ-section-pane[data-section="' + btn.dataset.section + '"]');
-        if (pane) pane.classList.add('active');
+        if (pane) {
+          pane.classList.add('active');
+          // Reset mobile bracket to current round now that the pane is visible
+          var wrap = pane.querySelector('.lgw-champ-wrap');
+          if (wrap && typeof wrap._lgwScrollToCurrentRound === 'function') {
+            wrap._lgwScrollToCurrentRound();
+          }
+        }
         sessionStorage.setItem(storageKey, btn.dataset.section);
       });
     });

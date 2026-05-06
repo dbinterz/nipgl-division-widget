@@ -107,8 +107,11 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 ---
 
 ## Changelog
-### v7.2.16
-- Fix: League Table, Fixtures & Results, Light mode, and Admin mode tabs now render at equal height in the tab bar (changed flex `align-items` from `flex-end` to `stretch`; tab and button elements use internal flex centering).
+### v7.2.17
+- Fix: Tab bar items (League Table, Fixtures, Light mode, Admin mode buttons) now render at equal height.
+- New: Championship bracket highlights the current/upcoming round on desktop with a navy header and ▶ NOW badge.
+- New: Championship mobile tab bar auto-scrolls to the current round on load, with a ▶ indicator on the current tab.
+- Fix: Switching section tabs now immediately resets the mobile bracket to the current round (no page refresh needed).
 
 ### v7.2.15
 - New: Finals Week tab — appears when any day KO is done.
