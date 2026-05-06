@@ -45,9 +45,11 @@ jobs:
           cp lgw-champ.js            lgw-division-widget/
           cp lgw-champ.css           lgw-division-widget/
           cp lgw-draw.php            lgw-division-widget/
+          cp lgw-gchamp.php          lgw-division-widget/
+          cp lgw-gchamp.js           lgw-division-widget/
+          cp lgw-gchamp.css          lgw-division-widget/
           cp lgw-calendar.php        lgw-division-widget/
           cp lgw-calendar.js         lgw-division-widget/
-          cp lgw-calendar.css        lgw-division-widget/
           cp lgw-widget.js           lgw-division-widget/
           cp lgw-widget.css          lgw-division-widget/
           cp lgw-admin.js            lgw-division-widget/
@@ -57,18 +59,19 @@ jobs:
           cp lgw-drive.php           lgw-division-widget/
           cp lgw-sheets.php          lgw-division-widget/
           cp lgw-pdf.php             lgw-division-widget/
-          cp lgw-logo.svg            lgw-division-widget/
           cp lgw-finals.php          lgw-division-widget/
           cp lgw-finals.js           lgw-division-widget/
           cp lgw-finals.css          lgw-division-widget/
+          cp lgw-logo.svg            lgw-division-widget/
           cp readme.txt              lgw-division-widget/
           cp README.md               lgw-division-widget/
           zip -r "$ZIPNAME" lgw-division-widget/
           echo "ZIPNAME=$ZIPNAME" >> $GITHUB_ENV
           echo "✅ Built $ZIPNAME ($(du -h $ZIPNAME | cut -f1))"
+
       - name: Verify zip manifest
         run: |
-          EXPECTED="lgw-division-widget.php lgw-scorecards.php lgw-scorecard.js lgw-scorecard.css lgw-cup.php lgw-cup.js lgw-cup.css lgw-champ.php lgw-champ.js lgw-champ.css lgw-draw.php lgw-widget.js lgw-widget.css lgw-admin.js lgw-admin.css lgw-sc-admin.php lgw-players.php lgw-drive.php lgw-sheets.php lgw-pdf.php lgw-logo.svg readme.txt README.md"
+          EXPECTED="lgw-division-widget.php lgw-scorecards.php lgw-scorecard.js lgw-scorecard.css lgw-cup.php lgw-cup.js lgw-cup.css lgw-champ.php lgw-champ.js lgw-champ.css lgw-draw.php lgw-gchamp.php lgw-gchamp.js lgw-gchamp.css lgw-widget.js lgw-widget.css lgw-admin.js lgw-admin.css lgw-sc-admin.php lgw-players.php lgw-drive.php lgw-sheets.php lgw-pdf.php lgw-finals.php lgw-finals.js lgw-finals.css lgw-logo.svg readme.txt README.md"
           MISSING=0
           for f in $EXPECTED; do
             if ! unzip -l "${{ env.ZIPNAME }}" | grep -q "$f"; then
@@ -84,12 +87,10 @@ jobs:
         id: changelog
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          # Extract the section for this version from readme.txt
           NOTES=$(awk "/^= ${VERSION} =/{found=1; next} found && /^= /{exit} found{print}" readme.txt)
           if [ -z "$NOTES" ]; then
             NOTES="See readme.txt for changelog."
           fi
-          # Write to file to avoid quoting issues
           echo "$NOTES" > release_notes.txt
           echo "✅ Extracted changelog for v${VERSION}"
 
