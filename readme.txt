@@ -70,14 +70,123 @@ Parameters:
 4. Add the shortcode to each division page
 
 == Changelog ==
+= 7.2.15 =
+* New: Finals Week tab in lgw_gchamp widget — appears as soon as any day's KO is complete.
+* New: Finals matches auto-built from ko_qualifiers (4 qualifiers → SF+Final; 2 → Final; other → auto-paired).
+* New: Finals match cards reuse lgw-finals.css/js rendering — date/time/rink setting, end-by-end live scoring, final score entry.
+* New: lgw_gchamp_finals_save_datetime/save_end/save_score AJAX handlers store finals data on lgw_gchamp_* options.
+* New: lgw-finals.js patched to route isGchamp matches to new AJAX actions.
 
-= 7.1.139 =
+= 7.2.15 =
+* New: Tab underline colour picker in admin — preset swatches (Gold, Red, White, Bright Green, Sky Blue, Amber) plus custom. Defaults to gold to match PGL badge.
+* New: Group score saves on an already-complete day now reseed the KO bracket automatically (if no KO scores exist), so fixing a group result updates the draw.
+* New: Group score saves are blocked server-side if the day's KO bracket has any results entered, with a clear error message.
+* Fix: Reload now triggers correctly whenever KO bracket is newly seeded or reseeded after a group edit.
+
+= 7.2.15 =
+* Fix: Dark mode media query removed entirely — widget always renders in light theme. Added color-scheme:light to prevent browser dark mode override.
+* Fix: KO score entry "Missing parameters" error — context check now happens before group_id validation so KO saves (which send group_id=-1) are accepted.
+* Improved: Colour scheme admin now shows preset swatches (PGL Red, Navy, Green, Orange, Purple, Blue, Charcoal) plus a custom colour picker.
+* Style: Group card headers now use the accent colour (same as main header) rather than fixed navy, so colour scheme affects all headers consistently.
+
+= 7.2.15 =
+* Fix: KO bracket now appears for days that were already complete — page load auto-seeds via new lgw_gchamp_seed_day_ko AJAX endpoint (admin only).
+* New: Per-competition accent colour picker in admin edit page — overrides the header and interactive element colour on the front end.
+* New: Group lock/unlock button (admin only, shown on completed days) — locked groups disable score entry. Cannot unlock if KO bracket has scores.
+* Fix: Score entry now available on completed days for admin when group is unlocked.
+* Fix: All widget backgrounds are now white/near-white (#f4f5f9 for structural areas).
+
+= 7.2.15 =
+* Fix: Score auto-refresh was firing on every save (not just on state change). Now only reloads when the day first completes or KO bracket is newly seeded.
+* Fix: Group cards now use a CSS grid (repeat(2, 1fr)) enforcing a 2x2 layout on wider screens rather than allowing 3 side-by-side.
+* Fix: All internal backgrounds changed to white (#ffffff) or near-white (#f4f5f9). No more grey panels.
+
+= 7.2.15 =
+* Fix: Standings table now updates live after each score save (was ignored).
+* Fix: Page reload now also triggers when day_complete fires (not only on first KO seed).
+* Fix: Groups grid is now 2-column CSS grid — maintains 2x2 format on widescreen.
+* Fix: Background lightened — groups grid now uses white bg, bg-alt adjusted.
+
+= 7.2.15 =
+* Fix: KO bracket now seeds correctly for days that were already complete before v7.2.9 (removed was_complete guard).
+* Fix: Fixture team names now truncate with ellipsis instead of overflowing into the score column.
+* Fix: .lgw-gchamp-wrap now has display:block ensuring full-width layout in all themes.
+* Style: Primary colour changed to red (#c0202a) to match PGL association badge — header, accent elements, pts column.
+
+= 7.2.15 =
+* New: Per-day knockout bracket — each day now has its own KO bracket, seeded automatically when the day's group fixtures are complete.
+* New: Top-level day tabs (Day 1 | Day 2 | …) with sub-tabs (Groups | Knockout) per day.
+* New: KO bracket score entry — same inline save/clear as group scores, advances winner to next round on save.
+* New: Finals Week qualifier rule — 1 day: semi-finalists (4), 2 days: finalists (2 per day), 4 days: winner (1 per day). Always 4 total Finals Week qualifiers.
+* New: Finals Week qualifiers strip shown at bottom of each day's KO pane when ko_complete.
+* New: Lighter, cleaner CSS theme — off-white backgrounds, blue accent, gold Finals Week strip.
+* Fix: lgw-gchamp-wrap now has width:100% to stretch full screen width.
+
+= 7.2.15 =
+* Fix: Score entry "Missing parameters" error — day_id was not being sent in the JS AJAX request.
+* Fix: Group cards no longer capped at 420px — they now stretch to fill available screen width.
+* Fix: Entry names in standings tables no longer truncated at 160px on wider screens.
+* Fix: Fixture team names no longer truncated at 120px on wider screens.
+* New: Day section header and qualifiers strip CSS added (was missing from v7.2.7).
+
+= 7.2.15 =
+* Revised: Days-as-sections data model — each competition day is now an independent section with its own groups, qualification rules, and qualifier output.
+* New: Admin Days table with per-day: name, date, target group size, winners/group, best runners-up, auto-calculated group count and qualifier total.
+* New: Draw algorithm distributes entries across days (date preferences respected), then within each day calculates num_groups = ceil(entries/target_group_size) and distributes into groups.
+* New: Per-day qualification — each day computes its own qualifiers once all fixtures scored; group_stage_complete when all days done.
+* New: Qualifiers strip shown on front end per day when day_complete.
+* Removed: Flat groups_config / num_groups model replaced entirely.
+* Changed: has_ko_bracket is now optional (defaults off for clubs using external Finals Week).
+
+= 7.2.15 =
+* Fix: Literal newlines inside JS confirm() strings in the Run Draw admin script caused SyntaxError: Invalid or unexpected token, preventing the draw button from working.
+
+= 7.2.15 =
+* New: Qualification logic — top N per group (automatic) + best R runners-up selected by pts/diff/sf with random tie-break and admin notice.
+* New: lgw_gchamp_build_knockout() — builds KO bracket using lgw_draw_build_bracket() with same-club separation and bye auto-fill.
+* New: lgw_gchamp_seed_knockout AJAX endpoint — admin-triggered, requires group_stage_complete.
+* New: "Seed Knockout Bracket" admin button on edit page with qualifier summary and re-seed option.
+* New: Knockout pane now renders full bracket using lgw-champ-wrap / lgw-champ.js. Phase tab auto-switches to KO when bracket is seeded.
+* New: lgw-champ.js loaded as dependency of lgw-gchamp.js for bracket rendering.
+
+= 7.2.15 =
+* New: Front-end inline score entry on group fixture rows (editor/admin role). + Score / edit / clear controls per fixture. Enter key saves.
+* New: Admin Group Scores panel on edit page — full table of all fixtures per group with inline save/clear and Enter key support.
+* New: lgw_gchamp_save_score AJAX handler — validates scores, saves to WP option, returns updated standings.
+* New: lgw_gchamp_get_standings AJAX endpoint — returns all group standings + fixture scores (polling base for Step 8).
+* New: lgw_gchamp_all_fixtures_played() — sets group_stage_complete flag when last fixture is scored.
+
+= 7.2.15 =
+* New: [lgw_gchamp] shortcode now renders full front-end group stage view: all groups side by side with standings tables, fixtures lists, and qualification highlights.
+* New: lgw-gchamp.css — full CSS for group cards, standings, fixtures, phase tabs, qualification row highlights, dark-mode support, and responsive layout.
+* New: lgw-gchamp.js — phase tab switching, fixture collapse/expand, club badge injection from lgwData.clubBadges.
+* New: lgw_gchamp_compute_standings() — points/diff/h2h sort. lgw_gchamp_short_name() for compact display.
+* New: lgw_gchamp_enqueue() — correctly chains lgw-saira → lgw-widget → lgw-champ → lgw-gchamp assets.
+
+= 7.2.15 =
+* New: Group draw algorithm — allocates entries to groups respecting date preferences (3-pass), 50% club cap (soft constraint), and even distribution across groups.
+* New: Round-robin fixture generation using standard rotation algorithm. Odd-sized groups receive a silent BYE. Games-per-opponent setting reverses home/away on even repetitions.
+* New: Run Draw button on admin edit page — instant reveal with per-group entry list and fixture count. Re-draw requires confirmation if scores exist.
+* New: Draw warnings surfaced on admin page (oversubscription, club cap violations, missing dates).
+
+= 7.2.15 =
+* New: Entry date preference field on group championship admin page.
+* New: Bulk-set and clear-all controls for managing preferences across all entries.
+* Preferences stored as entry_preferences keyed by entry string; preserved across draw resets.
+
+
+= 7.2.15 =
+* New: Group Stage into Knockout championship type added (Step 1 — data model, admin config panel, group naming, qualification settings, bracket size suggestion).
+* New: [lgw_gchamp id="..."] shortcode registered (full front-end display coming in v7.2.15).
+* New: Group championships listed alongside knockout championships on the Championships admin page with "Group + KO" format badge.
+
+= 7.2.15 =
 * Admin scorecard edit: renamed "Date" label to "Date Played"; widened date input so full date is always visible.
 
-= 7.1.139 =
+= 7.2.15 =
 * Fix: Scorecard post edit screen (post.php?post=X&action=edit) now shows the full scorecard editor and audit log as meta boxes — previously it showed a blank WordPress post form with no scorecard data visible
 
-= 7.1.139 =
+= 7.2.15 =
 * Fix: Championship player stats — entering a score in a later round no longer overwrites/deletes the player's earlier round appearance records; the pre-insert delete in lgw_log_champ_appearance is now scoped to the specific match position (match_key) rather than wiping all champ rows for that player across the entire championship
 
 = 7.1.136 =

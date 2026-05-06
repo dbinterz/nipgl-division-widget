@@ -1535,6 +1535,10 @@ function lgw_champs_admin_page() {
     $champ_id = sanitize_key($_GET['edit'] ?? '');
     if ($champ_id && ($action === 'edit' || isset($_GET['edit']))) { lgw_champ_edit_page($champ_id); return; }
     if ($action === 'new') { lgw_champ_edit_page(''); return; }
+    // Delegate to group-stage championship router if applicable (lgw-gchamp.php)
+    if (isset($_GET['gedit']) || ($_GET['gaction'] ?? '') !== '') {
+        if (function_exists('lgw_gchamp_admin_router') && lgw_gchamp_admin_router()) return;
+    }
     lgw_champs_list_page();
 }
 
@@ -1823,6 +1827,8 @@ function lgw_champs_list_page() {
     })();
     </script>
     <?php
+    // Allow lgw-gchamp.php to append group-stage championships to this page
+    do_action('lgw_champs_list_after');
 }
 
 function lgw_champ_edit_page($champ_id) {

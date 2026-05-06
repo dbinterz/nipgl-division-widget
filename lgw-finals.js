@@ -15,8 +15,9 @@
   function post(action, data, cb) {
     var fd = new FormData();
     fd.append('action', action);
-    fd.append('nonce',  nonce);
-    Object.keys(data).forEach(function(k) { fd.append(k, data[k]); });
+    // Use payload nonce (for gchamp requests) or module-level nonce
+    fd.append('nonce', data.nonce || nonce);
+    Object.keys(data).forEach(function(k) { if (k !== 'nonce') fd.append(k, data[k]); });
     fetch(ajaxUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(cb)
@@ -174,11 +175,12 @@
   function saveDatetime(mid, dt, rink, pop) {
     var p = midParts(mid);
     var msgEl = qs('.lgw-finals-pop-msg', pop);
-    post('lgw_finals_save_datetime', {
-      champ_id: p.champId, bracket_key: p.bracketKey,
-      round_idx: p.roundIdx, match_idx: p.matchIdx,
-      datetime: dt, rink: rink,
-    }, function(res) {
+    var m = matches[mid] || {};
+    var action = m.isGchamp ? 'lgw_gchamp_finals_save_datetime' : 'lgw_finals_save_datetime';
+    var payload = m.isGchamp
+      ? { champ_id: m.champId, match_idx: m.matchIdx, nonce: m.nonce, datetime: dt, rink: rink }
+      : { champ_id: p.champId, bracket_key: p.bracketKey, round_idx: p.roundIdx, match_idx: p.matchIdx, datetime: dt, rink: rink };
+    post(action, payload, function(res) {
       if (!res.success) { msgEl.textContent = 'Error: ' + (res.data || 'Unknown'); return; }
       closePop();
       // Update datetime + rink display
@@ -241,14 +243,15 @@
     });
   }
 
-  function saveEnd(mid, action, he, ae, pop) {
+  function saveEnd(mid, endAction, he, ae, pop) {
     var p = midParts(mid);
     var msgEl = pop ? qs('.lgw-finals-pop-msg', pop) : null;
-    post('lgw_finals_save_end', {
-      champ_id: p.champId, bracket_key: p.bracketKey,
-      round_idx: p.roundIdx, match_idx: p.matchIdx,
-      end_action: action, home_end: he || 0, away_end: ae || 0,
-    }, function(res) {
+    var m = matches[mid] || {};
+    var ajaxAction = m.isGchamp ? 'lgw_gchamp_finals_save_end' : 'lgw_finals_save_end';
+    var payload = m.isGchamp
+      ? { champ_id: m.champId, match_idx: m.matchIdx, nonce: m.nonce, end_action: endAction, home_end: he||0, away_end: ae||0 }
+      : { champ_id: p.champId, bracket_key: p.bracketKey, round_idx: p.roundIdx, match_idx: p.matchIdx, end_action: endAction, home_end: he||0, away_end: ae||0 };
+    post(ajaxAction, payload, function(res) {
       if (!res.success) {
         if (msgEl) msgEl.textContent = 'Error: ' + (res.data || 'Unknown');
         return;
@@ -311,11 +314,12 @@
   function saveScore(mid, hs, as_score, pop) {
     var p = midParts(mid);
     var msgEl = pop ? qs('.lgw-finals-pop-msg', pop) : null;
-    post('lgw_finals_save_score', {
-      champ_id: p.champId, bracket_key: p.bracketKey,
-      round_idx: p.roundIdx, match_idx: p.matchIdx,
-      home_score: hs, away_score: as_score,
-    }, function(res) {
+    var m = matches[mid] || {};
+    var ajaxAction = m.isGchamp ? 'lgw_gchamp_finals_save_score' : 'lgw_finals_save_score';
+    var payload = m.isGchamp
+      ? { champ_id: m.champId, match_idx: m.matchIdx, nonce: m.nonce, home_score: hs, away_score: as_score }
+      : { champ_id: p.champId, bracket_key: p.bracketKey, round_idx: p.roundIdx, match_idx: p.matchIdx, home_score: hs, away_score: as_score };
+    post(ajaxAction, payload, function(res) {
       if (!res.success) {
         if (msgEl) msgEl.textContent = 'Error: ' + (res.data || 'Unknown');
         return;
