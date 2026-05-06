@@ -124,10 +124,10 @@
 .lgw-w *{box-sizing:border-box;margin:0;padding:0}
 
 /* ── Tabs ────────────────────────────────────────────────────────────────────── */
-.lgw-tabs{display:flex;gap:3px;margin-bottom:0;align-items:flex-end}
-.lgw-tab{flex:1;padding:9px 8px;font-size:13px;font-weight:700;text-align:center;cursor:pointer;background:var(--lgw-tab-bg);color:var(--lgw-navy);border:1px solid var(--lgw-border);border-bottom:none;border-radius:6px 6px 0 0;transition:background .15s;user-select:none}
+.lgw-tabs{display:flex;gap:3px;margin-bottom:0;align-items:stretch}
+.lgw-tab{flex:1;padding:9px 8px;font-size:13px;font-weight:700;text-align:center;cursor:pointer;background:var(--lgw-tab-bg);color:var(--lgw-navy);border:1px solid var(--lgw-border);border-bottom:none;border-radius:6px 6px 0 0;transition:background .15s;user-select:none;display:flex;align-items:center;justify-content:center}
 .lgw-tab.active{background:var(--lgw-navy);color:#fff}
-.lgw-darkmode-btn{margin-left:auto;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;background:var(--lgw-tab-bg);color:var(--lgw-navy);border:1px solid var(--lgw-border);border-bottom:none;border-radius:6px 6px 0 0;user-select:none;transition:background .15s;white-space:nowrap}
+.lgw-darkmode-btn{margin-left:auto;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;background:var(--lgw-tab-bg);color:var(--lgw-navy);border:1px solid var(--lgw-border);border-bottom:none;border-radius:6px 6px 0 0;user-select:none;transition:background .15s;white-space:nowrap;display:flex;align-items:center}
 .lgw-darkmode-btn:hover{background:var(--lgw-bg-hover)}
 
 /* ── Panels ──────────────────────────────────────────────────────────────────── */

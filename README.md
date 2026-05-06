@@ -107,6 +107,9 @@ The plugin parses the standard LGW scorecard Excel template. Cells with unresolv
 ---
 
 ## Changelog
+### v7.2.16
+- Fix: League Table, Fixtures & Results, Light mode, and Admin mode tabs now render at equal height in the tab bar (changed flex `align-items` from `flex-end` to `stretch`; tab and button elements use internal flex centering).
+
 ### v7.2.15
 - New: Finals Week tab — appears when any day KO is done.
 - New: Auto-built finals matches (SF+Final or Final depending on qualifiers).
